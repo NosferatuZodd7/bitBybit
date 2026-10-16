@@ -1,0 +1,23 @@
+{
+  "report.title": "bitBybit — relatório de diagnóstico (só leitura)",
+  "report.generated": "Gerado: {0} · bitBybit {1}",
+  "report.machine": "Computador: {0}",
+  "report.elevation": "Executado como administrador: {0}",
+  "report.findings": "Conclusões — caso Realtek / DisplayPort",
+  "report.audio": "Dispositivos de áudio",
+  "report.default": "predefinido",
+  "report.monitors": "Monitores",
+  "report.edidAudioYes": "anuncia áudio ({0})",
+  "report.edidAudioNo": "não anuncia áudio",
+  "report.edidUnknown": "EDID não lido",
+  "report.audioDevices": "Dispositivos relacionados com áudio",
+  "report.present": "presente",
+  "report.notPresent": "não presente",
+  "report.problemCode": "código de problema",
+  "report.issues": "Informação que não foi possível recolher",
+  "report.footer": "Este relatório foi gerado em modo só de leitura: o bitBybit não alterou nenhuma definição do sistema.",
+  "report.severity.critical": "CRÍTICO",
+  "report.severity.problem": "PROBLEMA",
+  "report.severity.warning": "AVISO",
+  "report.severity.info": "INFO"
+}

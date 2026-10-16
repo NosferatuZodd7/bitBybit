@@ -73,7 +73,9 @@ dotnet publish src/BitByBit.App -c Release -r win-x64 --self-contained   # real 
 - WMI/CIM via `System.Management` (e.g. `root\StandardCimv2` `MSFT_NetNat`, `root\cimv2` `Win32_PnPSignedDriver`).
 - Mark Windows types with `[SupportedOSPlatform("windows")]` (or `windows10.0.xxxxx` for WinRT APIs needing a newer build).
 - **Never** build PowerShell/cmd script strings. The only external processes allowed are the System32 tools in
-  `FixedTool` via `IFixedToolRunner` with validated argument lists.
+  `FixedTool` via `IFixedToolRunner` with validated argument lists. Exceptions limited to the UI: shell-opening a
+  bitBybit-owned folder in Explorer and relaunching bitBybit's own executable with `runas` (UAC) — no arguments from
+  untrusted input.
 
 ## Safety rules (non-negotiable)
 

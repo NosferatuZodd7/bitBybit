@@ -17,6 +17,10 @@
     <ProjectReference Include="..\BitByBit.Platform.Windows\BitByBit.Platform.Windows.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- WPF projects omit System.IO from implicit usings (name clash with System.Windows.Shapes.Path). -->
+    <Using Include="System.IO" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Logging" />

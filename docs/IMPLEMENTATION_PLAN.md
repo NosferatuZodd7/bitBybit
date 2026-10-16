@@ -5,6 +5,17 @@ Legend: ✅ done (built + unit-tested) · 🟡 in progress · ⬜ pending · ⛔
 Status values describe the code in this repository. "Validated on real hardware" is tracked separately in
 [TESTING.md](TESTING.md); nothing in this file implies hardware validation.
 
+## Preview 0.1 (read-only diagnostic build) — 🧪
+
+Delivered so the user can test on the real Windows 10 PC while the full modules are developed:
+`src/BitByBit.Core/QuickDiag` (snapshot models, minimal EDID + setupapi.dev.log parsers, Realtek/DisplayPort analyzer with
+facts vs hypotheses and before/after-restart comparison, redacted pt-PT/JSON reports — unit-tested),
+`src/BitByBit.Platform.Windows/QuickDiag` (WMI devices/drivers/system, Core Audio endpoints, CCD + registry EDID, .NET network
+info, SCM, Windows Update history COM, setupapi.dev.log, Kernel-PnP events — compiled; executed only on the CI runner),
+WPF UI and `bitbybit-cli diagnose`. Packaged as a single-file self-contained `bitBybit.exe` (unsigned).
+The QuickDiag code is superseded module by module as the full Devices/Audio/Display/Network implementations land.
+User guide: [PREVIEW.md](PREVIEW.md).
+
 ## Phase A — Foundation
 
 | Item | Status | Notes |

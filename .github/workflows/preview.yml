@@ -1,0 +1,94 @@
+# Builds the read-only diagnostic preview on a real Windows runner, runs the unit + read-only integration tests,
+# executes the CLI and the app's headless smoke test on the runner, and uploads the (unsigned) executables.
+# It never publishes releases or tags.
+name: preview-build
+
+on:
+  push:
+    branches: ['claude/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-preview:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      DOTNET_NOLOGO: '1'
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build bitBybit.sln -c Release -p:BitByBitUpdateRepository=${{ github.repository }}
+
+      - name: Unit tests (Core)
+        run: dotnet test tests/BitByBit.Core.Tests -c Release --no-build --logger "trx;LogFileName=core.trx" --results-directory artifacts/test-results
+
+      - name: Windows integration tests (read-only)
+        run: dotnet test tests/BitByBit.Platform.Windows.Tests -c Release --no-build --logger "trx;LogFileName=windows.trx" --results-directory artifacts/test-results
+
+      - name: Publish preview (single-file, self-contained, win-x64)
+        shell: pwsh
+        run: |
+          $common = @('-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '-p:PublishSingleFile=true',
+                      '-p:IncludeNativeLibrariesForSelfExtract=true', '-p:EnableCompressionInSingleFile=true', '-p:DebugType=none',
+                      "-p:BitByBitUpdateRepository=${{ github.repository }}")
+          dotnet publish src/BitByBit.App @common -o artifacts/preview/app
+          if ($LASTEXITCODE -ne 0) { throw "app publish failed" }
+          dotnet publish src/BitByBit.Cli @common -o artifacts/preview/cli
+          if ($LASTEXITCODE -ne 0) { throw "cli publish failed" }
+
+      - name: Smoke test — CLI diagnose on the runner (read-only)
+        shell: pwsh
+        run: |
+          & artifacts/preview/cli/bitbybit-cli.exe diagnose --format both --out artifacts/diagnostics/ci-runner-cli
+          if ($LASTEXITCODE -ne 0) { throw "bitbybit-cli diagnose failed with exit code $LASTEXITCODE" }
+
+      - name: Smoke test — app headless self-check on the runner (read-only)
+        shell: pwsh
+        run: |
+          $out = Join-Path $PWD 'artifacts/diagnostics/ci-runner-app'
+          $p = Start-Process -FilePath artifacts/preview/app/bitBybit.exe -ArgumentList @('--smoke-test', $out) -Wait -PassThru
+          Get-ChildItem artifacts/diagnostics -Recurse | Format-Table FullName, Length
+          if ($p.ExitCode -ne 0) { throw "bitBybit.exe --smoke-test failed with exit code $($p.ExitCode)" }
+          if (-not (Get-ChildItem $out -Filter '*.json')) { throw "smoke test produced no report" }
+
+      - name: Collect app logs
+        if: always()
+        shell: pwsh
+        run: |
+          $logs = Join-Path $env:LOCALAPPDATA 'bitBybit/logs'
+          if (Test-Path $logs) { Copy-Item $logs artifacts/diagnostics/app-logs -Recurse }
+
+      - name: SHA-256 hashes
+        shell: pwsh
+        run: |
+          Get-FileHash artifacts/preview/app/bitBybit.exe, artifacts/preview/cli/bitbybit-cli.exe -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($_.Path))" } |
+            Set-Content -Encoding utf8 artifacts/preview/SHA256SUMS.txt
+          Get-Content artifacts/preview/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bitBybit-preview-win-x64-unsigned
+          path: artifacts/preview
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ci-runner-diagnostics-and-test-results
+          path: |
+            artifacts/diagnostics
+            artifacts/test-results
