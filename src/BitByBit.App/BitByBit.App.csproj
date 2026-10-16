@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- WPF desktop UI (pt-PT first). Runs unelevated; read-only queries run in-process, changes go through the broker. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>$(BitByBitWindowsTfm)</TargetFramework>
+    <SupportedOSPlatformVersion>$(BitByBitMinWindows)</SupportedOSPlatformVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>bitBybit</AssemblyName>
+    <RootNamespace>BitByBit.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\BitByBit.Core\BitByBit.Core.csproj" />
+    <ProjectReference Include="..\BitByBit.Platform.Windows\BitByBit.Platform.Windows.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+</Project>

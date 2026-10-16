@@ -1,0 +1,28 @@
+# Build output
+bin/
+obj/
+artifacts/
+publish/
+TestResults/
+*.binlog
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.DotSettings.user
+
+# Secrets — never commit signing material
+*.pfx
+*.p12
+*.snk
+*.pem
+!**/TrustedUpdateKeys/*.pub.pem
+signing-key*
+*.key
+
+# OS
+Thumbs.db
+.DS_Store

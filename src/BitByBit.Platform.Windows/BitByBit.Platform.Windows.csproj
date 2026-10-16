@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Windows implementations of Core abstractions: Win32 (CsWin32-generated P/Invoke), COM, WinRT, WMI/CIM. -->
+  <PropertyGroup>
+    <TargetFramework>$(BitByBitWindowsTfm)</TargetFramework>
+    <SupportedOSPlatformVersion>$(BitByBitMinWindows)</SupportedOSPlatformVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>BitByBit.Platform.Windows</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\BitByBit.Core\BitByBit.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.CsWin32" PrivateAssets="all" />
+    <PackageReference Include="System.Management" />
+    <PackageReference Include="System.Diagnostics.EventLog" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Each module keeps its own NativeMethods.txt next to its code; CsWin32 merges them. -->
+    <AdditionalFiles Include="**\NativeMethods.txt" />
+    <AdditionalFiles Include="NativeMethods.json" />
+    <InternalsVisibleTo Include="BitByBit.Platform.Windows.Tests" />
+  </ItemGroup>
+</Project>

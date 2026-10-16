@@ -1,0 +1,29 @@
+<Project>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true' or '$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <!-- Allows building Windows-targeted projects (WPF, Windows SDK projection) on Linux/macOS CI and dev boxes. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <SatelliteResourceLanguages>en;pt-PT</SatelliteResourceLanguages>
+
+    <!-- Versioning: the single source of truth is VersionPrefix; CI may append a suffix for non-release builds. -->
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <Company>bitBybit</Company>
+    <Product>bitBybit</Product>
+    <Copyright>bitBybit contributors</Copyright>
+    <NeutralLanguage>en</NeutralLanguage>
+
+    <!-- GitHub repository used as the update source (owner/name). Derived from `git remote get-url origin`.
+         CI overrides it with ${{ github.repository }}. Never put tokens here. -->
+    <BitByBitUpdateRepository Condition="'$(BitByBitUpdateRepository)' == ''">NosferatuZodd7/bitBybit</BitByBitUpdateRepository>
+
+    <!-- Minimum supported Windows: Windows 10 1809 (build 17763, also LTSC 2019). See docs/COMPATIBILITY.md. -->
+    <BitByBitWindowsTfm>net10.0-windows10.0.19041.0</BitByBitWindowsTfm>
+    <BitByBitMinWindows>10.0.17763.0</BitByBitMinWindows>
+  </PropertyGroup>
+</Project>

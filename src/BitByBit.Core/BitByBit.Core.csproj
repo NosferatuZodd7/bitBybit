@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Platform-neutral domain logic: models, validation, analyzers, protocols, update verification.
+       MUST NOT reference Windows-only APIs so it can be unit-tested on any OS. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>BitByBit.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- UI text catalogs (one JSON file per module and culture). Logical name: BitByBit.Text.<culture>.<module>.json -->
+    <EmbeddedResource Include="Localization\Catalogs\**\*.json" LogicalName="BitByBit.Text.%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- Trusted update-signing public keys (PEM, SubjectPublicKeyInfo). See docs/UPDATES.md. -->
+    <EmbeddedResource Include="Updates\TrustedUpdateKeys\*.pub.pem" LogicalName="BitByBit.TrustedUpdateKeys.%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
+    <AssemblyMetadata Include="BitByBit.UpdateRepository" Value="$(BitByBitUpdateRepository)" />
+    <InternalsVisibleTo Include="BitByBit.Core.Tests" />
+  </ItemGroup>
+</Project>
