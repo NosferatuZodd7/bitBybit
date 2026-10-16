@@ -26,3 +26,6 @@ signing-key*
 # OS
 Thumbs.db
 .DS_Store
+
+# Claude Code agent worktrees (local only)
+.claude/worktrees/
