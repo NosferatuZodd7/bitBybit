@@ -72,7 +72,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(ExportCommand))]
-    [NotifyPropertyChangedFor(nameof(ShowSkeletons), nameof(ShowDevicesEmpty))]
+    [NotifyPropertyChangedFor(nameof(ShowSkeletons), nameof(ShowDevicesEmpty), nameof(ShowNoIssues))]
     private bool _isBusy;
 
     [ObservableProperty]
@@ -189,6 +189,7 @@ public sealed partial class MainViewModel : ObservableObject
         ExportCommand.NotifyCanExecuteChanged();
 
         Replace(Findings, report.Findings.OrderByDescending(f => f.Severity).Select(f => new FindingRow(f, ExecutorFor)));
+        RefreshVisibleFindings();
         Replace(Endpoints, snapshot.AudioEndpoints.OrderBy(e => e.Flow).ThenByDescending(e => e.State == EndpointState.Active).ThenBy(e => e.Name).Select(e => new EndpointRow(e)));
         Replace(Monitors, snapshot.Monitors.Select(m => new MonitorRow(m)));
         Replace(Gpus, snapshot.Gpus);

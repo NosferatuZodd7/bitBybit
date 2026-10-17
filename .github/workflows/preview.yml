@@ -61,10 +61,12 @@ jobs:
           $out = Join-Path $PWD 'artifacts/diagnostics/ci-runner-app'
           $p = Start-Process -FilePath artifacts/preview/app/bitBybit.exe -ArgumentList @('--smoke-test', $out) -Wait -PassThru
           Get-ChildItem artifacts/diagnostics -Recurse | Format-Table FullName, Length
+          $contrast = Join-Path $out 'screenshots/contrast.txt'
+          if (Test-Path $contrast) { Write-Host "Low-contrast elements (ratio < 3):"; Get-Content $contrast }
           if ($p.ExitCode -ne 0) { throw "bitBybit.exe --smoke-test failed with exit code $($p.ExitCode)" }
           if (-not (Get-ChildItem $out -Filter '*.json')) { throw "smoke test produced no report" }
           $shots = @(Get-ChildItem (Join-Path $out 'screenshots') -Filter '*.png' -ErrorAction SilentlyContinue)
-          if ($shots.Count -lt 16) { throw "UI smoke test rendered $($shots.Count) screenshots (expected 16)" }
+          if ($shots.Count -lt 20) { throw "UI smoke test rendered $($shots.Count) screenshots (expected 20)" }
 
       - name: Collect app logs
         if: always()

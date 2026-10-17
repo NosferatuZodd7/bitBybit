@@ -43,6 +43,10 @@
                   <DockPanel>
                     <Button DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0" Content="{loc:T app.action.execute}" t:Ux.Icon="play"
                             Command="{Binding ExecuteCommand}" Visibility="{Binding IsExecutable, Converter={StaticResource BoolToVisibility}}" />
+                    <Border DockPanel.Dock="Right" Style="{StaticResource Tag}" Margin="12,0,0,0" ToolTip="{loc:T app.action.manualTip}"
+                            Visibility="{Binding IsExecutable, Converter={StaticResource InverseBoolToVisibility}}">
+                      <TextBlock Text="{loc:T app.action.manual}" />
+                    </Border>
                     <StackPanel>
                       <TextBlock TextWrapping="Wrap">
                         <Run Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" />
@@ -164,9 +168,14 @@
               <TextBlock Text="{Binding WindowsVersion}" FontSize="12" Foreground="{DynamicResource Brush.TextMuted}" TextTrimming="CharacterEllipsis" ToolTip="{Binding WindowsVersion}" />
             </StackPanel>
             <!-- Current target and its state -->
-            <Border Style="{StaticResource Tag}" t:Ux.Tone="{Binding DiagnosisTone}" Margin="0,0,10,0" Padding="10,5" CornerRadius="12" ToolTip="{loc:T app.shell.chip.tip}">
-              <TextBlock Text="{Binding DiagnosisChip}" FontSize="12" />
-            </Border>
+            <Button Style="{StaticResource Button.Bare}" Command="{Binding ShowIssuesCommand}" Margin="0,0,10,0" ToolTip="{loc:T app.shell.chip.tip}">
+              <Border Style="{StaticResource Tag}" t:Ux.Tone="{Binding DiagnosisTone}" Padding="10,5" CornerRadius="12">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="{Binding DiagnosisChip}" FontSize="12" />
+                  <t:Icon Glyph="chevron-right" Size="12" Margin="4,0,0,0" VerticalAlignment="Center" />
+                </StackPanel>
+              </Border>
+            </Button>
             <!-- Service indicators -->
             <Border Style="{StaticResource Surface.BarGroup}">
               <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -251,7 +260,19 @@
                     </StackPanel>
                   </DockPanel>
                 </Border>
-                <ItemsControl ItemsSource="{Binding Findings}" ItemTemplate="{StaticResource FindingTemplate}" />
+                <WrapPanel Margin="0,0,0,6">
+                  <Button Style="{StaticResource Chip}" Content="{Binding AllFindingsChip}" Command="{Binding ShowAllFindingsCommand}"
+                          t:Ux.Active="{Binding OnlyIssues, Converter={StaticResource InverseBool}}" />
+                  <Button Style="{StaticResource Chip}" Content="{Binding IssuesChip}" t:Ux.Icon="alert" Command="{Binding ShowIssuesCommand}"
+                          t:Ux.Active="{Binding OnlyIssues}" />
+                </WrapPanel>
+                <TextBlock Style="{StaticResource Text.Hint}" Text="{loc:T app.case.issuesHint}" Margin="0,0,0,10"
+                           Visibility="{Binding OnlyIssues, Converter={StaticResource BoolToVisibility}}" />
+                <Border Style="{StaticResource Surface.Card}" Padding="18,14" Margin="0,0,0,10"
+                        Visibility="{Binding ShowNoIssues, Converter={StaticResource BoolToVisibility}}">
+                  <TextBlock Text="{loc:T app.case.noIssues}" TextWrapping="Wrap" />
+                </Border>
+                <ItemsControl ItemsSource="{Binding VisibleFindings}" ItemTemplate="{StaticResource FindingTemplate}" />
                 <StackPanel Visibility="{Binding ShowSkeletons, Converter={StaticResource BoolToVisibility}}">
                   <t:SkeletonRow />
                   <t:SkeletonRow />

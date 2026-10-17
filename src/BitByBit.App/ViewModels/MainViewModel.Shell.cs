@@ -44,6 +44,20 @@ public sealed partial class MainViewModel
     [ObservableProperty]
     private string _theme = SettingsStore.Current.Appearance.Theme;
 
+    /// <summary>Case page shows only problems and warnings (opened from the diagnosis chip).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowNoIssues))]
+    private bool _onlyIssues;
+
+    /// <summary>Findings shown on the case page: all of them, or only problems and warnings.</summary>
+    public ObservableCollection<FindingRow> VisibleFindings { get; } = [];
+
+    public string AllFindingsChip => Text.Get("app.case.filter.all", Findings.Count);
+
+    public string IssuesChip => Text.Get("app.case.filter.issues", Findings.Count(f => f.Severity >= FindingSeverity.Warning));
+
+    public bool ShowNoIssues => OnlyIssues && !IsBusy && Findings.Count > 0 && VisibleFindings.Count == 0;
+
     [ObservableProperty]
     private string _toastText = string.Empty;
 
@@ -124,6 +138,27 @@ public sealed partial class MainViewModel
     internal void ShowSnapshot(QuickSnapshot snapshot, DiagnosticReport report) => Apply(snapshot, report, previous: null);
 
     private bool CanGoBack() => _history.Count > 0;
+
+    /// <summary>Diagnosis chip: open the case page with only the problems and warnings, each with its fix options.</summary>
+    [RelayCommand]
+    private void ShowIssues()
+    {
+        OnlyIssues = true;
+        Navigate("case");
+    }
+
+    [RelayCommand]
+    private void ShowAllFindings() => OnlyIssues = false;
+
+    partial void OnOnlyIssuesChanged(bool value) => RefreshVisibleFindings();
+
+    private void RefreshVisibleFindings()
+    {
+        Replace(VisibleFindings, OnlyIssues ? Findings.Where(f => f.Severity >= FindingSeverity.Warning) : Findings);
+        OnPropertyChanged(nameof(AllFindingsChip));
+        OnPropertyChanged(nameof(IssuesChip));
+        OnPropertyChanged(nameof(ShowNoIssues));
+    }
 
     [RelayCommand]
     private void Navigate(string page)
