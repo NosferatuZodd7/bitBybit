@@ -1,0 +1,14 @@
+{
+  "profiles.audio.disabled": "O perfil está desativado.",
+  "profiles.audio.ambiguous": "Vários dispositivos de áudio correspondem igualmente ao dispositivo preferido; o bitBybit não escolhe automaticamente.",
+  "profiles.audio.missing": "O dispositivo preferido '{0}' ainda não está disponível (monitor desligado ou não ligado, ou o controlador de áudio da placa gráfica ainda não o criou).",
+  "profiles.audio.unplugged": "'{0}' é indicado como desligado (monitor desligado, em suspensão ou sem enviar áudio).",
+  "profiles.audio.disabledEndpoint": "'{0}' está desativado nas definições de Som.",
+  "profiles.audio.notPresent": "'{0}' não está presente neste momento.",
+  "profiles.audio.userChanged": "Escolheu outro dispositivo predefinido; o bitBybit vai respeitar essa escolha até '{0}' voltar a ser ligado.",
+  "profiles.audio.satisfied": "'{0}' é o dispositivo predefinido.",
+  "profiles.audio.paused": "Em pausa: escolheu outro dispositivo predefinido.",
+  "profiles.audio.limit": "O bitBybit já mudou o dispositivo predefinido {0} vezes nesta sessão; outro programa pode estar a revertê-lo. Não serão feitas mais alterações automáticas.",
+  "profiles.audio.cooldown": "A aguardar alguns segundos antes de voltar a mudar o dispositivo predefinido.",
+  "profiles.audio.apply": "A tornar '{0}' o dispositivo predefinido."
+}
