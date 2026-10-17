@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Windows;
 using BitByBit.App.Infrastructure;
+using BitByBit.App.Theming;
 using BitByBit.App.ViewModels;
 using BitByBit.Core.Logging;
 using BitByBit.Core.QuickDiag;
@@ -71,6 +72,7 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        ThemeManager.Apply(SettingsStore.Current.Appearance);
         var window = new MainWindow { DataContext = new MainViewModel(_loggerFactory) };
         MainWindow = window;
         window.Show();
@@ -185,6 +187,9 @@ public partial class App : System.Windows.Application
             {
                 throw new InvalidOperationException("Elevated command contract round-trip failed.");
             }
+
+            // Build the real window in every look and save screenshots (fails on XAML/resource errors).
+            UiSmoke.Run(snapshot, report, _loggerFactory!, Path.Combine(outDir, "screenshots"));
         }
         catch (Exception ex)
         {

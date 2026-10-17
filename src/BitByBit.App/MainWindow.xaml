@@ -3,328 +3,537 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="clr-namespace:BitByBit.App.Infrastructure"
         xmlns:vm="clr-namespace:BitByBit.App.ViewModels"
+        xmlns:t="clr-namespace:BitByBit.App.Theming"
         xmlns:diag="clr-namespace:BitByBit.Core.Diagnostics;assembly=BitByBit.Core"
-        Title="{Binding Title}" Height="780" Width="1240" MinHeight="520" MinWidth="860"
-        Background="{StaticResource PageBrush}" WindowStartupLocation="CenterScreen">
-  <DockPanel>
-    <!-- Header -->
-    <Border DockPanel.Dock="Top" Background="{StaticResource HeaderBrush}" Padding="16,10">
-      <DockPanel>
-        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-          <Button Content="{loc:T app.button.refresh}" Command="{Binding RefreshCommand}" />
-          <Button Content="{loc:T app.button.export}" Command="{Binding ExportCommand}" />
-          <Button Content="{loc:T app.button.openReports}" Command="{Binding OpenReportsFolderCommand}" />
-          <Button Content="{loc:T app.button.elevate}" Command="{Binding RelaunchElevatedCommand}"
-                  Visibility="{Binding CanRelaunchElevated, Converter={StaticResource BoolToVisibility}}" />
-        </StackPanel>
+        Title="{Binding Title}" Height="840" Width="1360" MinHeight="620" MinWidth="1100"
+        Background="{DynamicResource Brush.Background}" Foreground="{DynamicResource Brush.Text}"
+        FontFamily="{StaticResource Font.UI}" FontSize="13" UseLayoutRounding="True"
+        WindowStartupLocation="CenterScreen">
+  <Window.Resources>
+    <!-- Card of a finding (Realtek / DisplayPort case). -->
+    <DataTemplate x:Key="FindingTemplate" DataType="{x:Type vm:FindingRow}">
+      <Border Style="{StaticResource Surface.Card}" Margin="0,0,0,10" Padding="18,14">
         <StackPanel>
-          <TextBlock Text="bitBybit" Foreground="White" FontSize="20" FontWeight="Bold" />
-          <TextBlock Text="{loc:T app.subtitle}" Foreground="#C3D0DD" />
-        </StackPanel>
-      </DockPanel>
-    </Border>
-
-    <!-- Read-only banner -->
-    <Border DockPanel.Dock="Top" Background="#FFF8E1" BorderBrush="#F0D27A" BorderThickness="0,0,0,1" Padding="16,6">
-      <TextBlock Text="{loc:T app.banner.actions}" TextWrapping="Wrap" Foreground="#6B4E00" />
-    </Border>
-
-    <!-- Status bar -->
-    <Border DockPanel.Dock="Bottom" Background="#E7EBF0" Padding="12,4">
-      <DockPanel>
-        <ProgressBar DockPanel.Dock="Right" Width="140" Height="10" IsIndeterminate="{Binding IsBusy}"
-                     Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
-        <TextBlock Text="{Binding Status}" TextTrimming="CharacterEllipsis" />
-      </DockPanel>
-    </Border>
-
-    <TabControl Margin="10" Padding="10">
-      <!-- Realtek / DisplayPort case -->
-      <TabItem Header="{loc:T app.tab.case}">
-        <DockPanel>
-          <StackPanel DockPanel.Dock="Top">
-            <TextBlock Style="{StaticResource Hint}" Text="{loc:T app.case.intro}" />
-            <TextBlock Style="{StaticResource Hint}" Text="{Binding ComparisonInfo}" FontStyle="Italic" />
-            <!-- DisplayPort audio profile -->
-            <Border Background="{StaticResource CardBrush}" BorderBrush="#D5DCE4" BorderThickness="1" CornerRadius="4" Padding="12,8" Margin="0,4,0,10">
-              <DockPanel>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                  <Button Content="{loc:T app.profile.create}" Command="{Binding CreateProfileCommand}"
-                          Visibility="{Binding HasProfile, Converter={StaticResource InverseBoolToVisibility}}" />
-                  <Button Content="{Binding BackgroundToggleText}" Command="{Binding ToggleBackgroundCommand}"
-                          Visibility="{Binding HasProfile, Converter={StaticResource BoolToVisibility}}" />
-                  <Button Content="{loc:T app.profile.remove}" Command="{Binding RemoveProfileCommand}"
-                          Visibility="{Binding HasProfile, Converter={StaticResource BoolToVisibility}}" />
-                </StackPanel>
-                <StackPanel>
-                  <TextBlock Text="{loc:T app.profile.title}" FontSize="14" FontWeight="SemiBold" />
-                  <TextBlock Text="{Binding ProfileStatus}" TextWrapping="Wrap" Margin="0,2,0,0" />
-                  <TextBlock Text="{Binding BackgroundStatus}" Style="{StaticResource Hint}" />
-                  <TextBlock Text="{loc:T app.profile.hint}" Style="{StaticResource Hint}" />
-                </StackPanel>
-              </DockPanel>
+          <DockPanel>
+            <Border x:Name="Severity" DockPanel.Dock="Left" Style="{StaticResource Tag}" t:Ux.Tone="Accent" Margin="0,0,10,0">
+              <TextBlock Text="{Binding SeverityText}" />
             </Border>
-          </StackPanel>
-          <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <ItemsControl ItemsSource="{Binding Findings}">
+            <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center" />
+          </DockPanel>
+          <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource Brush.TextMuted}" />
+          <Expander Header="{loc:T app.case.evidence}" Margin="0,8,0,0">
+            <ItemsControl ItemsSource="{Binding Evidence}">
               <ItemsControl.ItemTemplate>
-                <DataTemplate DataType="{x:Type vm:FindingRow}">
-                  <Border Background="{StaticResource CardBrush}" BorderBrush="#D5DCE4" BorderThickness="1" Margin="0,0,0,8" CornerRadius="4">
-                    <DockPanel>
-                      <Border x:Name="Bar" DockPanel.Dock="Left" Width="6" CornerRadius="4,0,0,4" Background="{StaticResource InfoBrush}" />
-                      <StackPanel Margin="12,8">
-                        <StackPanel Orientation="Horizontal">
-                          <Border x:Name="Chip" Background="{StaticResource InfoBrush}" CornerRadius="3" Padding="6,1" Margin="0,0,8,0" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding SeverityText}" Foreground="White" FontSize="11" FontWeight="SemiBold" />
-                          </Border>
-                          <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center" />
-                        </StackPanel>
-                        <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" Margin="0,4,0,0" />
-                        <Expander Header="{loc:T app.case.evidence}" Margin="0,6,0,0">
-                          <ItemsControl ItemsSource="{Binding Evidence}" Margin="8,4,0,0">
-                            <ItemsControl.ItemTemplate>
-                              <DataTemplate DataType="{x:Type vm:EvidenceRow}">
-                                <TextBlock TextWrapping="Wrap" Margin="0,1">
-                                  <Run Text="{Binding Kind, Mode=OneWay}" FontWeight="SemiBold" />
-                                  <Run Text=" — " />
-                                  <Run Text="{Binding Description, Mode=OneWay}" />
-                                  <Run Text="{Binding Value, Mode=OneWay, StringFormat=' [{0}]'}" Foreground="{StaticResource SubtleBrush}" />
-                                  <Run Text="{Binding Source, Mode=OneWay, StringFormat=' ({0})'}" Foreground="{StaticResource SubtleBrush}" FontSize="11" />
-                                </TextBlock>
-                              </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                          </ItemsControl>
-                        </Expander>
-                        <ItemsControl ItemsSource="{Binding Actions}" Margin="0,6,0,0">
-                          <ItemsControl.ItemTemplate>
-                            <DataTemplate DataType="{x:Type vm:ActionRow}">
-                              <Border Background="#EEF4FB" CornerRadius="3" Padding="8,4" Margin="0,2">
-                                <DockPanel>
-                                  <Button DockPanel.Dock="Right" VerticalAlignment="Center" Content="{loc:T app.action.execute}"
-                                          Command="{Binding ExecuteCommand}"
-                                          Visibility="{Binding IsExecutable, Converter={StaticResource BoolToVisibility}}" />
-                                  <TextBlock TextWrapping="Wrap">
-                                    <Run Text="{loc:T app.case.proposed}" FontWeight="SemiBold" />
-                                    <Run Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" />
-                                    <Run Text="{Binding Risk, Mode=OneWay, StringFormat=' ({0})'}" />
-                                    <LineBreak />
-                                    <Run Text="{Binding Impact, Mode=OneWay}" Foreground="{StaticResource SubtleBrush}" />
-                                  </TextBlock>
-                                </DockPanel>
-                              </Border>
-                            </DataTemplate>
-                          </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                      </StackPanel>
-                    </DockPanel>
-                  </Border>
-                  <DataTemplate.Triggers>
-                    <DataTrigger Binding="{Binding Severity}" Value="{x:Static diag:FindingSeverity.Warning}">
-                      <Setter TargetName="Bar" Property="Background" Value="{StaticResource WarningBrush}" />
-                      <Setter TargetName="Chip" Property="Background" Value="{StaticResource WarningBrush}" />
-                    </DataTrigger>
-                    <DataTrigger Binding="{Binding Severity}" Value="{x:Static diag:FindingSeverity.Problem}">
-                      <Setter TargetName="Bar" Property="Background" Value="{StaticResource ProblemBrush}" />
-                      <Setter TargetName="Chip" Property="Background" Value="{StaticResource ProblemBrush}" />
-                    </DataTrigger>
-                    <DataTrigger Binding="{Binding Severity}" Value="{x:Static diag:FindingSeverity.Critical}">
-                      <Setter TargetName="Bar" Property="Background" Value="{StaticResource CriticalBrush}" />
-                      <Setter TargetName="Chip" Property="Background" Value="{StaticResource CriticalBrush}" />
-                    </DataTrigger>
-                  </DataTemplate.Triggers>
+                <DataTemplate DataType="{x:Type vm:EvidenceRow}">
+                  <TextBlock TextWrapping="Wrap" Margin="0,2" FontSize="12">
+                    <Run Text="{Binding Kind, Mode=OneWay}" FontWeight="SemiBold" Foreground="{DynamicResource Brush.Text}" />
+                    <Run Text=" — " />
+                    <Run Text="{Binding Description, Mode=OneWay}" Foreground="{DynamicResource Brush.Text}" />
+                    <Run Text="{Binding Value, Mode=OneWay, StringFormat=' [{0}]'}" />
+                    <Run Text="{Binding Source, Mode=OneWay, StringFormat=' ({0})'}" FontSize="11" />
+                  </TextBlock>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
-          </ScrollViewer>
-        </DockPanel>
-      </TabItem>
-
-      <!-- Audio -->
-      <TabItem Header="{loc:T app.tab.audio}">
-        <DockPanel>
-          <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Text="{loc:T app.audio.intro}" />
-          <DataGrid ItemsSource="{Binding Endpoints}">
-            <DataGrid.Columns>
-              <DataGridTextColumn Header="{loc:T app.col.flow}" Binding="{Binding Flow}" />
-              <DataGridTextColumn Header="{loc:T app.col.state}" Binding="{Binding State}" />
-              <DataGridTextColumn Header="{loc:T app.col.name}" Binding="{Binding Name}" Width="2*" />
-              <DataGridTextColumn Header="{loc:T app.col.adapter}" Binding="{Binding Adapter}" Width="2*" />
-              <DataGridTextColumn Header="{loc:T app.col.kind}" Binding="{Binding Kind}" />
-              <DataGridTextColumn Header="{loc:T app.col.default}" Binding="{Binding Default}" />
-              <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="*" />
-            </DataGrid.Columns>
-          </DataGrid>
-        </DockPanel>
-      </TabItem>
-
-      <!-- Displays -->
-      <TabItem Header="{loc:T app.tab.display}">
-        <StackPanel>
-          <TextBlock Style="{StaticResource SectionTitle}" Text="{loc:T app.display.monitors}" />
-          <DataGrid ItemsSource="{Binding Monitors}">
-            <DataGrid.Columns>
-              <DataGridTextColumn Header="{loc:T app.col.name}" Binding="{Binding Name}" Width="2*" />
-              <DataGridTextColumn Header="{loc:T app.col.connection}" Binding="{Binding Connection}" />
-              <DataGridTextColumn Header="{loc:T app.col.mode}" Binding="{Binding Mode}" />
-              <DataGridTextColumn Header="{loc:T app.col.source}" Binding="{Binding Source}" />
-              <DataGridTextColumn Header="{loc:T app.col.audio}" Binding="{Binding Audio}" Width="2*" />
-              <DataGridTextColumn Header="EDID" Binding="{Binding Edid}" />
-            </DataGrid.Columns>
-          </DataGrid>
-          <TextBlock Style="{StaticResource SectionTitle}" Text="{loc:T app.display.gpus}" />
-          <DataGrid ItemsSource="{Binding Gpus}">
-            <DataGrid.Columns>
-              <DataGridTextColumn Header="{loc:T app.col.name}" Binding="{Binding Name}" Width="2*" />
-              <DataGridTextColumn Header="{loc:T app.col.driverVersion}" Binding="{Binding DriverVersion}" />
-              <DataGridTextColumn Header="{loc:T app.col.driverDate}" Binding="{Binding DriverDate, StringFormat=yyyy-MM-dd}" />
-              <DataGridTextColumn Header="{loc:T app.col.status}" Binding="{Binding Status}" />
-              <DataGridTextColumn Header="{loc:T app.col.mode}" Binding="{Binding CurrentMode}" Width="*" />
-              <DataGridTextColumn Header="{loc:T app.col.instanceId}" Binding="{Binding PnpDeviceId}" Width="2*" />
-            </DataGrid.Columns>
-          </DataGrid>
+          </Expander>
+          <ItemsControl ItemsSource="{Binding Actions}" Margin="0,8,0,0">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="{x:Type vm:ActionRow}">
+                <Border Background="{DynamicResource Brush.ControlFill}" BorderBrush="{DynamicResource Brush.Edge}" BorderThickness="1" CornerRadius="12" Padding="14,10" Margin="0,4,0,0">
+                  <DockPanel>
+                    <Button DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0" Content="{loc:T app.action.execute}" t:Ux.Icon="play"
+                            Command="{Binding ExecuteCommand}" Visibility="{Binding IsExecutable, Converter={StaticResource BoolToVisibility}}" />
+                    <StackPanel>
+                      <TextBlock TextWrapping="Wrap">
+                        <Run Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" />
+                        <Run Text="{Binding Risk, Mode=OneWay, StringFormat=' · {0}'}" Foreground="{DynamicResource Brush.TextMuted}" />
+                      </TextBlock>
+                      <TextBlock Text="{Binding Impact}" TextWrapping="Wrap" Margin="0,3,0,0" FontSize="12" Foreground="{DynamicResource Brush.TextMuted}" />
+                    </StackPanel>
+                  </DockPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
         </StackPanel>
-      </TabItem>
+      </Border>
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding Severity}" Value="{x:Static diag:FindingSeverity.Warning}">
+          <Setter TargetName="Severity" Property="t:Ux.Tone" Value="Warn" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Severity}" Value="{x:Static diag:FindingSeverity.Problem}">
+          <Setter TargetName="Severity" Property="t:Ux.Tone" Value="Error" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Severity}" Value="{x:Static diag:FindingSeverity.Critical}">
+          <Setter TargetName="Severity" Property="t:Ux.Tone" Value="Error" />
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
 
-      <!-- Devices & drivers -->
-      <TabItem Header="{loc:T app.tab.devices}">
-        <DockPanel>
-          <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,4">
-            <TextBlock Text="{loc:T app.devices.search}" VerticalAlignment="Center" Margin="0,0,6,0" />
-            <TextBox Width="260" Text="{Binding DeviceFilter, UpdateSourceTrigger=PropertyChanged}" />
-            <CheckBox Content="{loc:T app.devices.onlyProblems}" IsChecked="{Binding OnlyProblemDevices}" Margin="14,0,0,0" VerticalAlignment="Center" />
-            <CheckBox Content="{loc:T app.devices.onlyAudio}" IsChecked="{Binding OnlyAudioDevices}" Margin="14,0,0,0" VerticalAlignment="Center" />
+    <!-- Card of a device: icon, name, manufacturer, driver version and date, state tag. -->
+    <DataTemplate x:Key="DeviceCardTemplate" DataType="{x:Type vm:DeviceRow}">
+      <Border Style="{StaticResource Surface.Card}" Margin="0,0,12,12" Padding="16,14" Height="112" ToolTip="{Binding Details}">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <Border Width="40" Height="40" CornerRadius="12" Background="{DynamicResource Brush.AccentFill}" VerticalAlignment="Top" Margin="0,0,12,0">
+            <t:Icon Glyph="{Binding Glyph}" Size="18" Foreground="{DynamicResource Brush.Accent}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <StackPanel Grid.Column="1">
+            <DockPanel>
+              <Border DockPanel.Dock="Right" Style="{StaticResource Tag}" t:Ux.Tone="{Binding StateTone}" Margin="8,0,0,0">
+                <TextBlock Text="{Binding StateText}" />
+              </Border>
+              <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+            <TextBlock Text="{Binding Subtitle}" FontSize="12" Foreground="{DynamicResource Brush.TextMuted}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
+            <TextBlock Text="{Binding DriverLine}" FontSize="12" Foreground="{DynamicResource Brush.TextMuted}" TextTrimming="CharacterEllipsis" Margin="0,8,0,0" />
           </StackPanel>
-          <DataGrid ItemsSource="{Binding DevicesView}">
-            <DataGrid.Columns>
-              <DataGridTextColumn Header="{loc:T app.col.name}" Binding="{Binding Name}" Width="2*" />
-              <DataGridTextColumn Header="{loc:T app.col.class}" Binding="{Binding ClassName}" />
-              <DataGridTextColumn Header="{loc:T app.col.status}" Binding="{Binding Status}" />
-              <DataGridTextColumn Header="{loc:T app.col.problem}" Binding="{Binding ProblemCode}" />
-              <DataGridTextColumn Header="{loc:T app.col.present}" Binding="{Binding Present}" />
-              <DataGridTextColumn Header="{loc:T app.col.provider}" Binding="{Binding DriverProvider}" />
-              <DataGridTextColumn Header="{loc:T app.col.driverVersion}" Binding="{Binding DriverVersion}" />
-              <DataGridTextColumn Header="{loc:T app.col.driverDate}" Binding="{Binding DriverDate}" />
-              <DataGridTextColumn Header="INF" Binding="{Binding InfName}" />
-              <DataGridTextColumn Header="{loc:T app.col.signed}" Binding="{Binding Signed}" />
-              <DataGridTextColumn Header="{loc:T app.col.hardwareId}" Binding="{Binding HardwareId}" Width="2*" />
-              <DataGridTextColumn Header="{loc:T app.col.instanceId}" Binding="{Binding InstanceId}" Width="2*" />
-            </DataGrid.Columns>
-          </DataGrid>
-        </DockPanel>
-      </TabItem>
+        </Grid>
+      </Border>
+    </DataTemplate>
 
-      <!-- Network -->
-      <TabItem Header="{loc:T app.tab.network}">
+    <!-- Filter chip with its count. -->
+    <DataTemplate x:Key="ChipTemplate" DataType="{x:Type vm:FilterChip}">
+      <Button Style="{StaticResource Chip}" Content="{Binding Text}" t:Ux.Active="{Binding IsActive}"
+              Command="{Binding DataContext.SelectDeviceCategoryCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding Key}" />
+    </DataTemplate>
+  </Window.Resources>
+
+  <Grid>
+    <t:GlassBackdrop />
+    <DockPanel>
+      <!-- ============ Top bar ============ -->
+      <Border DockPanel.Dock="Top" Style="{StaticResource Surface.Panel}" Margin="20,14,20,8" Padding="14,10,12,10">
         <DockPanel>
-          <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Text="{loc:T app.network.intro}" />
-          <DataGrid ItemsSource="{Binding Network}">
-            <DataGrid.Columns>
-              <DataGridTextColumn Header="{loc:T app.col.name}" Binding="{Binding Name}" Width="*" />
-              <DataGridTextColumn Header="{loc:T app.col.kind}" Binding="{Binding Kind}" />
-              <DataGridTextColumn Header="{loc:T app.col.status}" Binding="{Binding Status}" />
-              <DataGridTextColumn Header="IPv4" Binding="{Binding IPv4}" />
-              <DataGridTextColumn Header="Gateway" Binding="{Binding Gateway}" />
-              <DataGridTextColumn Header="DNS" Binding="{Binding Dns}" />
-              <DataGridTextColumn Header="{loc:T app.col.speed}" Binding="{Binding Speed}" />
-              <DataGridTextColumn Header="{loc:T app.col.traffic}" Binding="{Binding Traffic}" />
-              <DataGridTextColumn Header="MAC" Binding="{Binding Mac}" />
-              <DataGridTextColumn Header="IPv6" Binding="{Binding IPv6}" />
-              <DataGridTextColumn Header="{loc:T app.col.description}" Binding="{Binding Description}" Width="*" />
-              <DataGridTextColumn Header="{loc:T app.col.evidence}" Binding="{Binding KindEvidence}" />
-            </DataGrid.Columns>
-          </DataGrid>
-        </DockPanel>
-      </TabItem>
-
-      <!-- Driver history -->
-      <TabItem Header="{loc:T app.tab.history}">
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
-          <StackPanel>
-            <TextBlock Style="{StaticResource SectionTitle}" Text="{loc:T app.history.wu}" />
-            <DataGrid ItemsSource="{Binding WindowsUpdate}" MaxHeight="260">
-              <DataGrid.Columns>
-                <DataGridTextColumn Header="{loc:T app.col.date}" Binding="{Binding Date, StringFormat=yyyy-MM-dd HH:mm}" />
-                <DataGridTextColumn Header="{loc:T app.col.title}" Binding="{Binding Title}" Width="*" />
-                <DataGridTextColumn Header="{loc:T app.col.result}" Binding="{Binding Result}" />
-                <DataGridTextColumn Header="{loc:T app.col.operation}" Binding="{Binding Operation}" />
-              </DataGrid.Columns>
-            </DataGrid>
-            <TextBlock Style="{StaticResource SectionTitle}" Text="{loc:T app.history.setupapi}" />
-            <TextBlock Style="{StaticResource Hint}" Text="{loc:T app.history.setupapiHint}" />
-            <DataGrid ItemsSource="{Binding SetupApiSections}" MaxHeight="300">
-              <DataGrid.Columns>
-                <DataGridTextColumn Header="{loc:T app.col.date}" Binding="{Binding Start, StringFormat=yyyy-MM-dd HH:mm:ss}" />
-                <DataGridTextColumn Header="{loc:T app.col.operation}" Binding="{Binding Header}" Width="3*" />
-                <DataGridTextColumn Header="{loc:T app.col.command}" Binding="{Binding Command}" Width="2*" />
-                <DataGridTextColumn Header="{loc:T app.col.result}" Binding="{Binding ExitStatus}" />
-              </DataGrid.Columns>
-            </DataGrid>
-            <TextBlock Style="{StaticResource SectionTitle}" Text="{loc:T app.history.events}" />
-            <DataGrid ItemsSource="{Binding PnpEvents}" MaxHeight="260">
-              <DataGrid.Columns>
-                <DataGridTextColumn Header="{loc:T app.col.date}" Binding="{Binding Time, StringFormat=yyyy-MM-dd HH:mm:ss}" />
-                <DataGridTextColumn Header="ID" Binding="{Binding EventId}" />
-                <DataGridTextColumn Header="{loc:T app.col.message}" Binding="{Binding Message}" Width="*" />
-              </DataGrid.Columns>
-            </DataGrid>
-          </StackPanel>
-        </ScrollViewer>
-      </TabItem>
-
-      <!-- bitBybit changes (journal) -->
-      <TabItem Header="{loc:T app.tab.changes}">
-        <DockPanel>
-          <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Text="{loc:T app.changes.intro}" />
-          <DataGrid ItemsSource="{Binding Changes}">
-            <DataGrid.Columns>
-              <DataGridTextColumn Header="{loc:T app.col.date}" Binding="{Binding When}" />
-              <DataGridTextColumn Header="{loc:T app.col.kind}" Binding="{Binding Title}" />
-              <DataGridTextColumn Header="{loc:T app.col.description}" Binding="{Binding Description}" Width="2*" />
-              <DataGridTextColumn Header="{loc:T app.col.scope}" Binding="{Binding Scope}" />
-              <DataGridTextColumn Header="{loc:T app.col.status}" Binding="{Binding Status}" />
-              <DataGridTextColumn Header="{loc:T app.col.detail}" Binding="{Binding Detail}" Width="*" />
-              <DataGridTemplateColumn>
-                <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate DataType="{x:Type vm:ChangeRow}">
-                    <Button Content="{loc:T app.changes.revert}" Command="{Binding RevertCommand}" Margin="2" Padding="8,2"
-                            Visibility="{Binding CanRevert, Converter={StaticResource BoolToVisibility}}" />
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+            <!-- Pages as icons -->
+            <Border Style="{StaticResource Surface.BarGroup}">
+              <ItemsControl ItemsSource="{Binding Pages}" VerticalAlignment="Center">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="{x:Type vm:PageInfo}">
+                    <Button Style="{StaticResource ToolButton}" Width="34" Height="34" t:Ux.Icon="{Binding Glyph}" ToolTip="{Binding Title}"
+                            Command="{Binding DataContext.NavigateCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding Key}">
+                      <t:Ux.Active>
+                        <MultiBinding Converter="{StaticResource AllEqualConverter}">
+                          <Binding Path="DataContext.CurrentPage" RelativeSource="{RelativeSource AncestorType=Window}" />
+                          <Binding Path="Key" />
+                        </MultiBinding>
+                      </t:Ux.Active>
+                    </Button>
                   </DataTemplate>
-                </DataGridTemplateColumn.CellTemplate>
-              </DataGridTemplateColumn>
-            </DataGrid.Columns>
-          </DataGrid>
-        </DockPanel>
-      </TabItem>
-
-      <!-- System -->
-      <TabItem Header="{loc:T app.tab.system}">
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
-          <StackPanel>
-            <DataGrid ItemsSource="{Binding SystemInfo}" HeadersVisibility="None">
-              <DataGrid.Columns>
-                <DataGridTextColumn Binding="{Binding Key}" FontWeight="SemiBold" />
-                <DataGridTextColumn Binding="{Binding Value}" Width="*" />
-              </DataGrid.Columns>
-            </DataGrid>
-            <TextBlock Style="{StaticResource SectionTitle}" Text="{loc:T app.system.services}" />
-            <DataGrid ItemsSource="{Binding Services}">
-              <DataGrid.Columns>
-                <DataGridTextColumn Header="{loc:T app.col.name}" Binding="{Binding Name}" />
-                <DataGridTextColumn Header="{loc:T app.col.description}" Binding="{Binding DisplayName}" Width="*" />
-                <DataGridTextColumn Header="{loc:T app.col.status}" Binding="{Binding Status}" />
-                <DataGridTextColumn Header="{loc:T app.col.startType}" Binding="{Binding StartType}" />
-              </DataGrid.Columns>
-            </DataGrid>
-            <TextBlock Style="{StaticResource SectionTitle}" Text="{loc:T app.system.issues}" />
-            <DataGrid ItemsSource="{Binding Issues}">
-              <DataGrid.Columns>
-                <DataGridTextColumn Header="{loc:T app.col.area}" Binding="{Binding Area}" />
-                <DataGridTextColumn Header="{loc:T app.col.message}" Binding="{Binding Message}" Width="*" />
-              </DataGrid.Columns>
-            </DataGrid>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Border>
+            <Rectangle Width="1" Height="22" Fill="{DynamicResource Brush.Edge}" Margin="10,0" />
+            <!-- Tools -->
+            <Button Style="{StaticResource ToolButton}" t:Ux.Icon="refresh" t:Ux.Spinning="{Binding IsBusy}" ToolTip="{loc:T app.tool.refresh}" Command="{Binding RefreshCommand}" />
+            <Button Style="{StaticResource ToolButton}" t:Ux.Icon="save" ToolTip="{loc:T app.tool.export}" Command="{Binding ExportCommand}" />
+            <Button Style="{StaticResource ToolButton}" t:Ux.Icon="terminal" ToolTip="{loc:T app.tool.log}" Command="{Binding NavigateCommand}" CommandParameter="log"
+                    t:Ux.Active="{Binding CurrentPage, Converter={StaticResource EqualsConverter}, ConverterParameter=log}" />
+            <!-- Theme switcher: one click switches; only one is lit. -->
+            <Border Style="{StaticResource Surface.BarGroup}" Height="36" CornerRadius="11" Margin="8,0,4,0" Padding="3,0">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Style="{StaticResource ToolButton}" Width="30" Height="28" t:Ux.IconSize="16" t:Ux.Icon="moon" ToolTip="{loc:T app.theme.dark}"
+                        Command="{Binding SetThemeCommand}" CommandParameter="dark" t:Ux.Active="{Binding Theme, Converter={StaticResource EqualsConverter}, ConverterParameter=dark}" />
+                <Button Style="{StaticResource ToolButton}" Width="30" Height="28" t:Ux.IconSize="16" t:Ux.Icon="contrast" ToolTip="{loc:T app.theme.glass}"
+                        Command="{Binding SetThemeCommand}" CommandParameter="glass" t:Ux.Active="{Binding Theme, Converter={StaticResource EqualsConverter}, ConverterParameter=glass}" />
+                <Button Style="{StaticResource ToolButton}" Width="30" Height="28" t:Ux.IconSize="16" t:Ux.Icon="sun" ToolTip="{loc:T app.theme.light}"
+                        Command="{Binding SetThemeCommand}" CommandParameter="light" t:Ux.Active="{Binding Theme, Converter={StaticResource EqualsConverter}, ConverterParameter=light}" />
+                <Button Style="{StaticResource ToolButton}" Width="30" Height="28" t:Ux.IconSize="16" t:Ux.Icon="sparkles" ToolTip="{loc:T app.theme.custom}"
+                        Command="{Binding SetThemeCommand}" CommandParameter="custom" t:Ux.Active="{Binding Theme, Converter={StaticResource EqualsConverter}, ConverterParameter=custom}" />
+              </StackPanel>
+            </Border>
+            <Button Style="{StaticResource ToolButton}" t:Ux.Icon="settings" ToolTip="{loc:T app.tool.settings}" Command="{Binding OpenSettingsCommand}" />
           </StackPanel>
-        </ScrollViewer>
-      </TabItem>
-    </TabControl>
-  </DockPanel>
+
+          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <!-- Identity: this PC -->
+            <Border Width="38" Height="38" CornerRadius="19" Background="{DynamicResource Brush.AccentFill}" BorderBrush="{DynamicResource Brush.AccentEdge}" BorderThickness="1">
+              <t:Icon Glyph="monitor" Size="18" Foreground="{DynamicResource Brush.Accent}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <StackPanel Margin="10,0,12,0" VerticalAlignment="Center" MaxWidth="230">
+              <TextBlock Text="{Binding MachineName}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+              <TextBlock Text="{Binding WindowsVersion}" FontSize="12" Foreground="{DynamicResource Brush.TextMuted}" TextTrimming="CharacterEllipsis" ToolTip="{Binding WindowsVersion}" />
+            </StackPanel>
+            <!-- Current target and its state -->
+            <Border Style="{StaticResource Tag}" t:Ux.Tone="{Binding DiagnosisTone}" Margin="0,0,10,0" Padding="10,5" CornerRadius="12" ToolTip="{loc:T app.shell.chip.tip}">
+              <TextBlock Text="{Binding DiagnosisChip}" FontSize="12" />
+            </Border>
+            <!-- Service indicators -->
+            <Border Style="{StaticResource Surface.BarGroup}">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <t:ServiceIndicator Glyph="unlock" State="{Binding AdminState}" ToolTip="{Binding AdminHint}" />
+                <t:ServiceIndicator Glyph="download" State="{Binding UpdateServiceState}" ToolTip="{Binding UpdateServiceHint}" />
+                <t:ServiceIndicator Glyph="rotate-ccw" State="{Binding RestoreState}" ToolTip="{Binding RestoreHint}" />
+                <t:ServiceIndicator Glyph="globe" State="{Binding InternetState}" ToolTip="{Binding InternetHint}" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
+      <!-- ============ Status line ============ -->
+      <DockPanel DockPanel.Dock="Bottom" Margin="28,6,28,10">
+        <TextBlock DockPanel.Dock="Right" Text="{Binding VersionText}" FontSize="12" Foreground="{DynamicResource Brush.TextFaint}" />
+        <t:Spinner DockPanel.Dock="Left" Width="14" Height="14" Margin="0,0,8,0" Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
+        <t:Icon DockPanel.Dock="Left" Size="14" Margin="0,0,8,0" Visibility="{Binding IsBusy, Converter={StaticResource InverseBoolToVisibility}}">
+          <t:Icon.Style>
+            <Style TargetType="t:Icon">
+              <Setter Property="Glyph" Value="check-circle" />
+              <Setter Property="Foreground" Value="{DynamicResource Brush.Ok}" />
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding LastActionFailed}" Value="True">
+                  <Setter Property="Glyph" Value="alert" />
+                  <Setter Property="Foreground" Value="{DynamicResource Brush.Error}" />
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </t:Icon.Style>
+        </t:Icon>
+        <TextBlock Text="{Binding Status}" FontSize="12" Foreground="{DynamicResource Brush.TextMuted}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Status}" />
+      </DockPanel>
+
+      <!-- ============ Page ============ -->
+      <Border Style="{StaticResource Surface.Panel}" Margin="20,0,20,0">
+        <DockPanel Margin="22,16,22,4">
+          <!-- Header: back, title, one-line subtitle (max width, elided) -->
+          <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+            <Button DockPanel.Dock="Left" Style="{StaticResource ToolButton}" t:Ux.Icon="chevron-left" ToolTip="{loc:T app.tool.back}" Command="{Binding BackCommand}" Margin="-6,0,6,0" VerticalAlignment="Center" />
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+              <Button Content="{loc:T app.page.updates.search}" t:Ux.Icon="search" Style="{StaticResource Button.Primary}" Command="{Binding SearchUpdatesCommand}"
+                      Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=updates}" />
+              <Button Content="{loc:T app.page.backups.open}" t:Ux.Icon="folder-open" Command="{Binding OpenBackupsFolderCommand}"
+                      Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=backups}" />
+              <StackPanel Orientation="Horizontal" Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=log}">
+                <Button Content="{loc:T app.page.log.copy}" t:Ux.Icon="copy" Command="{Binding CopyLogCommand}" Margin="0,0,8,0" />
+                <Button Content="{loc:T app.page.log.folder}" t:Ux.Icon="folder-open" Command="{Binding OpenLogsFolderCommand}" Margin="0,0,8,0" />
+                <Button Style="{StaticResource ToolButton}" t:Ux.Icon="refresh" ToolTip="{loc:T app.tool.refresh}" Command="{Binding LoadLogCommand}" />
+              </StackPanel>
+              <Button Content="{loc:T app.button.elevate}" t:Ux.Icon="unlock" Command="{Binding RelaunchElevatedCommand}"
+                      Visibility="{Binding CanRelaunchElevated, Converter={StaticResource BoolToVisibility}}" Margin="8,0,0,0" ToolTip="{loc:T app.button.elevateTip}" />
+            </StackPanel>
+            <StackPanel VerticalAlignment="Center">
+              <TextBlock Style="{StaticResource Text.Title}" Text="{Binding PageTitle}" />
+              <TextBlock Style="{StaticResource Text.Subtitle}" Text="{Binding PageSubtitle}" MaxWidth="760" HorizontalAlignment="Left" ToolTip="{Binding PageSubtitle}" Margin="0,2,0,0" />
+            </StackPanel>
+          </DockPanel>
+
+          <Grid>
+            <!-- Case: Realtek / DisplayPort -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=case}">
+              <StackPanel Margin="0,0,6,12">
+                <TextBlock Style="{StaticResource Text.Hint}" Text="{loc:T app.case.intro}" />
+                <TextBlock Style="{StaticResource Text.Hint}" Text="{Binding ComparisonInfo}" FontStyle="Italic" Margin="0,4,0,10" />
+                <!-- DisplayPort audio profile -->
+                <Border Style="{StaticResource Surface.Card}" Padding="18,14" Margin="0,0,0,12">
+                  <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                      <Button Content="{loc:T app.profile.create}" t:Ux.Icon="plus" Command="{Binding CreateProfileCommand}"
+                              Visibility="{Binding HasProfile, Converter={StaticResource InverseBoolToVisibility}}" />
+                      <Button Content="{Binding BackgroundToggleText}" Command="{Binding ToggleBackgroundCommand}" Margin="0,0,8,0"
+                              Visibility="{Binding HasProfile, Converter={StaticResource BoolToVisibility}}" />
+                      <Button Style="{StaticResource Button.Danger}" Content="{loc:T app.profile.remove}" t:Ux.Icon="trash" Command="{Binding RemoveProfileCommand}"
+                              Visibility="{Binding HasProfile, Converter={StaticResource BoolToVisibility}}" />
+                    </StackPanel>
+                    <StackPanel>
+                      <TextBlock Text="{loc:T app.profile.title}" FontSize="14" FontWeight="SemiBold" />
+                      <TextBlock Text="{Binding ProfileStatus}" TextWrapping="Wrap" Margin="0,3,0,0" />
+                      <TextBlock Text="{Binding BackgroundStatus}" Style="{StaticResource Text.Hint}" />
+                      <TextBlock Text="{loc:T app.profile.hint}" Style="{StaticResource Text.Hint}" Margin="0,4,0,0" />
+                    </StackPanel>
+                  </DockPanel>
+                </Border>
+                <ItemsControl ItemsSource="{Binding Findings}" ItemTemplate="{StaticResource FindingTemplate}" />
+                <StackPanel Visibility="{Binding ShowSkeletons, Converter={StaticResource BoolToVisibility}}">
+                  <t:SkeletonRow />
+                  <t:SkeletonRow />
+                  <t:SkeletonRow />
+                </StackPanel>
+              </StackPanel>
+            </ScrollViewer>
+
+            <!-- Devices: search, chips with counts, card grid -->
+            <DockPanel Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=devices}">
+              <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                <TextBox Width="240" Text="{Binding DeviceSearch, UpdateSourceTrigger=PropertyChanged}" t:Ux.Placeholder="{loc:T app.devices.searchPlaceholder}" Margin="0,0,10,6" />
+                <ItemsControl ItemsSource="{Binding DeviceChips}" ItemTemplate="{StaticResource ChipTemplate}" VerticalAlignment="Center">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                </ItemsControl>
+                <Button Style="{StaticResource Chip}" Content="{loc:T app.devices.problemsFirst}" t:Ux.Icon="alert" Command="{Binding ToggleProblemsFirstCommand}"
+                        t:Ux.Active="{Binding ProblemsFirst}" VerticalAlignment="Center" />
+              </WrapPanel>
+              <Grid>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                  <ItemsControl ItemsSource="{Binding DeviceCards}" ItemTemplate="{StaticResource DeviceCardTemplate}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <UniformGrid VerticalAlignment="Top"
+                                     Columns="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ScrollViewer}, Converter={StaticResource WidthToColumns}, ConverterParameter=300}" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                  </ItemsControl>
+                </ScrollViewer>
+                <StackPanel Visibility="{Binding ShowSkeletons, Converter={StaticResource BoolToVisibility}}" VerticalAlignment="Top">
+                  <t:SkeletonRow />
+                  <t:SkeletonRow />
+                  <t:SkeletonRow />
+                  <t:SkeletonRow />
+                </StackPanel>
+                <TextBlock Style="{StaticResource Text.Hint}" Text="{loc:T app.devices.empty}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Visibility="{Binding ShowDevicesEmpty, Converter={StaticResource BoolToVisibility}}" />
+              </Grid>
+            </DockPanel>
+
+            <!-- Newer drivers offered by Windows Update -->
+            <DockPanel Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=updates}">
+              <Border DockPanel.Dock="Top" Style="{StaticResource Banner}" t:Ux.Tone="Accent" Margin="0,0,0,10">
+                <DockPanel>
+                  <t:Icon Glyph="info" Size="16" Margin="0,0,10,0" VerticalAlignment="Top" Foreground="{DynamicResource Brush.Accent}" />
+                  <TextBlock Text="{loc:T app.page.updates.intro}" TextWrapping="Wrap" Foreground="{DynamicResource Brush.Text}" />
+                </DockPanel>
+              </Border>
+              <Grid>
+                <DataGrid ItemsSource="{Binding DriverUpdates}">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Header="{loc:T app.col.title}" Binding="{Binding Title}" Width="3*" />
+                    <DataGridTextColumn Header="{loc:T app.col.class}" Binding="{Binding DriverClass}" Width="*" />
+                    <DataGridTextColumn Header="{loc:T app.col.provider}" Binding="{Binding Provider}" Width="*" />
+                    <DataGridTextColumn Header="{loc:T app.col.driverDate}" Binding="{Binding Date}" />
+                    <DataGridTextColumn Header="{loc:T app.col.size}" Binding="{Binding Size}" />
+                    <DataGridTextColumn Header="{loc:T app.col.source}" Binding="{Binding Source}" />
+                  </DataGrid.Columns>
+                </DataGrid>
+                <StackPanel Visibility="{Binding IsSearchingUpdates, Converter={StaticResource BoolToVisibility}}" VerticalAlignment="Top" Margin="0,40,0,0">
+                  <t:SkeletonRow />
+                  <t:SkeletonRow />
+                </StackPanel>
+              </Grid>
+            </DockPanel>
+
+            <!-- Driver store: third-party packages in use -->
+            <DataGrid ItemsSource="{Binding DriverPackages}" Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=store}">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="INF" Binding="{Binding Inf}" FontFamily="{StaticResource Font.Mono}" />
+                <DataGridTextColumn Header="{loc:T app.col.provider}" Binding="{Binding Provider}" Width="*" />
+                <DataGridTextColumn Header="{loc:T app.col.driverVersion}" Binding="{Binding Version}" />
+                <DataGridTextColumn Header="{loc:T app.col.driverDate}" Binding="{Binding Date}" />
+                <DataGridTextColumn Header="{loc:T app.col.signed}" Binding="{Binding Signed}" />
+                <DataGridTextColumn Header="{loc:T app.col.class}" Binding="{Binding ClassName}" />
+                <DataGridTextColumn Header="{loc:T app.col.usedBy}" Binding="{Binding Devices}" Width="2*" />
+              </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- Backups made by bitBybit -->
+            <Grid Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=backups}">
+              <DataGrid ItemsSource="{Binding Backups}">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="{loc:T app.col.name}" Binding="{Binding Name}" Width="2*" FontFamily="{StaticResource Font.Mono}" />
+                  <DataGridTextColumn Header="{loc:T app.col.date}" Binding="{Binding Created}" />
+                  <DataGridTextColumn Header="{loc:T app.col.size}" Binding="{Binding Size}" />
+                  <DataGridTextColumn Header="INF" Binding="{Binding InfCount}" />
+                  <DataGridTextColumn Header="{loc:T app.col.path}" Binding="{Binding Path}" Width="3*" FontFamily="{StaticResource Font.Mono}" />
+                </DataGrid.Columns>
+              </DataGrid>
+              <TextBlock Style="{StaticResource Text.Hint}" Text="{loc:T app.page.backups.empty}" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="520" TextAlignment="Center"
+                         Visibility="{Binding Backups.Count, Converter={StaticResource ZeroToVisibility}}" />
+            </Grid>
+
+            <!-- Audio -->
+            <DataGrid ItemsSource="{Binding Endpoints}" Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=audio}">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="{loc:T app.col.flow}" Binding="{Binding Flow}" />
+                <DataGridTextColumn Header="{loc:T app.col.state}" Binding="{Binding State}" />
+                <DataGridTextColumn Header="{loc:T app.col.name}" Binding="{Binding Name}" Width="2*" />
+                <DataGridTextColumn Header="{loc:T app.col.adapter}" Binding="{Binding Adapter}" Width="2*" />
+                <DataGridTextColumn Header="{loc:T app.col.kind}" Binding="{Binding Kind}" />
+                <DataGridTextColumn Header="{loc:T app.col.default}" Binding="{Binding Default}" />
+              </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- Displays -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=displays}">
+              <StackPanel>
+                <TextBlock Style="{StaticResource Text.Section}" Text="{loc:T app.display.monitors}" Margin="2,0,0,6" />
+                <DataGrid ItemsSource="{Binding Monitors}">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Header="{loc:T app.col.name}" Binding="{Binding Name}" Width="2*" />
+                    <DataGridTextColumn Header="{loc:T app.col.connection}" Binding="{Binding Connection}" />
+                    <DataGridTextColumn Header="{loc:T app.col.mode}" Binding="{Binding Mode}" />
+                    <DataGridTextColumn Header="{loc:T app.col.source}" Binding="{Binding Source}" />
+                    <DataGridTextColumn Header="{loc:T app.col.audio}" Binding="{Binding Audio}" Width="2*" />
+                    <DataGridTextColumn Header="EDID" Binding="{Binding Edid}" />
+                  </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock Style="{StaticResource Text.Section}" Text="{loc:T app.display.gpus}" />
+                <DataGrid ItemsSource="{Binding Gpus}">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Header="{loc:T app.col.name}" Binding="{Binding Name}" Width="2*" />
+                    <DataGridTextColumn Header="{loc:T app.col.driverVersion}" Binding="{Binding DriverVersion}" />
+                    <DataGridTextColumn Header="{loc:T app.col.driverDate}" Binding="{Binding DriverDate, StringFormat=yyyy-MM-dd}" />
+                    <DataGridTextColumn Header="{loc:T app.col.status}" Binding="{Binding Status}" />
+                    <DataGridTextColumn Header="{loc:T app.col.mode}" Binding="{Binding CurrentMode}" Width="*" />
+                  </DataGrid.Columns>
+                </DataGrid>
+              </StackPanel>
+            </ScrollViewer>
+
+            <!-- Network -->
+            <DataGrid ItemsSource="{Binding Network}" Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=network}">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="{loc:T app.col.name}" Binding="{Binding Name}" Width="*" />
+                <DataGridTextColumn Header="{loc:T app.col.kind}" Binding="{Binding Kind}" />
+                <DataGridTextColumn Header="{loc:T app.col.status}" Binding="{Binding Status}" />
+                <DataGridTextColumn Header="IPv4" Binding="{Binding IPv4}" />
+                <DataGridTextColumn Header="Gateway" Binding="{Binding Gateway}" />
+                <DataGridTextColumn Header="DNS" Binding="{Binding Dns}" />
+                <DataGridTextColumn Header="{loc:T app.col.speed}" Binding="{Binding Speed}" />
+                <DataGridTextColumn Header="{loc:T app.col.traffic}" Binding="{Binding Traffic}" />
+                <DataGridTextColumn Header="{loc:T app.col.description}" Binding="{Binding Description}" Width="*" />
+              </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- Driver history -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=history}">
+              <StackPanel>
+                <TextBlock Style="{StaticResource Text.Section}" Text="{loc:T app.history.wu}" Margin="2,0,0,6" />
+                <DataGrid ItemsSource="{Binding WindowsUpdate}" MaxHeight="280">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Header="{loc:T app.col.date}" Binding="{Binding Date, StringFormat=yyyy-MM-dd HH:mm}" />
+                    <DataGridTextColumn Header="{loc:T app.col.title}" Binding="{Binding Title}" Width="*" />
+                    <DataGridTextColumn Header="{loc:T app.col.result}" Binding="{Binding Result}" />
+                    <DataGridTextColumn Header="{loc:T app.col.operation}" Binding="{Binding Operation}" />
+                  </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock Style="{StaticResource Text.Section}" Text="{loc:T app.history.setupapi}" />
+                <TextBlock Style="{StaticResource Text.Hint}" Text="{loc:T app.history.setupapiHint}" />
+                <DataGrid ItemsSource="{Binding SetupApiSections}" MaxHeight="320">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Header="{loc:T app.col.date}" Binding="{Binding Start, StringFormat=yyyy-MM-dd HH:mm:ss}" />
+                    <DataGridTextColumn Header="{loc:T app.col.operation}" Binding="{Binding Header}" Width="3*" />
+                    <DataGridTextColumn Header="{loc:T app.col.command}" Binding="{Binding Command}" Width="2*" />
+                    <DataGridTextColumn Header="{loc:T app.col.result}" Binding="{Binding ExitStatus}" />
+                  </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock Style="{StaticResource Text.Section}" Text="{loc:T app.history.events}" />
+                <DataGrid ItemsSource="{Binding PnpEvents}" MaxHeight="280">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Header="{loc:T app.col.date}" Binding="{Binding Time, StringFormat=yyyy-MM-dd HH:mm:ss}" />
+                    <DataGridTextColumn Header="ID" Binding="{Binding EventId}" />
+                    <DataGridTextColumn Header="{loc:T app.col.message}" Binding="{Binding Message}" Width="*" />
+                  </DataGrid.Columns>
+                </DataGrid>
+              </StackPanel>
+            </ScrollViewer>
+
+            <!-- bitBybit changes -->
+            <DockPanel Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=changes}">
+              <TextBlock DockPanel.Dock="Top" Style="{StaticResource Text.Hint}" Text="{loc:T app.changes.intro}" Margin="0,0,0,8" />
+              <DataGrid ItemsSource="{Binding Changes}">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="{loc:T app.col.date}" Binding="{Binding When}" />
+                  <DataGridTextColumn Header="{loc:T app.col.kind}" Binding="{Binding Title}" />
+                  <DataGridTextColumn Header="{loc:T app.col.description}" Binding="{Binding Description}" Width="2*" />
+                  <DataGridTextColumn Header="{loc:T app.col.scope}" Binding="{Binding Scope}" />
+                  <DataGridTextColumn Header="{loc:T app.col.status}" Binding="{Binding Status}" />
+                  <DataGridTextColumn Header="{loc:T app.col.detail}" Binding="{Binding Detail}" Width="*" />
+                  <DataGridTemplateColumn>
+                    <DataGridTemplateColumn.CellTemplate>
+                      <DataTemplate DataType="{x:Type vm:ChangeRow}">
+                        <Button Style="{StaticResource Button.Danger}" Height="30" Padding="12,0" FontSize="12" Content="{loc:T app.changes.revert}" t:Ux.Icon="rotate-ccw" t:Ux.IconSize="14"
+                                Command="{Binding RevertCommand}" Visibility="{Binding CanRevert, Converter={StaticResource BoolToVisibility}}" />
+                      </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                  </DataGridTemplateColumn>
+                </DataGrid.Columns>
+              </DataGrid>
+            </DockPanel>
+
+            <!-- System -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=system}">
+              <StackPanel>
+                <DataGrid ItemsSource="{Binding SystemInfo}" HeadersVisibility="None">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Binding="{Binding Key}" FontWeight="SemiBold" />
+                    <DataGridTextColumn Binding="{Binding Value}" Width="*" />
+                  </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock Style="{StaticResource Text.Section}" Text="{loc:T app.system.services}" />
+                <DataGrid ItemsSource="{Binding Services}">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Header="{loc:T app.col.name}" Binding="{Binding Name}" />
+                    <DataGridTextColumn Header="{loc:T app.col.description}" Binding="{Binding DisplayName}" Width="*" />
+                    <DataGridTextColumn Header="{loc:T app.col.status}" Binding="{Binding Status}" />
+                    <DataGridTextColumn Header="{loc:T app.col.startType}" Binding="{Binding StartType}" />
+                  </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock Style="{StaticResource Text.Section}" Text="{loc:T app.system.issues}" />
+                <DataGrid ItemsSource="{Binding Issues}">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Header="{loc:T app.col.area}" Binding="{Binding Area}" />
+                    <DataGridTextColumn Header="{loc:T app.col.message}" Binding="{Binding Message}" Width="*" />
+                  </DataGrid.Columns>
+                </DataGrid>
+              </StackPanel>
+            </ScrollViewer>
+
+            <!-- Log: the tail of today's app log -->
+            <Border Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=log}"
+                    Background="{DynamicResource Brush.PanelAlt}" BorderBrush="{DynamicResource Brush.Edge}" BorderThickness="1" CornerRadius="12" Margin="0,0,0,12">
+              <TextBox Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True" FontFamily="{StaticResource Font.Mono}" FontSize="12" TextWrapping="NoWrap"
+                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Height="Auto" Padding="10,8">
+                <TextBox.Template>
+                  <ControlTemplate TargetType="TextBox">
+                    <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" />
+                  </ControlTemplate>
+                </TextBox.Template>
+              </TextBox>
+            </Border>
+          </Grid>
+        </DockPanel>
+      </Border>
+    </DockPanel>
+
+    <!-- Toast: the outcome of an action, at the bottom (accent or error tone). -->
+    <Border HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,46" CornerRadius="20" Padding="16,9"
+            Background="{DynamicResource Brush.Menu}" BorderThickness="1" MaxWidth="720"
+            Visibility="{Binding IsToastVisible, Converter={StaticResource BoolToVisibility}}">
+      <Border.Style>
+        <Style TargetType="Border">
+          <Setter Property="BorderBrush" Value="{DynamicResource Brush.Edge}" />
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding ToastIsError}" Value="True">
+              <Setter Property="BorderBrush" Value="{DynamicResource Brush.ErrorEdge}" />
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+      </Border.Style>
+      <StackPanel Orientation="Horizontal">
+        <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,10,0">
+          <Ellipse.Style>
+            <Style TargetType="Ellipse">
+              <Setter Property="Fill" Value="{DynamicResource Brush.Accent}" />
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding ToastIsError}" Value="True">
+                  <Setter Property="Fill" Value="{DynamicResource Brush.Error}" />
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </Ellipse.Style>
+        </Ellipse>
+        <TextBlock Text="{Binding ToastText}" FontSize="12" FontWeight="Medium" TextWrapping="Wrap" MaxWidth="660" />
+      </StackPanel>
+    </Border>
+  </Grid>
 </Window>

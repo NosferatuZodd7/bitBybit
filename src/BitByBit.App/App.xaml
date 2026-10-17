@@ -4,48 +4,18 @@
              xmlns:loc="clr-namespace:BitByBit.App.Infrastructure"
              ShutdownMode="OnMainWindowClose">
   <Application.Resources>
-    <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
-    <loc:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
-    <SolidColorBrush x:Key="AccentBrush" Color="#2B6CB0" />
-    <SolidColorBrush x:Key="HeaderBrush" Color="#1A2533" />
-    <SolidColorBrush x:Key="SubtleBrush" Color="#5A6B7D" />
-    <SolidColorBrush x:Key="CardBrush" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="PageBrush" Color="#F3F5F8" />
-    <SolidColorBrush x:Key="InfoBrush" Color="#2B6CB0" />
-    <SolidColorBrush x:Key="WarningBrush" Color="#B7791F" />
-    <SolidColorBrush x:Key="ProblemBrush" Color="#C53030" />
-    <SolidColorBrush x:Key="CriticalBrush" Color="#742A2A" />
-
-    <Style TargetType="DataGrid">
-      <Setter Property="AutoGenerateColumns" Value="False" />
-      <Setter Property="IsReadOnly" Value="True" />
-      <Setter Property="HeadersVisibility" Value="Column" />
-      <Setter Property="GridLinesVisibility" Value="Horizontal" />
-      <Setter Property="HorizontalGridLinesBrush" Value="#E2E8F0" />
-      <Setter Property="RowHeaderWidth" Value="0" />
-      <Setter Property="BorderBrush" Value="#D5DCE4" />
-      <Setter Property="Background" Value="White" />
-      <Setter Property="CanUserAddRows" Value="False" />
-      <Setter Property="SelectionMode" Value="Extended" />
-      <Setter Property="ClipboardCopyMode" Value="IncludeHeader" />
-      <Setter Property="EnableRowVirtualization" Value="True" />
-      <Setter Property="Margin" Value="0,6,0,0" />
-    </Style>
-    <Style TargetType="Button">
-      <Setter Property="Padding" Value="12,5" />
-      <Setter Property="Margin" Value="6,0,0,0" />
-      <Setter Property="MinWidth" Value="90" />
-    </Style>
-    <Style x:Key="SectionTitle" TargetType="TextBlock">
-      <Setter Property="FontSize" Value="15" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Margin" Value="0,10,0,2" />
-      <Setter Property="Foreground" Value="{StaticResource HeaderBrush}" />
-    </Style>
-    <Style x:Key="Hint" TargetType="TextBlock">
-      <Setter Property="Foreground" Value="{StaticResource SubtleBrush}" />
-      <Setter Property="TextWrapping" Value="Wrap" />
-      <Setter Property="Margin" Value="0,2,0,4" />
-    </Style>
+    <ResourceDictionary>
+      <!-- Colours ("Brush.*") are published at runtime by Theming/ThemeManager; shapes, sizes and styles live in Theme.xaml. -->
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="Theming/Theme.xaml" />
+      </ResourceDictionary.MergedDictionaries>
+      <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+      <loc:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
+      <loc:EqualsConverter x:Key="EqualsConverter" />
+      <loc:EqualsToVisibilityConverter x:Key="EqualsToVisibility" />
+      <loc:AllEqualConverter x:Key="AllEqualConverter" />
+      <loc:WidthToColumnsConverter x:Key="WidthToColumns" />
+      <loc:ZeroToVisibilityConverter x:Key="ZeroToVisibility" />
+    </ResourceDictionary>
   </Application.Resources>
 </Application>

@@ -28,6 +28,10 @@
     <Using Remove="System.Drawing" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Inter (SIL OFL 1.1, third-party/inter/LICENSE.txt) bundled so the UI looks the same on every PC. -->
+    <Resource Include="Fonts\*.ttf" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Logging" />

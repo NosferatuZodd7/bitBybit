@@ -1,4 +1,4 @@
-# bitBybit 0.2 — pré-visualização (diagnóstico + primeiras correções)
+# bitBybit 0.3 — pré-visualização (novo aspeto + diagnóstico + primeiras correções)
 
 Esta versão mantém todo o diagnóstico da 0.1 e acrescenta as primeiras **ações reversíveis** para o problema do
 Realtek / DisplayPort. Nada é alterado sem a sua confirmação, e cada alteração fica registada no separador
@@ -14,6 +14,20 @@ Realtek / DisplayPort. Nada é alterado sem a sua confirmação, e cada alteraç
 4. Para ver também o registo de instalação de drivers (`setupapi.dev.log`), clique em **Reabrir como administrador**.
 
 Requisitos: Windows 10 1809 ou posterior, ou Windows 11, de 64 bits.
+
+## Novidades da 0.3
+
+* **Novo aspeto**, inspirado no design do OrbisLink: temas **Escuro**, **Vidro**, **Claro** e **Personalizado**
+  (botões no canto superior direito; a escolha fica guardada). Em **Definições** pode escolher a cor de destaque e
+  ajustar cada cor do tema personalizado.
+* **Barra superior** com o nome do PC, a versão do Windows, um resumo do diagnóstico e quatro indicadores
+  (Administrador, Windows Update, Restauro do Sistema, Internet — passe o rato para ver o detalhe).
+* **Páginas**: Caso Realtek / DisplayPort, Dispositivos (cartões, pesquisa, filtros por categoria, problemas
+  primeiro), Atualizações (procura de drivers no Windows Update, **só leitura**), Driver Store, Cópias de segurança,
+  Áudio, Ecrãs, Rede, Histórico, Alterações, Sistema e Registo (log).
+* As ações e o diagnóstico da 0.2 continuam iguais.
+* Cada versão enviada para o GitHub gera automaticamente um executável de teste (separador *Actions › Artifacts*,
+  nome `bitBybit-<versão>-run<N>-<commit>-win-x64-unsigned`) e capturas de ecrã da interface.
 
 ## Novidades da 0.2
 
@@ -69,3 +83,6 @@ Requisitos: Windows 10 1809 ou posterior, ou Windows 11, de 64 bits.
 * O módulo de rede (hotspot, partilha, VPN, firewall) ainda não está incluído; a classificação de interfaces de rede
   é uma estimativa.
 * Não assinado digitalmente (Authenticode); ainda sem instalador nem atualizações automáticas.
+* O novo aspeto foi verificado em capturas de ecrã geradas no runner Windows do GitHub; ainda não num ecrã real.
+  A fila de operações, o assistente de primeira utilização e a instalação/reversão de drivers pela interface ficam
+  para as próximas versões.

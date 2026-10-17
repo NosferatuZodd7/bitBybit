@@ -127,6 +127,62 @@ public sealed class DeviceRow(DeviceSummary d)
                                           string.Equals(d.ClassName, "AudioEndpoint", StringComparison.OrdinalIgnoreCase) ||
                                           d.HardwareIds.Any(h => HardwareIdInfo.IsHdAudioFunction(h) || HardwareIdInfo.IsRealtekSoftwareComponent(h));
     public string SearchText { get; } = string.Join(' ', new[] { d.Name, d.ClassName, d.Manufacturer, d.InstanceId, d.Driver?.Provider }.Where(s => s is not null)).ToUpperInvariant();
+
+    /// <summary>Card categories in display order.</summary>
+    public static IReadOnlyList<string> CategoryOrder { get; } = ["audio", "display", "network", "input", "storage", "bluetooth", "system", "other"];
+
+    public string Category { get; } = CategoryOf(d.ClassName);
+
+    public string Glyph => Category switch
+    {
+        "audio" => "volume",
+        "display" => "monitor",
+        "network" => "wifi",
+        "input" => "keyboard",
+        "storage" => "hard-drive",
+        "bluetooth" => "cast",
+        "system" => "cpu",
+        _ => "package",
+    };
+
+    public string Subtitle { get; } = d.Manufacturer ?? d.ClassName ?? string.Empty;
+
+    public string DriverLine { get; } = string.IsNullOrWhiteSpace(d.Driver?.Version)
+        ? Text.Get("app.devices.card.noDriver")
+        : Text.Get("app.devices.card.driver", d.Driver!.Version, d.Driver.Date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "?");
+
+    public string StateText { get; } = d.IsPresent == false
+        ? Text.Get("app.devices.state.notPresent")
+        : d.ProblemCode is > 0 ? Text.Get("app.devices.state.problem", d.ProblemCode.Value) : Text.Get("app.devices.state.ok");
+
+    public string StateTone { get; } = d.IsPresent == false ? "Neutral" : d.ProblemCode is > 0 ? "Error" : "Ok";
+
+    /// <summary>Full detail for the tooltip: name, problem in plain words, driver package, instance id.</summary>
+    public string Details { get; } = string.Join(Environment.NewLine, new[]
+    {
+        d.Name,
+        BitByBit.Core.Devices.DeviceProblemCodes.Describe(d.ProblemCode) is { } p ? Text.Get(p) : null,
+        d.Driver?.InfName is { } inf ? $"{d.Driver.Provider} · {inf}" : null,
+        d.InstanceId,
+    }.Where(x => !string.IsNullOrWhiteSpace(x)));
+
+    public static int CategoryRank(string category)
+    {
+        var i = ((IList<string>)CategoryOrder).IndexOf(category);
+        return i < 0 ? int.MaxValue : i;
+    }
+
+    private static string CategoryOf(string? className) => className?.ToUpperInvariant() switch
+    {
+        "MEDIA" or "AUDIOENDPOINT" or "SOFTWARECOMPONENT" => "audio",
+        "DISPLAY" or "MONITOR" => "display",
+        "NET" or "NETSERVICE" or "NETTRANS" => "network",
+        "HIDCLASS" or "KEYBOARD" or "MOUSE" or "USB" or "USBDEVICE" or "IMAGE" or "CAMERA" => "input",
+        "DISKDRIVE" or "SCSIADAPTER" or "HDC" or "VOLUME" or "CDROM" or "STORAGEVOLUME" or "VOLUMESNAPSHOT" => "storage",
+        "BLUETOOTH" => "bluetooth",
+        "SYSTEM" or "PROCESSOR" or "COMPUTER" or "FIRMWARE" or "SECURITYDEVICES" or "BATTERY" => "system",
+        _ => "other",
+    };
 }
 
 public sealed class MonitorRow(MonitorSummary m)

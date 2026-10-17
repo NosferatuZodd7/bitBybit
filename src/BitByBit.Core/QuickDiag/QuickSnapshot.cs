@@ -20,6 +20,8 @@ public sealed record SystemSummary
     public string? BiosDate { get; init; }
     public string? Processor { get; init; }
     public bool IsElevated { get; init; }
+    /// <summary>System Protection for the system drive, estimated from the registry (RPSessionInterval / DisableSR policy); null when unknown.</summary>
+    public bool? SystemRestoreEnabled { get; init; }
     /// <summary>Approximate last boot time (now - uptime); used to tell whether a reboot happened between snapshots.</summary>
     public DateTimeOffset? BootTime { get; init; }
 }

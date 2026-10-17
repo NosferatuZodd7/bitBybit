@@ -34,6 +34,21 @@ User guide: [PREVIEW.md](PREVIEW.md).
 * Validation: Core unit tests with fakes; Windows code compiled; CI smoke test on a Windows Server runner (read-only
   paths only). Not validated on real hardware.
 
+## Preview 0.3 (OrbisLink-style UI, design increment 1) — 🧪
+
+* WPF restyle after OrbisLink's design system (see `docs/design/DESIGN.md`): runtime themes Dark / Glass / Light /
+  Custom (`BitByBit.Core.Appearance.ThemePalette`, unit-tested), Inter font (OFL) and Lucide icons (ISC) under
+  `third-party/`, DWM title bar following the theme.
+* Shell: top bar (identity, diagnosis chip, Administrator / Windows Update / System Restore / Internet indicators,
+  page buttons, tools, theme switcher, settings), page frame with back history, toasts, skeleton rows while collecting.
+* Pages: Realtek/DisplayPort case, Devices (cards, search, category chips, problems first), Updates (read-only
+  Windows Update driver search), Driver store (oem*.inf grouped), Backups, Audio, Displays, Network, History,
+  Changes, System, Log.
+* Settings window: appearance (theme, custom base, colour overrides, accent swatches) and About with credits.
+* CI: every push publishes `bitBybit-<version>-run<N>-<sha7>-win-x64-unsigned` plus `ui-screenshots-run<N>`
+  (4 looks × 4 pages rendered off-screen by `--smoke-test`).
+* Not yet: operation queue panel, first-run wizard, driver install/rollback through the queue, self-update.
+
 ## Phase A — Foundation
 
 | Item | Status | Notes |

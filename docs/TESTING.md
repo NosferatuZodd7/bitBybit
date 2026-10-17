@@ -32,6 +32,16 @@ Windows 10/11 PC with the relevant devices and the evidence (exported report, lo
 | Profile background host (notifications, debounce, tray, HKCU Run) | — | ✅ | ⬜ | ⬜ |
 | Persistence across 3 reboots (Realtek stays blocked, DP default restored) | — | — | — | ⬜ procedure in PREVIEW.md |
 
+## Preview 0.3 — UI (design increment 1)
+
+| Scenario | Unit (fakes) | Compiled | CI runner | Real hardware |
+|---|---|---|---|---|
+| Theme palettes (Dark/Glass/Light/Custom, colour derivations, hex parsing) | ✅ | ✅ | ✅ (Core tests) | — |
+| Window builds, all icons parse, 4 looks × 4 pages render off-screen (`--smoke-test`) | — | ✅ | ⬜ pending first 0.3 run | ⬜ |
+| DWM dark/caption colours | — | ✅ | ⬜ (not observable off-screen) | ⬜ |
+| Windows Update driver search (read-only COM) | — | ✅ | ⬜ | ⬜ |
+| Settings persistence (`settings.json`, atomic write) | — | ✅ | ⬜ | ⬜ |
+
 ## Broker IPC (not shipped yet)
 
 | Scenario | Unit (fakes) | Compiled | CI runner | Real hardware |

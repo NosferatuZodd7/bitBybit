@@ -12,7 +12,7 @@
     <SatelliteResourceLanguages>en;pt-PT</SatelliteResourceLanguages>
 
     <!-- Versioning: the single source of truth is VersionPrefix; CI may append a suffix for non-release builds. -->
-    <VersionPrefix>0.2.0</VersionPrefix>
+    <VersionPrefix>0.3.0</VersionPrefix>
     <Company>bitBybit</Company>
     <Product>bitBybit</Product>
     <Copyright>bitBybit contributors</Copyright>

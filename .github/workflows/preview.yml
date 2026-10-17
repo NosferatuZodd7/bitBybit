@@ -63,6 +63,8 @@ jobs:
           Get-ChildItem artifacts/diagnostics -Recurse | Format-Table FullName, Length
           if ($p.ExitCode -ne 0) { throw "bitBybit.exe --smoke-test failed with exit code $($p.ExitCode)" }
           if (-not (Get-ChildItem $out -Filter '*.json')) { throw "smoke test produced no report" }
+          $shots = @(Get-ChildItem (Join-Path $out 'screenshots') -Filter '*.png' -ErrorAction SilentlyContinue)
+          if ($shots.Count -lt 16) { throw "UI smoke test rendered $($shots.Count) screenshots (expected 16)" }
 
       - name: Collect app logs
         if: always()
@@ -79,11 +81,39 @@ jobs:
             Set-Content -Encoding utf8 artifacts/preview/SHA256SUMS.txt
           Get-Content artifacts/preview/SHA256SUMS.txt
 
+      - name: Artifact name (version, run, commit)
+        id: name
+        shell: pwsh
+        run: |
+          $version = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.VersionPrefix | Where-Object { $_ } | Select-Object -First 1
+          $short = '${{ github.sha }}'.Substring(0, 7)
+          "value=bitBybit-$version-run${{ github.run_number }}-$short-win-x64-unsigned" >> $env:GITHUB_OUTPUT
+
       - uses: actions/upload-artifact@v4
         with:
-          name: bitBybit-preview-win-x64-unsigned
+          name: ${{ steps.name.outputs.value }}
           path: artifacts/preview
           if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots-run${{ github.run_number }}
+          path: artifacts/diagnostics/ci-runner-app/screenshots
+          if-no-files-found: warn
+
+      - name: Summary
+        if: success()
+        shell: pwsh
+        run: |
+          @(
+            "### Executável para testar",
+            "",
+            "Artefacto **${{ steps.name.outputs.value }}** (secção *Artifacts* em baixo): bitBybit.exe + bitbybit-cli.exe, não assinados.",
+            "",
+            '```',
+            (Get-Content artifacts/preview/SHA256SUMS.txt),
+            '```'
+          ) | Add-Content $env:GITHUB_STEP_SUMMARY
 
       - uses: actions/upload-artifact@v4
         if: always()

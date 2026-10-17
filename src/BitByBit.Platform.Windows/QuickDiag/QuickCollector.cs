@@ -162,8 +162,29 @@ public sealed class QuickCollector
             BiosDate = biosDate,
             Processor = cpu,
             IsElevated = elevated,
+            SystemRestoreEnabled = ReadSystemRestoreEnabled(),
             BootTime = DateTimeOffset.Now - TimeSpan.FromMilliseconds(Environment.TickCount64),
         };
+    }
+
+    /// <summary>Read-only estimate: the DisableSR policy wins; otherwise RPSessionInterval = 1 means protection is on.</summary>
+    private static bool? ReadSystemRestoreEnabled()
+    {
+        try
+        {
+            using var policy = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Policies\Microsoft\Windows NT\SystemRestore");
+            if (policy?.GetValue("DisableSR") is int disabled && disabled == 1)
+            {
+                return false;
+            }
+
+            using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore");
+            return key?.GetValue("RPSessionInterval") is int interval ? interval > 0 : null;
+        }
+        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException)
+        {
+            return null;
+        }
     }
 
     private static IReadOnlyList<DeviceSummary> CollectDevices(List<CollectionIssue> issues)

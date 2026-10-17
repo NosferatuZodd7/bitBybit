@@ -15,6 +15,21 @@ public sealed record AppSettings
 
     /// <summary>Mask device-specific MAC bytes in exported reports.</summary>
     public bool MaskMacAddressesInReports { get; init; } = true;
+
+    public AppearanceSettings Appearance { get; init; } = new();
+}
+
+/// <summary>The look of the app: a base theme, or "custom" = the user's colours on top of <see cref="CustomBase"/>.</summary>
+public sealed record AppearanceSettings
+{
+    /// <summary>"dark" (default), "glass", "light" or "custom".</summary>
+    public string Theme { get; init; } = "dark";
+
+    /// <summary>Base look under the custom colours.</summary>
+    public string CustomBase { get; init; } = "dark";
+
+    /// <summary>Custom colours as #RRGGBB by key (background, panel, text, accent, ok, warn, error).</summary>
+    public Dictionary<string, string> CustomColors { get; init; } = [];
 }
 
 public sealed record UpdateSettings

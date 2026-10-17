@@ -1,9 +1,7 @@
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Security.Principal;
-using System.Windows.Data;
 using System.Windows;
 using BitByBit.App.Infrastructure;
 using BitByBit.Core.Audio;
@@ -21,7 +19,7 @@ using Microsoft.Extensions.Logging;
 
 namespace BitByBit.App.ViewModels;
 
-/// <summary>Main window state for the 0.1 read-only diagnostic preview.</summary>
+/// <summary>Main window state (split in partial files: shell, devices, drivers, log).</summary>
 public sealed partial class MainViewModel : ObservableObject
 {
     private readonly ILogger _logger;
@@ -33,8 +31,6 @@ public sealed partial class MainViewModel : ObservableObject
     {
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<MainViewModel>();
-        DevicesView = CollectionViewSource.GetDefaultView(Devices);
-        DevicesView.Filter = FilterDevice;
         using var identity = WindowsIdentity.GetCurrent();
         IsElevated = new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
     }
@@ -50,7 +46,6 @@ public sealed partial class MainViewModel : ObservableObject
     public ObservableCollection<MonitorRow> Monitors { get; } = [];
     public ObservableCollection<GpuSummary> Gpus { get; } = [];
     public ObservableCollection<DeviceRow> Devices { get; } = [];
-    public ICollectionView DevicesView { get; }
     public ObservableCollection<NetworkRow> Network { get; } = [];
     public ObservableCollection<WindowsUpdateEntry> WindowsUpdate { get; } = [];
     public ObservableCollection<SetupApiSectionSummary> SetupApiSections { get; } = [];
@@ -77,6 +72,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(ExportCommand))]
+    [NotifyPropertyChangedFor(nameof(ShowSkeletons), nameof(ShowDevicesEmpty))]
     private bool _isBusy;
 
     [ObservableProperty]
@@ -86,22 +82,7 @@ public sealed partial class MainViewModel : ObservableObject
     private string _comparisonInfo = string.Empty;
 
     [ObservableProperty]
-    private string _deviceFilter = string.Empty;
-
-    [ObservableProperty]
-    private bool _onlyProblemDevices;
-
-    [ObservableProperty]
-    private bool _onlyAudioDevices;
-
-    [ObservableProperty]
     private string _lastExportPath = string.Empty;
-
-    partial void OnDeviceFilterChanged(string value) => DevicesView.Refresh();
-
-    partial void OnOnlyProblemDevicesChanged(bool value) => DevicesView.Refresh();
-
-    partial void OnOnlyAudioDevicesChanged(bool value) => DevicesView.Refresh();
 
     private bool CanRun() => !IsBusy;
 
@@ -236,7 +217,10 @@ public sealed partial class MainViewModel : ObservableObject
         ComparisonInfo = previous is null
             ? Text.Get("app.compare.first")
             : Text.Get("app.compare.previous", previous.CollectedAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture));
-        DevicesView.Refresh();
+        RefreshDeviceCards();
+        RefreshDriverPackages(snapshot);
+        RefreshBackups();
+        UpdateShell(snapshot, report);
     }
 
     // ---- Actions -------------------------------------------------------------------------------------------------
@@ -350,14 +334,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
-    private void Report(bool ok, string message)
-    {
-        Status = message;
-        if (!ok)
-        {
-            System.Windows.MessageBox.Show(message, Text.Get("app.action.failedTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-    }
+    private void Report(bool ok, string message) => ShowToast(message, isError: !ok);
 
     // ---- Profile ------------------------------------------------------------------------------------------------
 
@@ -490,34 +467,5 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         await RefreshAsync();
-    }
-
-    private bool FilterDevice(object o)
-    {
-        if (o is not DeviceRow d)
-        {
-            return false;
-        }
-
-        if (OnlyProblemDevices && !d.HasProblem)
-        {
-            return false;
-        }
-
-        if (OnlyAudioDevices && !d.IsAudioRelated)
-        {
-            return false;
-        }
-
-        return string.IsNullOrWhiteSpace(DeviceFilter) || d.SearchText.Contains(DeviceFilter.Trim().ToUpperInvariant(), StringComparison.Ordinal);
-    }
-
-    private static void Replace<T>(ObservableCollection<T> target, IEnumerable<T> items)
-    {
-        target.Clear();
-        foreach (var item in items)
-        {
-            target.Add(item);
-        }
     }
 }
