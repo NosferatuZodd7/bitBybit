@@ -186,17 +186,17 @@ public static class UiSmoke
         return opacity;
     }
 
-    /// <summary>Solid backgrounds of the ancestors, composited from the window down.</summary>
+    /// <summary>Solid backgrounds of the ancestor Borders and Panels, composited from the window down.</summary>
     private static Color BackgroundBehind(DependencyObject node, Color pageBackground)
     {
         var fills = new List<Color>();
         for (var n = VisualTreeHelper.GetParent(node); n is not null; n = VisualTreeHelper.GetParent(n))
         {
+            // Only what is drawn: a Control's own Background is drawn by its template's Borders (often not at all).
             var brush = n switch
             {
                 Border b => b.Background,
                 Panel p => p.Background,
-                Control c => c.Background,
                 _ => null,
             };
             if (brush is SolidColorBrush s && s.Color.A > 0)
