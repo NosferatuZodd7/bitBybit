@@ -49,6 +49,7 @@ public static class UiSmoke
             ("custom", ThemePalette.Resolve(ThemeNames.Custom, ThemeNames.Dark, new Dictionary<string, string> { ["accent"] = "#22C55E", ["panel"] = "#1A1F2B" })),
         };
 
+        AssertContrastCheckWorks();
         var count = 0;
         var lowContrast = new List<string>();
         var unreadable = 0;
@@ -126,7 +127,8 @@ public static class UiSmoke
         while (stack.Count > 0)
         {
             var node = stack.Pop();
-            if (node is UIElement { IsVisible: false })
+            // IsVisible is always false here (the window is never shown), so walk the Visibility values instead.
+            if (node is UIElement { Visibility: not Visibility.Visible })
             {
                 continue;
             }
@@ -153,6 +155,18 @@ public static class UiSmoke
             {
                 yield return (what, ratio);
             }
+        }
+    }
+
+    /// <summary>Canary: the system black on a dark card (the 0.3.0 "Evidências" bug) must be reported as unreadable.</summary>
+    private static void AssertContrastCheckWorks()
+    {
+        var card = new Border { Background = new SolidColorBrush(Color.FromRgb(0x17, 0x21, 0x31)), Child = new TextBlock { Text = "canary", Foreground = Brushes.Black } };
+        card.Measure(new Size(200, 50));
+        card.Arrange(new Rect(0, 0, 200, 50));
+        if (!CheckContrast(card, Colors.Black).Any(r => r.Ratio < MinimumContrast))
+        {
+            throw new InvalidOperationException("The contrast check did not flag black text on a dark card.");
         }
     }
 
