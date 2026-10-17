@@ -205,10 +205,11 @@ public sealed class CaseOperations
     public CaseOperationOutcome RestartDevice(string instanceId)
     {
         const string op = "device.restart";
-        var device = ReadDevice(instanceId);
-        if (device is null || !string.Equals(device.ClassName, "MEDIA", StringComparison.OrdinalIgnoreCase))
+        var device = DeviceOperations.ReadDevice(instanceId);
+        var verdict = device is null ? null : BitByBit.Core.Devices.DeviceActionGuard.Check(BitByBit.Core.Devices.DeviceAction.Restart, device.Subject);
+        if (device is null || verdict is not { Allowed: true })
         {
-            return new CaseOperationOutcome { Operation = op, Succeeded = false, Steps = [], Error = "Only present audio (MEDIA class) devices can be restarted here." };
+            return new CaseOperationOutcome { Operation = op, Succeeded = false, Steps = [], Error = "Refused: " + (verdict?.Reason.ToFallbackString() ?? "the device was not found.") };
         }
 
         var result = WindowsDeviceController.Restart(instanceId);
@@ -225,7 +226,7 @@ public sealed class CaseOperations
 
     public async Task<CaseOperationOutcome> RevertAsync(Guid changeId, CancellationToken cancellationToken)
     {
-        var coordinator = new RecoveryCoordinator(_journal, [new DeviceInstallPolicyRevertHandler(), new DeviceUninstalledRevertHandler()],
+        var coordinator = new RecoveryCoordinator(_journal, [new DeviceInstallPolicyRevertHandler(), .. DeviceOperations.RevertHandlers(_tools, _paths)],
             Microsoft.Extensions.Logging.Abstractions.NullLogger<RecoveryCoordinator>.Instance);
         // Policy entries are removed BEFORE the device rescan, otherwise the rescan would still be blocked by the policy.
         var all = await _journal.GetActiveAsync(cancellationToken).ConfigureAwait(false);

@@ -76,7 +76,10 @@
 
     <!-- Card of a device: icon, name, manufacturer, driver version and date, state tag. -->
     <DataTemplate x:Key="DeviceCardTemplate" DataType="{x:Type vm:DeviceRow}">
-      <Border Style="{StaticResource Surface.Card}" Margin="0,0,12,12" Padding="16,14" Height="112" ToolTip="{Binding Details}">
+      <!-- The whole card opens the device window (details, actions, other drivers). -->
+      <Button Style="{StaticResource Button.Bare}" Margin="0,0,12,12" HorizontalContentAlignment="Stretch"
+              Command="{Binding DataContext.OpenDeviceCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}">
+      <Border Style="{StaticResource Surface.Card}" Padding="16,14" Height="112" ToolTip="{Binding Details}">
         <Grid>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
@@ -97,114 +100,10 @@
           </StackPanel>
         </Grid>
       </Border>
+      </Button>
     </DataTemplate>
 
     <!-- Filter chip with its count. -->
-    <!-- Generic card of the list pages: tone-coloured icon tile, title, subtitle, tag, fields, note, optional action. -->
-    <DataTemplate x:Key="InfoCardTemplate" DataType="{x:Type vm:InfoCard}">
-      <Border x:Name="Card" Style="{StaticResource Surface.Card}" Margin="0,0,12,12" Padding="16,14" ToolTip="{Binding ToolTip}">
-        <Grid>
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-          </Grid.ColumnDefinitions>
-          <Border x:Name="Tile" Width="38" Height="38" CornerRadius="12" Background="{DynamicResource Brush.AccentFill}" VerticalAlignment="Top" Margin="0,0,12,0">
-            <t:Icon x:Name="TileIcon" Glyph="{Binding Glyph}" Size="17" Foreground="{DynamicResource Brush.Accent}" HorizontalAlignment="Center" VerticalAlignment="Center" />
-          </Border>
-          <StackPanel Grid.Column="1">
-            <DockPanel>
-              <Border x:Name="Tag" DockPanel.Dock="Right" Style="{StaticResource Tag}" t:Ux.Tone="{Binding Tone}" Margin="8,1,0,0" VerticalAlignment="Top"
-                      Visibility="{Binding Tag, Converter={StaticResource EmptyToCollapsed}}">
-                <TextBlock Text="{Binding Tag}" />
-              </Border>
-              <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" MaxHeight="40" TextTrimming="CharacterEllipsis" />
-            </DockPanel>
-            <TextBlock Text="{Binding Subtitle}" FontSize="12" Foreground="{DynamicResource Brush.TextMuted}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"
-                       Visibility="{Binding Subtitle, Converter={StaticResource EmptyToCollapsed}}" />
-            <ItemsControl ItemsSource="{Binding Fields}" Margin="0,6,0,0">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate DataType="{x:Type vm:CardField}">
-                  <DockPanel Margin="0,2,0,0">
-                    <TextBlock DockPanel.Dock="Left" Text="{Binding Label}" FontSize="12" Foreground="{DynamicResource Brush.TextMuted}" Width="118" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding Value}" FontSize="12" TextTrimming="CharacterEllipsis" ToolTip="{Binding Value}" />
-                  </DockPanel>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-            <TextBlock Text="{Binding Note}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource Brush.TextMuted}" Margin="0,6,0,0"
-                       Visibility="{Binding Note, Converter={StaticResource EmptyToCollapsed}}" />
-            <Button HorizontalAlignment="Right" Margin="0,8,0,0" Height="30" Padding="12,0" FontSize="12" t:Ux.IconSize="14"
-                    Content="{Binding ActionText}" t:Ux.Icon="{Binding ActionGlyph}" Command="{Binding ActionCommand}"
-                    Visibility="{Binding ShowAction, Converter={StaticResource BoolToVisibility}}" />
-            <Button Style="{StaticResource Button.Danger}" HorizontalAlignment="Right" Margin="0,8,0,0" Height="30" Padding="12,0" FontSize="12" t:Ux.IconSize="14"
-                    Content="{Binding ActionText}" t:Ux.Icon="{Binding ActionGlyph}" Command="{Binding ActionCommand}"
-                    Visibility="{Binding ShowDangerAction, Converter={StaticResource BoolToVisibility}}" />
-          </StackPanel>
-        </Grid>
-      </Border>
-      <DataTemplate.Triggers>
-        <DataTrigger Binding="{Binding Tone}" Value="Ok">
-          <Setter TargetName="Tile" Property="Background" Value="{DynamicResource Brush.OkFill}" />
-          <Setter TargetName="TileIcon" Property="Foreground" Value="{DynamicResource Brush.Ok}" />
-        </DataTrigger>
-        <DataTrigger Binding="{Binding Tone}" Value="Warn">
-          <Setter TargetName="Tile" Property="Background" Value="{DynamicResource Brush.WarnFill}" />
-          <Setter TargetName="TileIcon" Property="Foreground" Value="{DynamicResource Brush.Warn}" />
-        </DataTrigger>
-        <DataTrigger Binding="{Binding Tone}" Value="Error">
-          <Setter TargetName="Tile" Property="Background" Value="{DynamicResource Brush.ErrorFill}" />
-          <Setter TargetName="TileIcon" Property="Foreground" Value="{DynamicResource Brush.Error}" />
-        </DataTrigger>
-        <DataTrigger Binding="{Binding Tone}" Value="Neutral">
-          <Setter TargetName="Tile" Property="Background" Value="{DynamicResource Brush.NeutralFill}" />
-          <Setter TargetName="TileIcon" Property="Foreground" Value="{DynamicResource Brush.Neutral}" />
-        </DataTrigger>
-        <DataTrigger Binding="{Binding IsDimmed}" Value="True">
-          <Setter TargetName="Card" Property="Opacity" Value="0.72" />
-        </DataTrigger>
-      </DataTemplate.Triggers>
-    </DataTemplate>
-
-    <!-- A group of cards: icon, title, count, optional hint; cards in a responsive grid, or one per row for logs. -->
-    <DataTemplate x:Key="CardGroupTemplate" DataType="{x:Type vm:CardGroup}">
-      <StackPanel Margin="0,0,0,10">
-        <StackPanel Orientation="Horizontal" Margin="2,2,0,10">
-          <t:Icon Glyph="{Binding Glyph}" Size="16" Foreground="{DynamicResource Brush.Accent}" VerticalAlignment="Center" Margin="0,0,8,0" />
-          <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
-          <Border Style="{StaticResource Tag}" Margin="8,0,0,0">
-            <TextBlock Text="{Binding CountText}" />
-          </Border>
-        </StackPanel>
-        <TextBlock Style="{StaticResource Text.Hint}" Text="{Binding Hint}" Margin="2,-4,0,10" TextWrapping="Wrap"
-                   Visibility="{Binding Hint, Converter={StaticResource EmptyToCollapsed}}" />
-        <ItemsControl ItemsSource="{Binding Cards}" ItemTemplate="{StaticResource InfoCardTemplate}">
-          <ItemsControl.Style>
-            <Style TargetType="ItemsControl">
-              <Setter Property="ItemsPanel">
-                <Setter.Value>
-                  <ItemsPanelTemplate>
-                    <UniformGrid VerticalAlignment="Top"
-                                 Columns="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ScrollViewer}, Converter={StaticResource WidthToColumns}, ConverterParameter=340}" />
-                  </ItemsPanelTemplate>
-                </Setter.Value>
-              </Setter>
-              <Style.Triggers>
-                <DataTrigger Binding="{Binding IsList}" Value="True">
-                  <Setter Property="ItemsPanel">
-                    <Setter.Value>
-                      <ItemsPanelTemplate>
-                        <StackPanel />
-                      </ItemsPanelTemplate>
-                    </Setter.Value>
-                  </Setter>
-                </DataTrigger>
-              </Style.Triggers>
-            </Style>
-          </ItemsControl.Style>
-        </ItemsControl>
-      </StackPanel>
-    </DataTemplate>
-
     <DataTemplate x:Key="ChipTemplate" DataType="{x:Type vm:FilterChip}">
       <Button Style="{StaticResource Chip}" Content="{Binding Text}" t:Ux.Active="{Binding IsActive}"
               Command="{Binding DataContext.SelectDeviceCategoryCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding Key}" />
@@ -324,6 +223,8 @@
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
               <Button Content="{loc:T app.page.updates.search}" t:Ux.Icon="search" Style="{StaticResource Button.Primary}" Command="{Binding SearchUpdatesCommand}"
                       Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=updates}" />
+              <Button Content="{loc:T app.devices.rescan}" t:Ux.Icon="refresh" Command="{Binding RescanHardwareCommand}" ToolTip="{loc:T app.devices.rescanTip}"
+                      Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=devices}" />
               <Button Content="{loc:T app.page.backups.open}" t:Ux.Icon="folder-open" Command="{Binding OpenBackupsFolderCommand}"
                       Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=backups}" />
               <StackPanel Orientation="Horizontal" Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=log}">

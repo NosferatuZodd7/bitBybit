@@ -33,5 +33,22 @@
   "devices.problem.code54": "falhou e está a ser reposto",
   "devices.problem.code55": "indisponível enquanto a consola está bloqueada",
   "devices.problem.code56": "o Windows ainda está a preparar a configuração da classe",
-  "devices.problem.unknown": "código de problema {0}"
+  "devices.problem.unknown": "código de problema {0}",
+  "devices.guard.protected": "O Windows precisa deste dispositivo para arrancar, guardar dados ou receber teclado/rato: o bitBybit não lhe mexe.",
+  "devices.guard.removeAbsent": "Retira da lista do Windows este dispositivo que já não está ligado. Volta a aparecer se o ligar outra vez.",
+  "devices.guard.absent": "O dispositivo não está ligado agora.",
+  "devices.guard.isDisabled": "O dispositivo está desativado; ative-o primeiro.",
+  "devices.guard.restartDisplay": "O ecrã fica preto alguns segundos enquanto a placa gráfica reinicia.",
+  "devices.guard.restart": "Para e volta a arrancar o dispositivo (como desligar e voltar a ligar).",
+  "devices.guard.notDisabled": "O dispositivo já está ativo.",
+  "devices.guard.enable": "Volta a ligar o dispositivo.",
+  "devices.guard.displayKeep": "O bitBybit não desativa nem desinstala placas gráficas: o ecrã poderia ficar preto.",
+  "devices.guard.alreadyDisabled": "O dispositivo já está desativado.",
+  "devices.guard.disableNetwork": "Desliga o dispositivo. Se for a sua ligação à Internet, deixa de funcionar até o voltar a ativar.",
+  "devices.guard.disable": "Desliga o dispositivo até o voltar a ativar. Pode reverter em \"Alterações do bitBybit\".",
+  "devices.guard.uninstall": "Remove o dispositivo do Windows; o pacote do controlador fica no Driver Store e o Windows volta a instalá-lo na próxima procura de hardware ou reinício.",
+  "devices.guard.changeDriver": "Instala, só neste dispositivo, outro controlador que já está no computador. O controlador atual continua disponível e a troca pode ser revertida.",
+  "devices.guard.noDriver": "O dispositivo não tem controlador instalado.",
+  "devices.guard.rollback": "Volta ao controlador que este dispositivo usava antes da última atualização, se o Windows o guardou.",
+  "devices.guard.unknown": "Não disponível."
 }

@@ -44,6 +44,19 @@ Windows 10/11 PC with the relevant devices and the evidence (exported report, lo
 | Windows Update driver search (read-only COM) | — | ✅ | ⬜ | ⬜ |
 | Settings persistence (`settings.json`, atomic write) | — | ✅ | ⬜ | ⬜ |
 
+## Preview 0.4 — device and driver control
+
+| Scenario | Unit (fakes) | Compiled | CI runner | Real hardware |
+|---|---|---|---|---|
+| Device action guard (protected classes/ids, display never disabled/uninstalled, absent devices removal only) | ✅ | ✅ | ✅ (Core tests) | — |
+| Elevated command line: enable/disable/uninstall/install-driver/rollback/delete-package/rescan | ✅ | ✅ | ✅ (Core tests) | ⬜ |
+| pnputil arguments (oemNN.inf only, never /force, paths inside the backup folder) | ✅ | ✅ | ✅ (Core tests) | ⬜ |
+| INF [Version] parser; Driver Store package list (%windir%\INF\oem*.inf) | ✅ fixture | ✅ | ⬜ first 0.4 run (collector) | ⬜ |
+| Device driver read from DEVPKEY_Device_Driver* (fixes wdmaudio.inf shown instead of hdaudio.inf) | — | ✅ | ⬜ first 0.4 run (collector) | ⬜ |
+| Compatible-driver enumeration (SetupDiBuildDriverInfoList, read-only) | — | ✅ | ⬜ first 0.4 run (smoke test must find the current driver) | ⬜ |
+| Enable/disable, install chosen driver, rollback, delete package, rescan + revert handlers | — | ✅ | ⬜ (change system state; not run on CI) | ⬜ |
+| Analyzer: sound active over a link reported as DVI → information; keep-generic-driver proposal | ✅ (scenarios shaped on the 0.3.2 report, synthetic ids) | ✅ | — | 🟡 user reported sound working with Windows' generic HD Audio driver (0.3.2 report + screenshots); replayed offline |
+
 ## Broker IPC (not shipped yet)
 
 | Scenario | Unit (fakes) | Compiled | CI runner | Real hardware |

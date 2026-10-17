@@ -187,7 +187,8 @@ public class RealPcScenarioTests
         Assert.Equal(FindingSeverity.Warning, dvi.Severity);
         Assert.Contains(dvi.Evidence, e => e.Kind == EvidenceKind.Fact && e.Description.Contains("DVI link", StringComparison.Ordinal));
         Assert.Contains(dvi.Evidence, e => e.Kind == EvidenceKind.Inference && e.Description.Contains("165 MHz", StringComparison.Ordinal));
-        Assert.Contains(dvi.Evidence, e => e.Kind == EvidenceKind.Inference && e.Description.Contains("missing piece is the link mode", StringComparison.Ordinal));
+        Assert.Contains(dvi.Evidence, e => e.Kind == EvidenceKind.Hypothesis && e.Description.Contains("display-audio driver", StringComparison.Ordinal));
+        Assert.DoesNotContain(dvi.Evidence, e => e.Kind != EvidenceKind.Hypothesis && e.Description.Contains("not the audio driver", StringComparison.Ordinal));
         Assert.DoesNotContain(dvi.Evidence, e => e.Description.Contains("Intel(R) Display Audio - HDMI 1", StringComparison.Ordinal)); // stale, not evidence
         Assert.Contains(dvi.Evidence, e => e.Kind == EvidenceKind.Hypothesis);
         var action = Assert.Single(dvi.Actions);
@@ -229,8 +230,11 @@ public class RealPcScenarioTests
         var finding = Find(report, "audioCase.endpoint.noneOverDvi");
         Assert.Equal(FindingSeverity.Warning, finding.Severity);
         Assert.Equal(2, finding.Evidence.Count(e => e.Kind == EvidenceKind.Observation));
-        Assert.Contains(finding.Evidence, e => e.Kind == EvidenceKind.Inference && e.Description.Contains("DVI link", StringComparison.Ordinal));
-        Assert.Equal("guidance.displayLink", Assert.Single(finding.Actions).ActionId);
+        Assert.Contains(finding.Evidence, e => e.Kind == EvidenceKind.Hypothesis && e.Description.Contains("DVI link", StringComparison.Ordinal));
+        // The reversible driver switch comes first, the cable/adapter guidance second.
+        Assert.Equal(["device.installDriver", "guidance.displayLink"], finding.Actions.Select(a => a.ActionId));
+        Assert.Equal("hdaudio.inf", finding.Actions[0].Parameters!["inf"]);
+        Assert.Equal(IntelInstance, finding.Actions[0].Parameters!["instanceId"]);
         Assert.DoesNotContain(report.Findings, f => f.FindingId == "audioCase.endpoint.notPresent");
         Assert.DoesNotContain(report.Findings, f => f.Severity >= FindingSeverity.Problem);
     }
@@ -251,6 +255,43 @@ public class RealPcScenarioTests
         Assert.Contains(f.Evidence, e => e.Description.Contains("generic HD Audio driver", StringComparison.Ordinal));
         Assert.Contains(f.Evidence, e => e.Description.Contains("Device Manager", StringComparison.Ordinal));
         Assert.Contains(f.Evidence, e => e.Description.Contains("oem14.inf", StringComparison.Ordinal) && e.Description.Contains("→ hdaudio.inf", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Active_display_sound_over_a_link_reported_as_dvi_is_information_not_a_warning()
+    {
+        // Shaped on the 0.3.2 report: generic driver, display output active and default, link still reported as DVI.
+        var report = RealtekDisplayPortQuickAnalyzer.Analyze(Snapshot(
+            devices: [IntelAudio()],
+            endpoints: [DisplayEndpoint("{0.0.0.00000000}.{a}", "Digital Audio (HDMI) (High Definition Audio Device)", "High Definition Audio Device", EndpointState.Active)]));
+
+        var f = Find(report, "audioCase.monitor.dviReportedAudioWorks");
+        Assert.Equal(FindingSeverity.Info, f.Severity);
+        Assert.Contains(f.Evidence, e => e.Kind == EvidenceKind.Inference && e.Description.Contains("does not block audio", StringComparison.Ordinal));
+        Assert.DoesNotContain(report.Findings, f => f.FindingId is "audioCase.monitor.dviMode" or "audioCase.endpoint.noneOverDvi");
+        Assert.DoesNotContain(report.Findings, f => f.Severity >= FindingSeverity.Problem);
+    }
+
+    [Fact]
+    public void Working_generic_driver_proposes_removing_the_manufacturer_package_it_replaced()
+    {
+        var events = new[]
+        {
+            new PnpEventSummary(T0.AddMinutes(1), 400, "Kernel-PnP", $"Device {IntelInstance.ToLowerInvariant()} was configured. Driver Name: oem14.inf Class Guid: {{4d36e96c}}"),
+            new PnpEventSummary(T0.AddMinutes(5), 400, "Kernel-PnP", $"Device {IntelInstance.ToLowerInvariant()} was configured. Driver Name: hdaudio.inf Class Guid: {{4d36e96c}}"),
+        };
+        var report = RealtekDisplayPortQuickAnalyzer.Analyze(Snapshot(
+            devices: [IntelAudio()],
+            events: events,
+            endpoints: [DisplayEndpoint("{0.0.0.00000000}.{a}", "Digital Audio (HDMI) (High Definition Audio Device)", "High Definition Audio Device", EndpointState.Active)]));
+
+        var keep = Find(report, "audioCase.gpuAudio.keepGeneric");
+        Assert.Equal(FindingSeverity.Info, keep.Severity);
+        var action = Assert.Single(keep.Actions);
+        Assert.Equal("driverStore.deletePackage", action.ActionId);
+        Assert.Equal("oem14.inf", action.Parameters!["inf"]);
+        Assert.Equal(RiskLevel.Medium, action.Risk);
+        Assert.Empty(Find(report, "audioCase.gpuAudio.present").Actions); // sound works: no driver switch proposed
     }
 
     [Fact]

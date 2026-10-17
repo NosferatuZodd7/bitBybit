@@ -109,6 +109,8 @@ public sealed class EndpointRow(AudioEndpointSummary e)
 
 public sealed class DeviceRow(DeviceSummary d)
 {
+    public DeviceSummary Summary { get; } = d;
+
     public string? Name { get; } = d.Name;
     public string? ClassName { get; } = d.ClassName;
     public string? Status { get; } = d.Status;
@@ -242,6 +244,9 @@ public sealed class ChangeRow
             BitByBit.Core.Audio.AudioChangeRecords.EndpointEnabledKind => Text.Get("app.changes.kind.audioEnabled"),
             "policy.deviceInstallDeny" => Text.Get("app.changes.kind.installDeny"),
             "device.uninstalled" => Text.Get("app.changes.kind.deviceUninstalled"),
+            "device.enabledState" => Text.Get("app.changes.kind.deviceEnabled"),
+            "device.driverSelected" => Text.Get("app.changes.kind.driverSelected"),
+            "driverStore.packageDeleted" => Text.Get("app.changes.kind.packageDeleted"),
             _ => record.TargetKind,
         };
         Description = record.Description;

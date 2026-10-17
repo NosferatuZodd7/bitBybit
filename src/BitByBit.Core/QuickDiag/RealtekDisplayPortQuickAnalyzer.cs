@@ -5,6 +5,7 @@ using BitByBit.Core.Devices;
 using BitByBit.Core.Diagnostics;
 using BitByBit.Core.Evidence;
 using BitByBit.Core.Logging;
+using BitByBit.Core.Platform;
 
 namespace BitByBit.Core.QuickDiag;
 
@@ -37,7 +38,7 @@ public static partial class RealtekDisplayPortQuickAnalyzer
         AnalyzeRealtekCodec(findings, snapshot, realtekCodecs);
         AnalyzeRealtekComponents(findings, realtekComponents);
         AnalyzeInstallHistory(findings, snapshot);
-        AnalyzeGpuAudio(findings, snapshot, gpuAudio);
+        AnalyzeGpuAudio(findings, snapshot, gpuAudio, displayEndpoints);
         AnalyzeMonitors(findings, dpMonitors, snapshot.Monitors, displayEndpoints);
         AnalyzeDisplayEndpoints(findings, displayEndpoints, gpuAudio, dpMonitors, snapshot.Monitors);
         AnalyzeDefaultDevice(findings, snapshot, displayEndpoints);
@@ -279,7 +280,7 @@ public static partial class RealtekDisplayPortQuickAnalyzer
             SetupApiQuickParser.ClassifyOrigin(s) is InstallOrigin.PlugAndPlay or InstallOrigin.WindowsUpdate);
     }
 
-    private static void AnalyzeGpuAudio(List<DiagnosticFinding> findings, QuickSnapshot snapshot, DeviceSummary[] gpuAudio)
+    private static void AnalyzeGpuAudio(List<DiagnosticFinding> findings, QuickSnapshot snapshot, DeviceSummary[] gpuAudio, AudioEndpointSummary[] displayEndpoints)
     {
         var present = gpuAudio.Where(d => d.IsPresent != false).ToArray();
         var withProblem = present.Where(d => d.ProblemCode is > 0).ToArray();
@@ -307,13 +308,20 @@ public static partial class RealtekDisplayPortQuickAnalyzer
                 evidence.AddRange(GpuAudioDriverHistory(snapshot, d));
             }
 
+            var soundWorks = displayEndpoints.Any(e => e.State == EndpointState.Active);
+            var actions = soundWorks ? [] : present.Where(UsesManufacturerDriver).Take(1).Select(GenericDriverAction).ToList();
             findings.Add(new DiagnosticFinding(
                 "audioCase.gpuAudio.present",
                 FindingSeverity.Info,
                 T("quickdiag.gpuAudio.present.title", "GPU HDMI/DisplayPort audio device is present"),
                 T("quickdiag.gpuAudio.present.detail", "{0} GPU display-audio function(s) are present and report no problem.", present.Length),
                 evidence,
-                []));
+                actions));
+
+            if (soundWorks)
+            {
+                AddKeepGenericDriverFinding(findings, snapshot, present);
+            }
         }
         else
         {
@@ -338,6 +346,59 @@ public static partial class RealtekDisplayPortQuickAnalyzer
                         T("quickdiag.action.gpuDriver.impact",
                             "Use the official package from the computer or GPU manufacturer and make sure the HD Audio component is selected. The screen may flicker during installation; a restart may be required."),
                         RiskLevel.High, RequiresReboot: true),
+                ]));
+        }
+    }
+
+    /// <summary>The device runs a third-party (oemNN.inf) driver, e.g. the graphics manufacturer's display-audio driver.</summary>
+    private static bool UsesManufacturerDriver(DeviceSummary d) =>
+        d.Driver?.InfName is { } inf && ElevatedCommandLine.IsPublishedInfName(inf);
+
+    /// <summary>Switch the display-audio function to Windows' generic HD Audio driver (hdaudio.inf); reversible.</summary>
+    private static ProposedAction GenericDriverAction(DeviceSummary d) => new("device.installDriver",
+        T("quickdiag.action.genericDriver.title", "Try Windows' generic HD Audio driver for the display sound"),
+        T("quickdiag.action.genericDriver.impact",
+            "Installs Windows' own HD Audio driver (hdaudio.inf) on '{0}' instead of the manufacturer's ({1}). Some manufacturer display-audio drivers expose no sound output on certain monitor connections while the generic driver does. The manufacturer's driver stays on the computer and the change can be reverted. Requires administrator rights.",
+            d.Name ?? d.InstanceId, d.Driver?.InfName ?? "?"),
+        RiskLevel.Medium, MayInterruptAudio: true,
+        Parameters: new Dictionary<string, string> { ["instanceId"] = d.InstanceId, ["inf"] = "hdaudio.inf" });
+
+    /// <summary>
+    /// The display sound works on Windows' inbox driver, but a manufacturer package that was used on this device before
+    /// is still in the Driver Store: Windows prefers it and may switch back at the next reinstall or hardware scan.
+    /// </summary>
+    private static void AddKeepGenericDriverFinding(List<DiagnosticFinding> findings, QuickSnapshot snapshot, DeviceSummary[] present)
+    {
+        foreach (var d in present.Where(d => d.Driver?.InfName is { } inf && !ElevatedCommandLine.IsPublishedInfName(inf)))
+        {
+            var oem = DriversSeen(snapshot, d).Select(x => x.Inf).Where(ElevatedCommandLine.IsPublishedInfName).LastOrDefault();
+            if (oem is null)
+            {
+                continue;
+            }
+
+            findings.Add(new DiagnosticFinding(
+                "audioCase.gpuAudio.keepGeneric",
+                FindingSeverity.Info,
+                T("quickdiag.gpuAudio.keepGeneric.title", "The display sound works with Windows' generic driver"),
+                T("quickdiag.gpuAudio.keepGeneric.detail",
+                    "'{0}' now uses Windows' own driver and its sound output is active. The manufacturer's package {1}, used on this device before, is still in the Driver Store: Windows prefers it and may switch back to it the next time the device is reinstalled. To keep the working driver, remove that package (a backup is made first).",
+                    d.Name ?? d.InstanceId, oem),
+                [
+                    EvidenceItem.Fact("PnP", $"Current driver: {d.Driver?.InfName} {d.Driver?.Version}"),
+                    EvidenceItem.Fact("Kernel-PnP", $"{oem} was installed on this device earlier"),
+                    EvidenceItem.Inference(Src,
+                        "A manufacturer driver that matches the exact hardware id ranks above Windows' generic class driver, so Plug and Play picks it again on a reinstall.",
+                        Confidence.Medium),
+                ],
+                [
+                    new ProposedAction("driverStore.deletePackage",
+                        T("quickdiag.action.deletePackage.title", "Keep the generic driver: remove {0} from the Driver Store", oem),
+                        T("quickdiag.action.deletePackage.impact",
+                            "Backs up {0} to the bitBybit backups folder, then removes it from the Driver Store (only if no device uses it now). Reversible: the revert adds it back from the backup. Requires administrator rights.",
+                            oem),
+                        RiskLevel.Medium,
+                        Parameters: new Dictionary<string, string> { ["inf"] = oem }),
                 ]));
         }
     }
@@ -423,13 +484,26 @@ public static partial class RealtekDisplayPortQuickAnalyzer
             evidence.Add(EvidenceItem.Observation("CoreAudio:EnumAudioEndpoints", $"The graphics card's display audio device '{e.Name}' exists (state {e.State}).", e.AdapterName));
         }
 
-        if (liveEndpoints.Length > 0)
+        if (liveEndpoints.FirstOrDefault(e => e.State == EndpointState.Active) is { } active)
         {
+            // Sound works although Windows reports DVI: the reported link type does not block audio here.
             evidence.Add(EvidenceItem.Inference(Src,
-                "The display audio device exists, so the missing piece is the link mode (DVI carries no audio), not the audio driver.",
-                Confidence.Medium));
+                $"'{active.Name}' is active, so sound reaches the monitor over this link: the 'DVI' link type Windows reports does not block audio on this computer.",
+                Confidence.High));
+            findings.Add(new DiagnosticFinding(
+                "audioCase.monitor.dviReportedAudioWorks",
+                FindingSeverity.Info,
+                T("quickdiag.monitor.dviOk.title", "Windows reports a DVI link to '{0}', but the display sound works", m.FriendlyName ?? "?"),
+                T("quickdiag.monitor.dviOk.detail",
+                    "The sound output of the monitor is active, so the link type does not stop the sound. If the monitor runs below its native mode, the cable or adapter limits the picture: an active DisplayPort→HDMI adapter or a DisplayPort cable would allow the native mode."),
+                evidence,
+                []));
+            return;
         }
 
+        evidence.Add(EvidenceItem.Hypothesis(Src,
+            "Some graphics drivers still send sound over links Windows reports as DVI; the display-audio driver then decides whether a sound output appears (a manufacturer driver may expose none where Windows' generic driver does).",
+            Confidence.Medium));
         evidence.Add(EvidenceItem.Hypothesis(Src,
             "A passive DisplayPort→HDMI/DVI adapter or cable sits between the computer and the monitor, and the graphics driver detects the monitor as DVI — at least in some sessions (for example when the monitor is off or still waking up at start-up), which would also explain sound that disappears after a restart.",
             Confidence.Medium));
@@ -437,9 +511,9 @@ public static partial class RealtekDisplayPortQuickAnalyzer
         findings.Add(new DiagnosticFinding(
             "audioCase.monitor.dviMode",
             FindingSeverity.Warning,
-            T("quickdiag.monitor.dvi.title", "Monitor '{0}' is connected in DVI mode, which carries no sound", m.FriendlyName ?? "?"),
+            T("quickdiag.monitor.dvi.title", "Monitor '{0}' is reported as a DVI link and has no sound output", m.FriendlyName ?? "?"),
             T("quickdiag.monitor.dvi.detail",
-                "Windows reports that the link to this monitor works as DVI. In DVI mode the graphics card sends no audio, so the HDMI/DisplayPort sound output stays 'unplugged'. This typically happens with passive DisplayPort→HDMI/DVI cables or adapters, or when the link is detected as DVI at start-up."),
+                "Windows reports that the link to this monitor works as DVI, which normally carries no audio. This is typical of passive DisplayPort→HDMI/DVI adapters. Try first the display-audio driver change proposed for the graphics card's audio device (reversible); if there is still no sound, the cable or adapter is the next step."),
             evidence,
             [DisplayLinkAction()]));
     }
@@ -522,16 +596,16 @@ public static partial class RealtekDisplayPortQuickAnalyzer
                 FindingSeverity.Warning,
                 T("quickdiag.endpoint.noneOverDvi.title", "No HDMI/DisplayPort sound output while the monitor link is DVI"),
                 T("quickdiag.endpoint.noneOverDvi.detail",
-                    "The graphics card's audio device is installed, but its sound output(s) ({0}) are not present. The monitor is connected over a DVI link, which carries no audio, so there is nothing for the sound output to play to. Fix the link (see the DVI finding) and the output should come back.",
+                    "The graphics card's audio device is installed, but its sound output(s) ({0}) are not present while the monitor link is reported as DVI. Try Windows' generic display-audio driver first (reversible); if there is still no output, change the cable or adapter.",
                     string.Join(", ", missing.Select(e => e.Name ?? e.Id))),
                 [
                     .. missing.Select(e => EvidenceItem.Observation("CoreAudio:IMMDevice.GetState", $"'{e.Name}': State={e.State}, adapter={e.AdapterName}", ((int)e.State).ToString(CultureInfo.InvariantCulture))),
                     EvidenceItem.Fact("PnP/WMI", $"Display audio device present without a problem code: {gpuAudio.First(d => d.IsPresent != false && d.ProblemCode is null or 0).Name}"),
-                    EvidenceItem.Inference(Src,
-                        $"The active monitor '{dvi.FriendlyName}' is on a DVI link (no audio sink), which is consistent with the graphics audio driver not exposing a playback device.",
+                    EvidenceItem.Hypothesis(Src,
+                        $"Either the DVI link to '{dvi.FriendlyName}' carries no audio, or the display-audio driver exposes no output for this link (a manufacturer driver may expose none where Windows' generic driver does).",
                         Confidence.Medium),
                 ],
-                [DisplayLinkAction()]));
+                [.. gpuAudio.Where(d => d.IsPresent != false && UsesManufacturerDriver(d)).Take(1).Select(GenericDriverAction), DisplayLinkAction()]));
             return;
         }
 
@@ -561,7 +635,7 @@ public static partial class RealtekDisplayPortQuickAnalyzer
             };
             if (e.State == EndpointState.Unplugged && dvi is not null)
             {
-                evidence.Add(EvidenceItem.Inference(Src, $"The active monitor '{dvi.FriendlyName}' is connected over a DVI link, which carries no audio: this explains the 'unplugged' state.", Confidence.High));
+                evidence.Add(EvidenceItem.Inference(Src, $"The active monitor '{dvi.FriendlyName}' is reported as a DVI link, which normally carries no audio: this is consistent with the 'unplugged' state.", Confidence.Medium));
             }
             else if (e.State == EndpointState.Unplugged && digitalMonitors.Length == 0)
             {
@@ -781,6 +855,17 @@ public static partial class RealtekDisplayPortQuickAnalyzer
                 $"{manual.Length} driver operation(s) on this device were done in Device Manager; the last: {manual[0].Header}", manual[0].ExitStatus, manual[0].Start);
         }
 
+        var drivers = DriversSeen(snapshot, device);
+        if (drivers.Count > 1)
+        {
+            yield return EvidenceItem.Fact("Kernel-PnP",
+                "Driver changes recorded for this device: " + string.Join(" → ", drivers.TakeLast(6).Select(d => $"{d.Inf} ({FormatDate(d.At)})")));
+        }
+    }
+
+    /// <summary>Driver INF names in the device's Kernel-PnP events, oldest first, consecutive duplicates removed.</summary>
+    private static List<(DateTimeOffset At, string Inf)> DriversSeen(QuickSnapshot snapshot, DeviceSummary device)
+    {
         var drivers = new List<(DateTimeOffset At, string Inf)>();
         foreach (var e in snapshot.PnpEvents.Where(e => e.Time is not null && e.Message.Contains(device.InstanceId, StringComparison.OrdinalIgnoreCase)).OrderBy(e => e.Time))
         {
@@ -791,11 +876,7 @@ public static partial class RealtekDisplayPortQuickAnalyzer
             }
         }
 
-        if (drivers.Count > 1)
-        {
-            yield return EvidenceItem.Fact("Kernel-PnP",
-                "Driver changes recorded for this device: " + string.Join(" → ", drivers.TakeLast(6).Select(d => $"{d.Inf} ({FormatDate(d.At)})")));
-        }
+        return drivers;
     }
 
     private static string OriginLabel(InstallOrigin origin) => origin switch

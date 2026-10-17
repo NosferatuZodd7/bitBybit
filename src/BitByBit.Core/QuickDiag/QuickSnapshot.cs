@@ -178,6 +178,9 @@ public sealed record PnpEventSummary(DateTimeOffset? Time, int EventId, string? 
 /// <summary>Something that could not be collected, and why (shown to the user; never silently dropped).</summary>
 public sealed record CollectionIssue(string Area, string Message);
 
+/// <summary>A third-party driver package in the Driver Store (%windir%\INF\oemNN.inf), read from its [Version] section.</summary>
+public sealed record StorePackageSummary(string InfName, string? Provider, string? ClassName, DateTimeOffset? Date, string? Version);
+
 public sealed record QuickSnapshot
 {
     public int SchemaVersion { get; init; } = 2;
@@ -195,5 +198,7 @@ public sealed record QuickSnapshot
     public IReadOnlyList<PnpEventSummary> PnpEvents { get; init; } = [];
     /// <summary>Device installation restriction policy (HKLM\SOFTWARE\Policies\...\DeviceInstall\Restrictions), read-only; null when not read.</summary>
     public BitByBit.Core.Drivers.DeviceInstallRestrictionsState? InstallPolicy { get; init; }
+    /// <summary>All third-party packages in the Driver Store, used by a device or not.</summary>
+    public IReadOnlyList<StorePackageSummary> DriverStorePackages { get; init; } = [];
     public IReadOnlyList<CollectionIssue> Issues { get; init; } = [];
 }

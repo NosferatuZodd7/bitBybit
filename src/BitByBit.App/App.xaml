@@ -8,16 +8,19 @@
       <!-- Colours ("Brush.*") are published at runtime by Theming/ThemeManager; shapes, sizes and styles live in Theme.xaml. -->
       <ResourceDictionary.MergedDictionaries>
         <ResourceDictionary Source="Theming/Theme.xaml" />
+        <ResourceDictionary>
+          <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+          <loc:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
+          <loc:InverseBoolConverter x:Key="InverseBool" />
+          <loc:EmptyToCollapsedConverter x:Key="EmptyToCollapsed" />
+          <loc:EqualsConverter x:Key="EqualsConverter" />
+          <loc:EqualsToVisibilityConverter x:Key="EqualsToVisibility" />
+          <loc:AllEqualConverter x:Key="AllEqualConverter" />
+          <loc:WidthToColumnsConverter x:Key="WidthToColumns" />
+          <loc:ZeroToVisibilityConverter x:Key="ZeroToVisibility" />
+        </ResourceDictionary>
+        <ResourceDictionary Source="Theming/Cards.xaml" />
       </ResourceDictionary.MergedDictionaries>
-      <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
-      <loc:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
-      <loc:InverseBoolConverter x:Key="InverseBool" />
-      <loc:EmptyToCollapsedConverter x:Key="EmptyToCollapsed" />
-      <loc:EqualsConverter x:Key="EqualsConverter" />
-      <loc:EqualsToVisibilityConverter x:Key="EqualsToVisibility" />
-      <loc:AllEqualConverter x:Key="AllEqualConverter" />
-      <loc:WidthToColumnsConverter x:Key="WidthToColumns" />
-      <loc:ZeroToVisibilityConverter x:Key="ZeroToVisibility" />
     </ResourceDictionary>
   </Application.Resources>
 </Application>

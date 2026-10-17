@@ -56,12 +56,22 @@ public static class ElevatedCommand
         try
         {
             var journal = new JsonLinesChangeJournal(AppPaths.Default.JournalFile);
-            var ops = new CaseOperations(journal, new FixedToolRunner(), AppPaths.Default, logger);
+            var tools = new FixedToolRunner();
+            var ops = new CaseOperations(journal, tools, AppPaths.Default, logger);
+            var devices = new DeviceOperations(journal, tools, AppPaths.Default, logger);
+            var ct = CancellationToken.None;
             outcome = request.Verb switch
             {
-                "block-driver" => await ops.BlockDeviceDriverAsync(request.InstanceId!, request.HardwareIds, request.Uninstall, CancellationToken.None),
-                "restart-device" => ops.RestartDevice(request.InstanceId!),
-                _ => await ops.RevertAsync(request.ChangeId!.Value, CancellationToken.None),
+                ElevatedCommandLine.BlockDriver => await ops.BlockDeviceDriverAsync(request.InstanceId!, request.HardwareIds, request.Uninstall, ct),
+                ElevatedCommandLine.RestartDevice => ops.RestartDevice(request.InstanceId!),
+                ElevatedCommandLine.EnableDevice => await devices.SetEnabledAsync(request.InstanceId!, true, ct),
+                ElevatedCommandLine.DisableDevice => await devices.SetEnabledAsync(request.InstanceId!, false, ct),
+                ElevatedCommandLine.UninstallDevice => await devices.UninstallAsync(request.InstanceId!, ct),
+                ElevatedCommandLine.InstallDriver => await devices.InstallDriverAsync(request.InstanceId!, request.InfName!, ct),
+                ElevatedCommandLine.RollbackDriver => await devices.RollbackDriverAsync(request.InstanceId!, ct),
+                ElevatedCommandLine.DeletePackage => await devices.DeletePackageAsync(request.InfName!, ct),
+                ElevatedCommandLine.Rescan => devices.Rescan(),
+                _ => await ops.RevertAsync(request.ChangeId!.Value, ct),
             };
         }
         catch (Exception ex)

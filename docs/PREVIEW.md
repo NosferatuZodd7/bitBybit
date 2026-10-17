@@ -1,4 +1,4 @@
-# bitBybit 0.3 — pré-visualização (novo aspeto + diagnóstico + primeiras correções)
+# bitBybit 0.4 — pré-visualização (controlo de dispositivos e controladores)
 
 Esta versão mantém todo o diagnóstico da 0.1 e acrescenta as primeiras **ações reversíveis** para o problema do
 Realtek / DisplayPort. Nada é alterado sem a sua confirmação, e cada alteração fica registada no separador
@@ -14,6 +14,29 @@ Realtek / DisplayPort. Nada é alterado sem a sua confirmação, e cada alteraç
 4. Para ver também o registo de instalação de drivers (`setupapi.dev.log`), clique em **Reabrir como administrador**.
 
 Requisitos: Windows 10 1809 ou posterior, ou Windows 11, de 64 bits.
+
+## Novidades da 0.4 — controlar, não só ler
+
+* **Clique num dispositivo** (página Dispositivos) para abrir a janela do dispositivo:
+  * **Reiniciar**, **Ativar**, **Desativar**, **Desinstalar** (o pacote do controlador fica no computador);
+  * **Mostrar outros controladores**: a lista de controladores compatíveis que já estão no computador (como
+    "Procurar no computador › Escolher numa lista" do Gestor de Dispositivos) com **Instalar este** — muda só esse
+    dispositivo e faz cópia do pacote atual;
+  * **Reverter controlador** (volta ao anterior, se o Windows o guardou).
+  * Cada ação diz porque está ou não disponível e o risco. Dispositivos de que o Windows precisa para arrancar
+    (sistema, discos, teclado/rato, USB, firmware) nunca são alterados; placas gráficas nunca são desativadas nem
+    desinstaladas.
+* **Procurar alterações de hardware** (botão na página Dispositivos).
+* **Driver Store**: agora mostra também os pacotes de terceiros que **nenhum dispositivo usa**, com **Remover**
+  (faz cópia primeiro; o Windows recusa se algum dispositivo o estiver a usar).
+* **Áudio**: **Predefinir** e **Ativar** diretamente nos cartões.
+* Tudo o que muda fica em **Alterações do bitBybit** e pode ser revertido: ativar/desativar, troca de controlador,
+  reversão de controlador, remoção de pacote (volta a ser adicionado a partir da cópia).
+* **Caso do som do monitor**: quando o som funciona com o controlador genérico do Windows, o bitBybit propõe remover
+  o pacote antigo do fabricante para o Windows não voltar a trocá-lo. A conclusão sobre o "modo DVI" foi corrigida:
+  o som pode funcionar mesmo quando o Windows indica DVI.
+* O controlador de cada dispositivo passa a ser lido como o Gestor de Dispositivos o mostra (antes podia aparecer um
+  pacote incluído, como wdmaudio.inf, em vez do controlador real).
 
 ## Novidades da 0.3
 
@@ -80,7 +103,10 @@ Requisitos: Windows 10 1809 ou posterior, ou Windows 11, de 64 bits.
 
 ## Limitações conhecidas desta versão
 
-* As ações foram testadas com simulações (testes unitários) e compiladas para Windows; o diagnóstico correu num
+* As ações da 0.4 (ativar/desativar, trocar/reverter controlador, remover pacote) foram compiladas para Windows e
+  testadas com simulações; no runner Windows do GitHub só a **listagem** de controladores compatíveis é executada (só
+  leitura). **Ainda não foram executadas num PC real** — teste primeiro em dispositivos que não sejam críticos.
+* As ações da 0.2 foram testadas com simulações (testes unitários) e compiladas para Windows; o diagnóstico correu num
   runner Windows Server do GitHub Actions (sem áudio nem monitores). **Ainda não foram validadas em hardware real** —
   o seu PC é o primeiro teste real.
 * A política de bloqueio de instalação de drivers é respeitada pelo Windows 10/11 Pro/Enterprise/Education; no

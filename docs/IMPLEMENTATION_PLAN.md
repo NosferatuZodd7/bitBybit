@@ -49,6 +49,18 @@ User guide: [PREVIEW.md](PREVIEW.md).
   (4 looks × 4 pages rendered off-screen by `--smoke-test`).
 * Not yet: operation queue panel, first-run wizard, driver install/rollback through the queue, self-update.
 
+## Preview 0.4 (device and driver control) — 🧪
+
+* Device window: restart, enable, disable, uninstall, choose another compatible driver from the Driver Store, roll
+  back; each gated by `DeviceActionGuard` (Core, unit-tested) in the UI and again in the elevated helper.
+* Elevated verbs `enable-device`, `disable-device`, `uninstall-device`, `install-driver`, `rollback-driver`,
+  `delete-package`, `rescan` (`ElevatedCommandLine`, unit-tested); `DeviceOperations` journals previous state and has
+  revert handlers (enabled state, driver selection, package deletion from backup, uninstall → rescan).
+* Driver Store page lists all third-party packages (INF [Version] parser) and removes unused ones (backup first,
+  pnputil without /force). Audio cards: set default, enable.
+* Collector reads each device's driver from DEVPKEY_Device_Driver* (Device Manager's view).
+* Not yet: operation queue, restore point before driver changes, signature check of chosen drivers, network module.
+
 ## Phase A — Foundation
 
 | Item | Status | Notes |

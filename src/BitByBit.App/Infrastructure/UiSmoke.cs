@@ -81,6 +81,19 @@ public static class UiSmoke
             vm.ShowAllFindingsCommand.Execute(null);
         }
 
+        // Device window (actions + driver list) and the read-only compatible-driver enumeration on real devices.
+        var device = vm.Devices.FirstOrDefault(d => d.Summary.IsPresent == true && d.Summary.Driver?.InfName is not null && d.Category is "display" or "network")
+                     ?? vm.Devices.First();
+        foreach (var (lookName, palette) in new[] { looks[0], looks[2] })
+        {
+            ThemeManager.Apply(palette);
+            var deviceWindow = new DeviceWindow { DataContext = new DeviceDetailViewModel(device, vm), Width = 900, Height = 720 };
+            Render(deviceWindow, Path.Combine(directory, $"{lookName}-device-window.png"));
+            deviceWindow.Close();
+            count++;
+        }
+
+        CheckDriverEnumeration(vm, logger);
         window.Close();
         File.WriteAllLines(Path.Combine(directory, "contrast.txt"), lowContrast.Distinct());
         logger.LogInformation("UI smoke test rendered {Count} screenshots to {Directory}; {Low} low-contrast element(s), {Bad} unreadable",
@@ -156,6 +169,34 @@ public static class UiSmoke
                 yield return (what, ratio);
             }
         }
+    }
+
+    /// <summary>
+    /// Lists compatible drivers (SetupDiBuildDriverInfoList, read-only) for a few present devices; at least one must
+    /// return its current driver, which proves the SetupAPI structures are marshalled correctly on a real Windows.
+    /// </summary>
+    private static void CheckDriverEnumeration(MainViewModel vm, ILogger logger)
+    {
+        var tried = 0;
+        foreach (var d in vm.Devices.Where(d => d.Summary.IsPresent == true && d.Summary.Driver?.InfName is not null && d.Category is "display" or "network" or "audio" or "other").Take(8))
+        {
+            tried++;
+            var result = BitByBit.Platform.Windows.Devices.WindowsDriverSelection.ListCompatible(d.InstanceId);
+            if (result.IsFailure)
+            {
+                logger.LogWarning("Compatible drivers of {Device}: {Error}", d.Name, result.Error);
+                continue;
+            }
+
+            logger.LogInformation("Compatible drivers of {Device} ({Class}): {Count}; current: {Current}", d.Name, d.ClassName, result.Value.Count,
+                string.Join(", ", result.Value.Where(c => c.IsCurrent).Select(c => $"{c.InfName} {c.Version}")));
+            if (result.Value.Any(c => c.IsCurrent && c.InfName.EndsWith(".inf", StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+        }
+
+        throw new InvalidOperationException($"Compatible-driver enumeration did not find the current driver on any of {tried} device(s).");
     }
 
     /// <summary>Canary: the system black on a dark card (the 0.3.0 "Evidências" bug) must be reported as unreadable.</summary>

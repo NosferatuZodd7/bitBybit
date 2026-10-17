@@ -3,6 +3,7 @@ using System.Globalization;
 using BitByBit.App.Infrastructure;
 using BitByBit.Core.Audio;
 using BitByBit.Core.QuickDiag;
+using CommunityToolkit.Mvvm.Input;
 
 namespace BitByBit.App.ViewModels;
 
@@ -22,7 +23,29 @@ public sealed partial class MainViewModel
     public ObservableCollection<CardGroup> ChangeGroups { get; } = [];
     public ObservableCollection<CardGroup> SystemGroups { get; } = [];
 
-    private void RefreshStoreCards() => Replace(StoreGroups, DriverPackages
+    private void RefreshStoreCards()
+    {
+        var used = DriverPackages.Select(p => p.Inf).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var unused = (_snapshot?.DriverStorePackages ?? []).Where(p => !used.Contains(p.InfName)).Select(p => new InfoCard
+        {
+            Glyph = "package",
+            Title = p.InfName,
+            Subtitle = p.Provider,
+            Tag = p.Version,
+            Tone = "Neutral",
+            Fields = InfoCard.FieldsOf(
+                (Text.Get("app.col.driverDate"), p.Date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
+                (Text.Get("app.col.class"), p.ClassName)),
+            ActionText = Text.Get("app.store.remove"),
+            ActionGlyph = "trash",
+            ActionCommand = new AsyncRelayCommand(() => RemovePackageAsync(p.InfName)),
+            ActionIsDanger = true,
+        }).ToArray();
+        Replace(StoreGroups, UsedStoreGroups().Concat(unused.Length == 0 ? [] :
+            [new CardGroup("package", Text.Get("app.store.unused"), unused, Text.Get("app.store.unusedHint"))]));
+    }
+
+    private IEnumerable<CardGroup> UsedStoreGroups() => DriverPackages
         .GroupBy(p => DeviceRow.CategoryOf(p.ClassName))
         .OrderBy(g => DeviceRow.CategoryRank(g.Key))
         .Select(g => new CardGroup(DeviceRow.GlyphOf(g.Key), Text.Get("app.devices.category." + g.Key), g.Select(p => new InfoCard
@@ -43,7 +66,7 @@ public sealed partial class MainViewModel
                 (Text.Get("app.col.signed"), p.Signed),
                 (Text.Get("app.col.class"), p.ClassName)),
             ToolTip = string.Join(Environment.NewLine, p.DeviceNames),
-        }).ToArray())));
+        }).ToArray()));
 
     private void RefreshBackupCards() => Replace(BackupGroups, Backups.Count == 0 ? [] :
     [
@@ -108,7 +131,7 @@ public sealed partial class MainViewModel
         Replace(SystemGroups, SystemCards(snapshot));
     }
 
-    private static IEnumerable<CardGroup> AudioCards(QuickSnapshot snapshot)
+    private IEnumerable<CardGroup> AudioCards(QuickSnapshot snapshot)
     {
         var states = new[]
         {
@@ -139,6 +162,20 @@ public sealed partial class MainViewModel
                         Fields = InfoCard.FieldsOf((Text.Get("app.col.kind"), row.Kind), (Text.Get("app.col.flow"), row.Flow)),
                         ToolTip = e.Name,
                         IsDimmed = state == EndpointState.NotPresent,
+                        // Per-user and journaled (revert in the changes page); no administrator rights needed.
+                        ActionText = state switch
+                        {
+                            EndpointState.Active when e.Flow == EndpointFlow.Render && !e.IsDefaultConsole => Text.Get("app.audio.makeDefault"),
+                            EndpointState.Disabled => Text.Get("app.audio.enable"),
+                            _ => null,
+                        },
+                        ActionGlyph = state == EndpointState.Disabled ? "power" : "check",
+                        ActionCommand = state switch
+                        {
+                            EndpointState.Active when e.Flow == EndpointFlow.Render && !e.IsDefaultConsole => new AsyncRelayCommand(() => SetDefaultEndpointAsync(e.Id)),
+                            EndpointState.Disabled => new AsyncRelayCommand(() => SetEndpointEnabledAsync(e.Id, true)),
+                            _ => null,
+                        },
                     };
                 }).ToArray();
             if (cards.Length > 0)

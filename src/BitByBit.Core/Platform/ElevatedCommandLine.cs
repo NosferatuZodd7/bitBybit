@@ -5,7 +5,11 @@ namespace BitByBit.Core.Platform;
 /// <summary>One allowlisted operation for the elevated helper instance (<c>bitBybit.exe --elevated &lt;verb&gt; ...</c>).</summary>
 /// <param name="Verb">One of <see cref="ElevatedCommandLine.Verbs"/>.</param>
 /// <param name="ResultId">Names the outcome file the elevated instance writes; chosen by the unelevated caller.</param>
-public sealed record ElevatedRequest(string Verb, string? InstanceId, IReadOnlyList<string> HardwareIds, bool Uninstall, Guid? ChangeId, Guid ResultId);
+public sealed record ElevatedRequest(string Verb, string? InstanceId, IReadOnlyList<string> HardwareIds, bool Uninstall, Guid? ChangeId, Guid ResultId, string? InfName = null)
+{
+    /// <summary>Request for one device or driver-package verb (enable, disable, uninstall, install-driver, rollback-driver, delete-package, rescan).</summary>
+    public static ElevatedRequest For(string verb, string? instanceId = null, string? infName = null) => new(verb, instanceId, [], false, null, Guid.NewGuid(), infName);
+}
 
 /// <summary>
 /// Command-line contract of the elevated helper. The elevated instance trusts nothing it receives: <see cref="Parse"/>
@@ -19,11 +23,19 @@ public static class ElevatedCommandLine
     public const string BlockDriver = "block-driver";
     public const string RestartDevice = "restart-device";
     public const string Revert = "revert";
+    public const string EnableDevice = "enable-device";
+    public const string DisableDevice = "disable-device";
+    public const string UninstallDevice = "uninstall-device";
+    public const string InstallDriver = "install-driver";
+    public const string RollbackDriver = "rollback-driver";
+    public const string DeletePackage = "delete-package";
+    public const string Rescan = "rescan";
 
     public const int MaxHardwareIds = 16;
     public const int MaxInstanceIdLength = 400;
 
-    public static IReadOnlyList<string> Verbs { get; } = [BlockDriver, RestartDevice, Revert];
+    public static IReadOnlyList<string> Verbs { get; } =
+        [BlockDriver, RestartDevice, Revert, EnableDevice, DisableDevice, UninstallDevice, InstallDriver, RollbackDriver, DeletePackage, Rescan];
 
     public static IReadOnlyList<string> Build(ElevatedRequest request)
     {
@@ -47,6 +59,11 @@ public static class ElevatedCommandLine
         if (request.ChangeId is { } change)
         {
             args.AddRange(["--change", change.ToString("N")]);
+        }
+
+        if (request.InfName is not null)
+        {
+            args.AddRange(["--inf", request.InfName]);
         }
 
         return args;
@@ -82,6 +99,7 @@ public static class ElevatedCommandLine
         var uninstall = false;
         Guid? change = null;
         Guid? result = null;
+        string? inf = null;
         for (var i = start + 2; i < args.Count; i++)
         {
             switch (args[i])
@@ -91,6 +109,9 @@ public static class ElevatedCommandLine
                     break;
                 case "--hwid" when i + 1 < args.Count:
                     hwids.Add(args[++i]);
+                    break;
+                case "--inf" when inf is null && i + 1 < args.Count:
+                    inf = args[++i];
                     break;
                 case "--uninstall" when !uninstall:
                     uninstall = true;
@@ -108,16 +129,21 @@ public static class ElevatedCommandLine
             }
         }
 
-        if (result is null || hwids.Count > MaxHardwareIds || !IsPlainValue(instance) || !hwids.All(IsPlainValue))
+        if (result is null || hwids.Count > MaxHardwareIds || !IsPlainValue(instance) || !hwids.All(IsPlainValue) || (inf is not null && !IsInfName(inf)))
         {
             return null;
         }
 
+        var onlyInstance = instance is not null && hwids.Count == 0 && !uninstall && change is null && inf is null;
+        var nothing = instance is null && hwids.Count == 0 && !uninstall && change is null && inf is null;
         return verb switch
         {
-            BlockDriver when instance is not null && hwids.Count > 0 && change is null => new ElevatedRequest(verb, instance, hwids, uninstall, null, result.Value),
-            RestartDevice when instance is not null && hwids.Count == 0 && !uninstall && change is null => new ElevatedRequest(verb, instance, [], false, null, result.Value),
-            Revert when change is not null && instance is null && hwids.Count == 0 && !uninstall => new ElevatedRequest(verb, null, [], false, change, result.Value),
+            BlockDriver when instance is not null && hwids.Count > 0 && change is null && inf is null => new ElevatedRequest(verb, instance, hwids, uninstall, null, result.Value),
+            RestartDevice or EnableDevice or DisableDevice or UninstallDevice or RollbackDriver when onlyInstance => new ElevatedRequest(verb, instance, [], false, null, result.Value),
+            InstallDriver when instance is not null && inf is not null && hwids.Count == 0 && !uninstall && change is null => new ElevatedRequest(verb, instance, [], false, null, result.Value, inf),
+            DeletePackage when inf is not null && IsPublishedInfName(inf) && instance is null && hwids.Count == 0 && !uninstall && change is null => new ElevatedRequest(verb, null, [], false, null, result.Value, inf),
+            Rescan when nothing => new ElevatedRequest(verb, null, [], false, null, result.Value),
+            Revert when change is not null && instance is null && hwids.Count == 0 && !uninstall && inf is null => new ElevatedRequest(verb, null, [], false, change, result.Value),
             _ => null,
         };
     }
@@ -155,6 +181,16 @@ public static class ElevatedCommandLine
 
         return sb.ToString();
     }
+
+    /// <summary>A bare INF file name (no folder): "hdaudio.inf", "oem14.inf".</summary>
+    public static bool IsInfName(string value) =>
+        value.Length is > 4 and <= 64 && value.EndsWith(".inf", StringComparison.OrdinalIgnoreCase) &&
+        value.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-' or '.') && !value.StartsWith('.') && !value.Contains("..", StringComparison.Ordinal);
+
+    /// <summary>A third-party package published in the Driver Store: "oem" + digits + ".inf".</summary>
+    public static bool IsPublishedInfName(string value) =>
+        value.Length is > 7 and <= 13 && value.StartsWith("oem", StringComparison.OrdinalIgnoreCase) &&
+        value.EndsWith(".inf", StringComparison.OrdinalIgnoreCase) && value[3..^4].All(char.IsAsciiDigit);
 
     private static bool IsPlainValue(string? value) =>
         value is null || (value.Length is > 0 and <= MaxInstanceIdLength && !value.StartsWith("--", StringComparison.Ordinal) &&

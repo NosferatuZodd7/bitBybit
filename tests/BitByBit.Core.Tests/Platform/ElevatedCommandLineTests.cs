@@ -17,6 +17,13 @@ public sealed class ElevatedCommandLineTests
             new ElevatedRequest(ElevatedCommandLine.BlockDriver, Instance, [HardwareId], true, null, ResultId),
             new ElevatedRequest(ElevatedCommandLine.RestartDevice, Instance, [], false, null, ResultId),
             new ElevatedRequest(ElevatedCommandLine.Revert, null, [], false, Guid.NewGuid(), ResultId),
+            new ElevatedRequest(ElevatedCommandLine.EnableDevice, Instance, [], false, null, ResultId),
+            new ElevatedRequest(ElevatedCommandLine.DisableDevice, Instance, [], false, null, ResultId),
+            new ElevatedRequest(ElevatedCommandLine.UninstallDevice, Instance, [], false, null, ResultId),
+            new ElevatedRequest(ElevatedCommandLine.RollbackDriver, Instance, [], false, null, ResultId),
+            new ElevatedRequest(ElevatedCommandLine.InstallDriver, Instance, [], false, null, ResultId, "hdaudio.inf"),
+            new ElevatedRequest(ElevatedCommandLine.DeletePackage, null, [], false, null, ResultId, "oem14.inf"),
+            new ElevatedRequest(ElevatedCommandLine.Rescan, null, [], false, null, ResultId),
         };
 
         foreach (var request in requests)
@@ -31,6 +38,7 @@ public sealed class ElevatedCommandLineTests
             Assert.Equal(request.Uninstall, parsed.Uninstall);
             Assert.Equal(request.ChangeId, parsed.ChangeId);
             Assert.Equal(request.ResultId, parsed.ResultId);
+            Assert.Equal(request.InfName, parsed.InfName);
         }
     }
 
@@ -47,6 +55,13 @@ public sealed class ElevatedCommandLineTests
     [InlineData("--elevated revert --change not-a-guid --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")]
     [InlineData("--elevated revert --change 1f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b --instance X --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")]
     [InlineData("--elevated restart-device --instance X --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b --script x.ps1")]
+    [InlineData("--elevated install-driver --instance X --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")] // no --inf
+    [InlineData(@"--elevated install-driver --instance X --inf C:\evil\x.inf --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")] // path, not a name
+    [InlineData("--elevated install-driver --instance X --inf ..inf --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")]
+    [InlineData("--elevated delete-package --inf hdaudio.inf --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")] // inbox packages are never deleted
+    [InlineData("--elevated delete-package --inf oem14.inf --instance X --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")]
+    [InlineData("--elevated rescan --instance X --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")]
+    [InlineData("--elevated disable-device --instance X --inf oem1.inf --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")]
     public void Rejects_malformed_or_unexpected_arguments(string commandLine)
     {
         Assert.Null(ElevatedCommandLine.Parse(commandLine.Split(' ')));

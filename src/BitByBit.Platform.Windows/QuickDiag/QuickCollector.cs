@@ -7,7 +7,9 @@ using System.Net.Sockets;
 using System.Runtime.Versioning;
 using System.Security.Principal;
 using System.ServiceProcess;
+using BitByBit.Core.Drivers;
 using BitByBit.Core.QuickDiag;
+using BitByBit.Platform.Windows.Devices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Win32;
@@ -77,7 +79,9 @@ public sealed class QuickCollector
         // Read-only: HKLM\SOFTWARE\Policies is readable by standard users.
         var policy = Task.Run(() => Run("installPolicy", () => (BitByBit.Core.Drivers.DeviceInstallRestrictionsState?)Drivers.DeviceInstallPolicyStore.Read(), null), cancellationToken);
 
-        await Task.WhenAll(system, devices, audio, monitors, gpus, network, services, wu, setupApi, events, policy).ConfigureAwait(false);
+        var store = Task.Run(() => Run("driverStore", CollectDriverStore, (IReadOnlyList<StorePackageSummary>)[]), cancellationToken);
+
+        await Task.WhenAll(system, devices, audio, monitors, gpus, network, services, wu, setupApi, events, policy, store).ConfigureAwait(false);
         _logger.LogInformation("Snapshot collected in {Elapsed} ms with {IssueCount} issue(s)", started.ElapsedMilliseconds, issues.Count);
 
         return new QuickSnapshot
@@ -95,8 +99,29 @@ public sealed class QuickCollector
             SetupApiSections = setupApi.Result,
             PnpEvents = events.Result,
             InstallPolicy = policy.Result,
+            DriverStorePackages = store.Result,
             Issues = issues.ToArray(),
         };
+    }
+
+    /// <summary>Third-party packages published in the Driver Store (%windir%\INF\oemNN.inf; readable by standard users).</summary>
+    private static IReadOnlyList<StorePackageSummary> CollectDriverStore()
+    {
+        var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "INF");
+        var result = new List<StorePackageSummary>();
+        foreach (var file in Directory.EnumerateFiles(folder, "oem*.inf", SearchOption.TopDirectoryOnly).Take(1000))
+        {
+            var name = Path.GetFileName(file);
+            if (!BitByBit.Core.Platform.ElevatedCommandLine.IsPublishedInfName(name) || new FileInfo(file).Length > 4 * 1024 * 1024)
+            {
+                continue;
+            }
+
+            var info = BitByBit.Core.Drivers.InfVersionParser.Parse(File.ReadAllText(file));
+            result.Add(new StorePackageSummary(name.ToLowerInvariant(), info.Provider, info.ClassName, info.Date, info.Version));
+        }
+
+        return result.OrderBy(p => p.InfName.Length).ThenBy(p => p.InfName, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     private static SystemSummary CollectSystem()
@@ -242,7 +267,7 @@ public sealed class QuickCollector
                 Status = Str(e, "Status"),
                 ProblemCode = errorCode,
                 IsPresent = Get(e, "Present") as bool?,
-                Driver = drivers.GetValueOrDefault(id),
+                Driver = DriverOf(id, drivers.GetValueOrDefault(id)),
             });
         }
 
@@ -619,5 +644,39 @@ public sealed class QuickCollector
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// The device's driver as Plug and Play reports it (DEVPKEY_Device_Driver*, what Device Manager shows). WMI's
+    /// Win32_PnPSignedDriver can list a package the driver merely includes (e.g. wdmaudio.inf for an HD Audio device), so
+    /// it is only the fallback; its signature fields are kept when both name the same INF.
+    /// </summary>
+    private static DriverSummary? DriverOf(string instanceId, DriverSummary? wmi)
+    {
+        InstalledDriverInfo? pnp;
+        try
+        {
+            pnp = WindowsDriverSelection.ReadInstalled(instanceId);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            pnp = null;
+        }
+
+        if (pnp?.InfName is null)
+        {
+            return wmi;
+        }
+
+        var sameInf = string.Equals(pnp.InfName, wmi?.InfName, StringComparison.OrdinalIgnoreCase);
+        return new DriverSummary
+        {
+            InfName = pnp.InfName,
+            Version = pnp.Version ?? (sameInf ? wmi?.Version : null),
+            Date = pnp.Date ?? (sameInf ? wmi?.Date : null),
+            Provider = pnp.Provider ?? (sameInf ? wmi?.Provider : null),
+            IsSigned = sameInf ? wmi?.IsSigned : null,
+            Signer = sameInf ? wmi?.Signer : null,
+        };
     }
 }

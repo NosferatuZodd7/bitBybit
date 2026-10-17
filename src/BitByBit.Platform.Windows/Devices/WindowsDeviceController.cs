@@ -11,14 +11,21 @@ namespace BitByBit.Platform.Windows.Devices;
 public sealed record DeviceOperationResult(string InstanceId, bool RebootRequired, bool PresentAfter, bool StartedAfter, int? ProblemAfter);
 
 /// <summary>
-/// Privileged device operations (administrator required): restart (DIF_PROPERTYCHANGE / DICS_PROPCHANGE), uninstall the
+/// Privileged device operations (administrator required): restart (DIF_PROPERTYCHANGE / DICS_PROPCHANGE), enable and
+/// disable (DICS_ENABLE / DICS_DISABLE, global scope), uninstall the
 /// device instance (DiUninstallDevice — the driver package stays in the Driver Store) and "scan for hardware changes"
 /// (CM_Reenumerate_DevNode on the root). Callers must consult the critical-driver guard and journal first.
 /// </summary>
 [SupportedOSPlatform("windows6.1")]
 public static class WindowsDeviceController
 {
-    public static Result<DeviceOperationResult> Restart(string instanceId) =>
+    public static Result<DeviceOperationResult> Restart(string instanceId) => PropertyChange(instanceId, SETUP_DI_STATE_CHANGE.DICS_PROPCHANGE);
+
+    /// <summary>Enables or disables the device for all hardware profiles (what Device Manager's Enable/Disable does).</summary>
+    public static Result<DeviceOperationResult> SetEnabled(string instanceId, bool enabled) =>
+        PropertyChange(instanceId, enabled ? SETUP_DI_STATE_CHANGE.DICS_ENABLE : SETUP_DI_STATE_CHANGE.DICS_DISABLE);
+
+    private static Result<DeviceOperationResult> PropertyChange(string instanceId, SETUP_DI_STATE_CHANGE state) =>
         WithDevice(instanceId, (set, data) =>
         {
             var change = new SP_PROPCHANGE_PARAMS
@@ -28,7 +35,7 @@ public static class WindowsDeviceController
                     cbSize = (uint)Marshal.SizeOf<SP_CLASSINSTALL_HEADER>(),
                     InstallFunction = DI_FUNCTION.DIF_PROPERTYCHANGE,
                 },
-                StateChange = SETUP_DI_STATE_CHANGE.DICS_PROPCHANGE,
+                StateChange = state,
                 Scope = SETUP_DI_PROPERTY_CHANGE_SCOPE.DICS_FLAG_GLOBAL,
                 HwProfile = 0,
             };

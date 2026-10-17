@@ -230,6 +230,7 @@ public sealed partial class MainViewModel : ObservableObject
     private static readonly HashSet<string> ExecutableActions = new(StringComparer.Ordinal)
     {
         "audio.setDefaultEndpoint", "audio.enableEndpoint", "device.installPolicy.denyHardwareId", "device.restart",
+        "device.installDriver", "driverStore.deletePackage",
     };
 
     private Func<ProposedAction, Task>? ExecutorFor(ProposedAction action) =>
@@ -291,6 +292,24 @@ public sealed partial class MainViewModel : ObservableObject
                     }
 
                     await RunElevatedAsync(new ElevatedRequest("restart-device", instanceId, [], false, null, Guid.NewGuid()));
+                    break;
+
+                case "device.installDriver" when p.TryGetValue("instanceId", out var instanceId) && p.TryGetValue("inf", out var inf):
+                    if (!Confirm(action, Text.Get("app.action.needsAdmin")))
+                    {
+                        return;
+                    }
+
+                    await RunElevatedAsync(ElevatedRequest.For(ElevatedCommandLine.InstallDriver, instanceId, inf));
+                    break;
+
+                case "driverStore.deletePackage" when p.TryGetValue("inf", out var inf):
+                    if (!Confirm(action, Text.Get("app.action.needsAdmin")))
+                    {
+                        return;
+                    }
+
+                    await RunElevatedAsync(ElevatedRequest.For(ElevatedCommandLine.DeletePackage, infName: inf));
                     break;
             }
         }
