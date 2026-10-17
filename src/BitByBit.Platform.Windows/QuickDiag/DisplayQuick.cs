@@ -91,6 +91,12 @@ internal static class DisplayQuick
                 EdidMonitorName = edid?.MonitorName,
                 EdidAnnouncesAudio = edid?.AnnouncesAudio,
                 EdidAudioFormats = edid is { AudioFormats.Count: > 0 } ? string.Join(", ", edid.AudioFormats) : (edid?.BasicAudio == true ? "basic audio" : null),
+                EdidLength = edid?.Length,
+                EdidHasCeaExtension = edid?.HasCeaExtension,
+                EdidHasHdmiVsdb = edid?.HasHdmiVsdb,
+                EdidNativeWidth = edid?.NativeWidth,
+                EdidNativeHeight = edid?.NativeHeight,
+                EdidNativePixelClockMHz = edid?.NativePixelClockMHz,
             });
         }
 

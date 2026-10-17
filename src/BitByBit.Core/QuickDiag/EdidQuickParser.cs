@@ -1,6 +1,12 @@
 namespace BitByBit.Core.QuickDiag;
 
 /// <summary>Result of a minimal EDID inspection. Serial numbers are never extracted.</summary>
+/// <param name="Length">Bytes available (128 = base block only).</param>
+/// <param name="ExtensionCount">Extension blocks declared by the base block (byte 126).</param>
+/// <param name="HasHdmiVsdb">A CEA-861 HDMI Vendor-Specific Data Block (IEEE OUI 00-0C-03) is present: the monitor declares
+/// HDMI (not DVI) capability. Without it, graphics drivers drive the link in DVI mode, which carries no audio.</param>
+/// <param name="NativeWidth">Active pixels of the first detailed timing descriptor (the preferred/native mode).</param>
+/// <param name="NativePixelClockMHz">Pixel clock of the preferred mode.</param>
 public sealed record EdidQuickInfo(
     string? ManufacturerId,
     int ProductCode,
@@ -8,7 +14,13 @@ public sealed record EdidQuickInfo(
     bool HasCeaExtension,
     bool BasicAudio,
     IReadOnlyList<string> AudioFormats,
-    bool ChecksumValid)
+    bool ChecksumValid,
+    int Length = 128,
+    int ExtensionCount = 0,
+    bool HasHdmiVsdb = false,
+    int? NativeWidth = null,
+    int? NativeHeight = null,
+    double? NativePixelClockMHz = null)
 {
     /// <summary>What the monitor ANNOUNCES. It is not proof that speakers exist or work.</summary>
     public bool AnnouncesAudio => BasicAudio || AudioFormats.Count > 0;
@@ -49,7 +61,19 @@ public static class EdidQuickParser
             }
         }
 
+        // First detailed timing descriptor = preferred (native) mode; a pixel clock of 0 marks a display descriptor instead.
+        int? nativeWidth = null, nativeHeight = null;
+        double? nativeClock = null;
+        var clock = edid[54] | (edid[55] << 8);
+        if (clock != 0)
+        {
+            nativeClock = clock / 100.0;
+            nativeWidth = edid[56] | ((edid[58] & 0xF0) << 4);
+            nativeHeight = edid[59] | ((edid[61] & 0xF0) << 4);
+        }
+
         var hasCea = false;
+        var hasHdmiVsdb = false;
         var basicAudio = false;
         var formats = new List<string>();
         var extensions = edid[126];
@@ -90,6 +114,11 @@ public static class EdidQuickParser
                     break;
                 }
 
+                if (tag == 3 && len >= 3 && block[p + 1] == 0x03 && block[p + 2] == 0x0C && block[p + 3] == 0x00)
+                {
+                    hasHdmiVsdb = true;
+                }
+
                 if (tag == 1)
                 {
                     for (var s = p + 1; s + 2 <= p + len; s += 3)
@@ -107,7 +136,8 @@ public static class EdidQuickParser
             }
         }
 
-        return new EdidQuickInfo(manufacturer, product, name, hasCea, basicAudio, formats.Distinct().ToArray(), checksumOk);
+        return new EdidQuickInfo(manufacturer, product, name, hasCea, basicAudio, formats.Distinct().ToArray(), checksumOk,
+            edid.Length, extensions, hasHdmiVsdb, nativeWidth, nativeHeight, nativeClock);
     }
 
     private static bool BlockChecksumOk(ReadOnlySpan<byte> block)

@@ -121,8 +121,9 @@ public class RealtekDisplayPortQuickAnalyzerTests
         };
         var report = RealtekDisplayPortQuickAnalyzer.Analyze(withWu);
         var setup = Find(report, "audioCase.realtek.setupApiSections");
-        Assert.Single(setup.Evidence, e => e.Kind == EvidenceKind.Inference);
-        Assert.Equal(["1", "2"], new[] { setup.Detail.Args![1], setup.Detail.Args![0] }.Order().ToArray());
+        Assert.Single(setup.Evidence, e => e.Description.StartsWith("[Windows Update]", StringComparison.Ordinal));
+        Assert.Equal("2", setup.Detail.Args![0]); // operations
+        Assert.Equal("1", setup.Detail.Args![1]); // by Windows Update: only the one the log attributes to it
         Assert.Contains(report.Findings, f => f.FindingId == "audioCase.realtek.windowsUpdateHistory");
     }
 

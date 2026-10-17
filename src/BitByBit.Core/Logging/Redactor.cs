@@ -34,10 +34,14 @@ public static partial class Redactor
     [GeneratedRegex(@"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----")]
     private static partial Regex PemPrivateKeyRegex();
 
+    // C:\Users\<name>\... — the account name is personal; shared profiles (Public, Default) are kept.
+    [GeneratedRegex(@"(?i)(?<prefix>\b[A-Z]:\\Users\\)(?!(?:Public|Default|Default User|All Users)(?:\\|$))(?<name>[^\\/""'\r\n]+)")]
+    private static partial Regex UserProfilePathRegex();
+
     [GeneratedRegex(@"^(?<a>[0-9A-Fa-f]{2})[:-](?<b>[0-9A-Fa-f]{2})[:-](?<c>[0-9A-Fa-f]{2})[:-][0-9A-Fa-f]{2}[:-][0-9A-Fa-f]{2}[:-][0-9A-Fa-f]{2}$")]
     private static partial Regex MacRegex();
 
-    /// <summary>Redacts secrets and serial numbers from free text.</summary>
+    /// <summary>Redacts secrets, serial numbers and account names in user-profile paths from free text.</summary>
     public static string Redact(string? text)
     {
         if (string.IsNullOrEmpty(text))
@@ -51,6 +55,7 @@ public static partial class Redactor
         result = SecretPairRegex().Replace(result, m => m.Groups["key"].Value + m.Groups["sep"].Value + m.Groups["q"].Value + Mask + m.Groups["q"].Value);
         result = GitHubTokenRegex().Replace(result, Mask);
         result = SerialRegex().Replace(result, m => m.Groups["key"].Value + m.Groups["sep"].Value + Mask);
+        result = UserProfilePathRegex().Replace(result, m => m.Groups["prefix"].Value + "<user>");
         return result;
     }
 

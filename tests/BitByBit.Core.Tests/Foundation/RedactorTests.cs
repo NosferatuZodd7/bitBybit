@@ -62,4 +62,15 @@ public class RedactorTests
     {
         Assert.Equal(expected, Redactor.MaskMac(input));
     }
+
+    [Theory]
+    [InlineData(@"""C:\Users\Maria Silva\Desktop\bitBybit.exe"" --elevated", @"""C:\Users\<user>\Desktop\bitBybit.exe"" --elevated")]
+    [InlineData(@"d:\users\joao\Downloads\x.inf", @"d:\users\<user>\Downloads\x.inf")]
+    [InlineData(@"C:\Users\Public\Documents\a.txt", @"C:\Users\Public\Documents\a.txt")]
+    [InlineData(@"C:\Users\Default\NTUSER.DAT", @"C:\Users\Default\NTUSER.DAT")]
+    [InlineData(@"C:\Windows\INF\setupapi.dev.log", @"C:\Windows\INF\setupapi.dev.log")]
+    public void Redacts_account_names_in_profile_paths(string input, string expected)
+    {
+        Assert.Equal(expected, Redactor.Redact(input));
+    }
 }

@@ -119,4 +119,44 @@ public class EdidQuickParserTests
             _ = EdidQuickParser.TryParse(data);
         }
     }
+
+    [Fact]
+    public void Reads_native_mode_extension_count_and_hdmi_data_block()
+    {
+        var edid = BuildEdid("GSM", 0x5B00, "WIDE", cea: true, basicAudio: true, lpcmSad: true);
+        // Detailed timing descriptor 1 (offset 54): 185.58 MHz, 2560 x 1080.
+        edid[54] = 0x7E; edid[55] = 0x48;          // 18558 x 10 kHz
+        edid[56] = 0x00; edid[58] = 0xA0;          // h active 0xA00 = 2560
+        edid[59] = 0x38; edid[61] = 0x40;          // v active 0x438 = 1080
+        Checksum(edid, 0);
+        // HDMI vendor-specific data block in the CEA block, after the existing data blocks.
+        var b = 128;
+        var p = b + edid[b + 2];
+        edid[p] = (3 << 5) | 5; edid[p + 1] = 0x03; edid[p + 2] = 0x0C; edid[p + 3] = 0x00; edid[p + 4] = 0x10; edid[p + 5] = 0x00;
+        edid[b + 2] = (byte)(p + 6 - b);
+        Checksum(edid, b);
+
+        var info = EdidQuickParser.TryParse(edid)!;
+
+        Assert.True(info.ChecksumValid);
+        Assert.Equal(256, info.Length);
+        Assert.Equal(1, info.ExtensionCount);
+        Assert.True(info.HasHdmiVsdb);
+        Assert.Equal(2560, info.NativeWidth);
+        Assert.Equal(1080, info.NativeHeight);
+        Assert.Equal(185.58, info.NativePixelClockMHz!.Value, 2);
+    }
+
+    [Fact]
+    public void Base_block_only_has_no_cea_and_no_hdmi()
+    {
+        var info = EdidQuickParser.TryParse(BuildEdid("SAM", 0x1234, "Office", cea: false, basicAudio: false, lpcmSad: false))!;
+
+        Assert.Equal(128, info.Length);
+        Assert.Equal(0, info.ExtensionCount);
+        Assert.False(info.HasCeaExtension);
+        Assert.False(info.HasHdmiVsdb);
+        Assert.False(info.AnnouncesAudio);
+        Assert.Null(info.NativeWidth); // descriptor 1 of the fixture is not a timing
+    }
 }

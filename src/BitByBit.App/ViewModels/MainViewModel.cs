@@ -155,7 +155,8 @@ public sealed partial class MainViewModel : ObservableObject
         {
             var snapshot = _snapshot;
             var report = _report;
-            var basePath = await Task.Run(() => QuickExport.Write(snapshot, report, AppInfo.ReportsDirectory)).ConfigureAwait(true);
+            var changes = await ReportedChange.LoadAsync(AppPaths.Default, CancellationToken.None).ConfigureAwait(true);
+            var basePath = await Task.Run(() => QuickExport.Write(snapshot, report, AppInfo.ReportsDirectory, changes)).ConfigureAwait(true);
             LastExportPath = basePath;
             Status = Text.Get("app.status.exported", basePath);
         }

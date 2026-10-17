@@ -66,10 +66,11 @@ internal static class CliEntryPoint
             var collector = new QuickCollector();
             collector.Progress += area => Console.Error.WriteLine($"collecting {area}...");
             var snapshot = await collector.CollectAsync(version, CancellationToken.None).ConfigureAwait(false);
-            var report = RealtekDisplayPortQuickAnalyzer.Analyze(snapshot);
+            var report = QuickReportWriter.Redact(RealtekDisplayPortQuickAnalyzer.Analyze(snapshot));
+            var changes = await ReportedChange.LoadAsync(BitByBit.Core.Config.AppPaths.Default, CancellationToken.None).ConfigureAwait(false);
             var redacted = QuickReportWriter.Redact(snapshot, maskMac);
-            var json = QuickReportWriter.ToJson(redacted, report);
-            var text = QuickReportWriter.ToText(redacted, report, TextCatalog.Default);
+            var json = QuickReportWriter.ToJson(redacted, report, changes);
+            var text = QuickReportWriter.ToText(redacted, report, TextCatalog.Default, changes: changes);
 
             if (output is null)
             {

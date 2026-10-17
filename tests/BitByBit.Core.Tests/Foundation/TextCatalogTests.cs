@@ -55,4 +55,17 @@ public class TextCatalogTests
     {
         Assert.Equal((culture, module), TextCatalog.ParseResourceName(resource));
     }
+
+    [Fact]
+    public void Every_device_problem_code_has_a_portuguese_sentence()
+    {
+        foreach (var code in BitByBit.Core.Devices.DeviceProblemCodes.Known)
+        {
+            var text = BitByBit.Core.Devices.DeviceProblemCodes.Describe(code)!;
+            Assert.NotEqual(text.Fallback, TextCatalog.Default.Resolve(text));
+        }
+
+        Assert.Null(BitByBit.Core.Devices.DeviceProblemCodes.Describe(0));
+        Assert.Equal("devices.problem.unknown", BitByBit.Core.Devices.DeviceProblemCodes.Describe(999)!.Key);
+    }
 }

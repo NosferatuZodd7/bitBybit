@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using BitByBit.Core.Common;
+using BitByBit.Core.Devices;
 using BitByBit.Core.Diagnostics;
 using BitByBit.Core.Evidence;
 using BitByBit.Core.Logging;
@@ -9,11 +11,17 @@ namespace BitByBit.Core.QuickDiag;
 /// <summary>
 /// Read-only analysis of the "Realtek keeps reinstalling / DisplayPort audio disappears" case from a
 /// <see cref="QuickSnapshot"/> (and optionally the previous snapshot). It separates facts (what the OS reports now) from
-/// hypotheses (possible causes) and only PROPOSES actions — the preview never changes the system.
+/// hypotheses (possible causes) and only PROPOSES actions; executing them is up to the caller, after confirmation.
 /// </summary>
-public static class RealtekDisplayPortQuickAnalyzer
+public static partial class RealtekDisplayPortQuickAnalyzer
 {
     private const string Src = "bitBybit.quickdiag";
+
+    /// <summary>Pixel clock limit of single-link DVI / HDMI 1.x through passive DisplayPort dual-mode adapters (MHz).</summary>
+    private const double PassiveLinkClockLimitMHz = 165.0;
+
+    [GeneratedRegex(@"Driver Name:\s*(?<inf>[^\s]+)", RegexOptions.IgnoreCase)]
+    private static partial Regex DriverNameRegex();
 
     public static DiagnosticReport Analyze(QuickSnapshot snapshot, QuickSnapshot? previous = null)
     {
@@ -26,12 +34,12 @@ public static class RealtekDisplayPortQuickAnalyzer
         var displayEndpoints = snapshot.AudioEndpoints.Where(e => e.Flow == EndpointFlow.Render && e.IsDigitalDisplayAudio).ToArray();
         var dpMonitors = snapshot.Monitors.Where(m => m.IsDisplayPort || m.IsHdmi).ToArray();
 
-        AnalyzeRealtekCodec(findings, realtekCodecs);
+        AnalyzeRealtekCodec(findings, snapshot, realtekCodecs);
         AnalyzeRealtekComponents(findings, realtekComponents);
         AnalyzeInstallHistory(findings, snapshot);
         AnalyzeGpuAudio(findings, snapshot, gpuAudio);
-        AnalyzeMonitors(findings, dpMonitors, snapshot.Monitors);
-        AnalyzeDisplayEndpoints(findings, displayEndpoints, gpuAudio, dpMonitors);
+        AnalyzeMonitors(findings, dpMonitors, snapshot.Monitors, displayEndpoints);
+        AnalyzeDisplayEndpoints(findings, displayEndpoints, gpuAudio, dpMonitors, snapshot.Monitors);
         AnalyzeDefaultDevice(findings, snapshot, displayEndpoints);
         AnalyzeServices(findings, snapshot);
         if (previous is not null)
@@ -48,12 +56,29 @@ public static class RealtekDisplayPortQuickAnalyzer
         return new DiagnosticReport("audioCase.realtekDisplayPort.quick", snapshot.CollectedAt, machine, findings, []);
     }
 
-    private static void AnalyzeRealtekCodec(List<DiagnosticFinding> findings, DeviceSummary[] codecs)
+    private static void AnalyzeRealtekCodec(List<DiagnosticFinding> findings, QuickSnapshot snapshot, DeviceSummary[] codecs)
     {
         var present = codecs.Where(d => d.IsPresent != false).ToArray();
         if (present.Length > 0)
         {
+            var codec = present[0];
+            var policy = snapshot.InstallPolicy;
+            var listedId = codec.HardwareIds.FirstOrDefault(h =>
+                policy?.Entries.Any(e => string.Equals(e.HardwareId.Trim(), h, StringComparison.OrdinalIgnoreCase)) == true);
+            if (listedId is not null && policy is { PolicyEnabled: true })
+            {
+                AddRealtekBlockedFinding(findings, snapshot, codec, listedId);
+                return;
+            }
+
             var evidence = present.Select(DeviceFact).ToList();
+            if (listedId is not null)
+            {
+                evidence.Add(EvidenceItem.Fact("Registry:DeviceInstall\\Restrictions",
+                    $"The hardware id is listed in DenyDeviceIDs, but the policy switch DenyDeviceIDs is {policy?.DenyDeviceIdsFlag?.ToString(CultureInfo.InvariantCulture) ?? "absent"} (not 1), so the list is not enforced.",
+                    listedId));
+            }
+
             evidence.Add(EvidenceItem.Hypothesis(Src,
                 "The BIOS option that was changed may only disable the internal speaker/amplifier, or another component, not the HD Audio codec that Windows enumerates.",
                 Confidence.Medium));
@@ -69,9 +94,9 @@ public static class RealtekDisplayPortQuickAnalyzer
                     new ProposedAction("device.installPolicy.denyHardwareId",
                         T("quickdiag.action.blockRealtek.title", "Block driver installation for this exact Realtek device"),
                         T("quickdiag.action.blockRealtek.impact",
-                            "Prevents Windows from installing drivers for the exact Realtek hardware ID only (not NVIDIA/AMD/Intel display audio). The internal speaker and Realtek jacks will stop working. Reversible. Available in a later version after a driver backup."),
+                            "Prevents Windows from installing drivers for the exact Realtek hardware ID only (not NVIDIA/AMD/Intel display audio). The internal speaker and Realtek jacks will stop working. The current driver package is backed up first. Reversible in the bitBybit changes tab."),
                         RiskLevel.Medium,
-                        Parameters: new Dictionary<string, string> { ["hardwareId"] = MostSpecificId(present[0]), ["instanceId"] = present[0].InstanceId }),
+                        Parameters: new Dictionary<string, string> { ["hardwareId"] = MostSpecificId(codec), ["instanceId"] = codec.InstanceId }),
                 ]));
         }
         else if (codecs.Length > 0)
@@ -96,6 +121,65 @@ public static class RealtekDisplayPortQuickAnalyzer
                 [EvidenceItem.Observation(Src, "No device with a HDAUDIO/INTELAUDIO FUNC_01 VEN_10EC hardware id was reported.")],
                 []));
         }
+    }
+
+    /// <summary>The device-specific install policy covers the codec: report whether it is holding (refused installs, no driver).</summary>
+    private static void AddRealtekBlockedFinding(List<DiagnosticFinding> findings, QuickSnapshot snapshot, DeviceSummary codec, string listedId)
+    {
+        var refused = snapshot.SetupApiSections
+            .Where(s => IsRealtekSection(s) && SetupApiQuickParser.IsBlockedByPolicy(s))
+            .OrderByDescending(s => s.Start)
+            .ToArray();
+        var evidence = new List<EvidenceItem>
+        {
+            EvidenceItem.Fact("Registry:DeviceInstall\\Restrictions", "Device installation policy DenyDeviceIDs = 1 and this hardware id is in the deny list.", listedId),
+            DeviceFact(codec),
+        };
+        evidence.AddRange(refused.Take(5).Select(r => EvidenceItem.Fact("setupapi.dev.log",
+            "Install refused by the device installation policy (0xE0000248): " + r.Header, r.ExitStatus, r.Start)));
+
+        if (HasInstalledDriver(codec))
+        {
+            evidence.Add(EvidenceItem.Inference(Src,
+                "The policy only prevents new installations; the driver that was already installed keeps working until the device is uninstalled.",
+                Confidence.High));
+            findings.Add(new DiagnosticFinding(
+                "audioCase.realtek.blockedButInstalled",
+                FindingSeverity.Warning,
+                T("quickdiag.realtek.blockedInstalled.title", "The Realtek block is active, but the device still has a driver"),
+                T("quickdiag.realtek.blockedInstalled.detail",
+                    "Windows is no longer allowed to install drivers for the Realtek codec, but the driver installed before the block is still in use. Uninstall the device (the driver package stays in the Driver Store) to finish."),
+                evidence,
+                [
+                    new ProposedAction("device.installPolicy.denyHardwareId",
+                        T("quickdiag.action.uninstallRealtek.title", "Uninstall the Realtek device (the block is already active)"),
+                        T("quickdiag.action.uninstallRealtek.impact",
+                            "Removes the Realtek device instance so its driver stops; thanks to the block Windows does not reinstall it. The driver package is backed up and kept in the Driver Store. Reversible in the bitBybit changes tab; may need a restart."),
+                        RiskLevel.Medium, RequiresReboot: false, MayInterruptAudio: true,
+                        Parameters: new Dictionary<string, string> { ["hardwareId"] = listedId, ["instanceId"] = codec.InstanceId }),
+                ]));
+            return;
+        }
+
+        if (refused.Length > 0)
+        {
+            evidence.Add(EvidenceItem.Inference(Src,
+                "The block is working: Windows tried to install a driver for the Realtek codec and the policy refused it.",
+                Confidence.High));
+        }
+
+        findings.Add(new DiagnosticFinding(
+            "audioCase.realtek.blockedByPolicy",
+            FindingSeverity.Info,
+            T("quickdiag.realtek.blocked.title", "Realtek reinstallation is blocked"),
+            refused.Length > 0
+                ? T("quickdiag.realtek.blocked.detailRefused",
+                    "Windows still sees the Realtek codec, but the device installation policy stops a driver from being installed on it: {0} attempt(s) were refused, the last at {1}. The internal speaker and the Realtek jacks stay off while the block is active; you can undo it in the bitBybit changes tab.",
+                    refused.Length, FormatDate(refused[0].Start))
+                : T("quickdiag.realtek.blocked.detail",
+                    "Windows still sees the Realtek codec, but the device installation policy stops a driver from being installed on it. The internal speaker and the Realtek jacks stay off while the block is active; you can undo it in the bitBybit changes tab."),
+            evidence,
+            []));
     }
 
     private static void AnalyzeRealtekComponents(List<DiagnosticFinding> findings, DeviceSummary[] components)
@@ -151,28 +235,48 @@ public static class RealtekDisplayPortQuickAnalyzer
         var evidence = new List<EvidenceItem>();
         foreach (var s in sections.Take(20))
         {
-            evidence.Add(EvidenceItem.Fact("setupapi.dev.log", s.Header, s.ExitStatus, s.Start));
-            if (s.Command is not null)
+            var origin = SetupApiQuickParser.ClassifyOrigin(s);
+            evidence.Add(EvidenceItem.Fact("setupapi.dev.log", $"[{OriginLabel(origin)}] {s.Header}", s.ExitStatus, s.Start));
+            if (s.Command is not null && origin != InstallOrigin.DeviceManager)
             {
                 evidence.Add(EvidenceItem.Fact("setupapi.dev.log", "Invoking command: " + Redactor.Redact(s.Command), null, s.Start));
             }
-
-            if (SetupApiQuickParser.LooksLikeWindowsUpdate(s))
-            {
-                evidence.Add(EvidenceItem.Inference(Src, "This operation was started by Windows Update (service command line or package under SoftwareDistribution).", Confidence.High, s.Header));
-            }
         }
 
-        var wuCount = sections.Count(SetupApiQuickParser.LooksLikeWindowsUpdate);
+        var count = (InstallOrigin o) => sections.Count(s => SetupApiQuickParser.ClassifyOrigin(s) == o);
+        var refused = sections.Count(SetupApiQuickParser.IsBlockedByPolicy);
+        if (UninstallDidNotStick(sections))
+        {
+            evidence.Add(EvidenceItem.Inference(Src,
+                "Uninstalling in Device Manager did not stick: after an uninstall, a driver was installed again for the same device, by Plug and Play (from the Driver Store) or by Windows Update.",
+                Confidence.High));
+        }
+
         findings.Add(new DiagnosticFinding(
             "audioCase.realtek.setupApiSections",
             FindingSeverity.Warning,
             T("quickdiag.setupapi.realtek.title", "Realtek driver operations in the installation log"),
-            T("quickdiag.setupapi.realtek.detail",
-                "setupapi.dev.log records {0} Realtek driver operation(s); {1} of them were started by Windows Update. Most recent: {2}.",
-                sections.Length, wuCount, FormatDate(sections[0].Start)),
+            T("quickdiag.setupapi.realtek.origins",
+                "setupapi.dev.log records {0} Realtek driver operation(s): {1} by Windows Update, {2} in Device Manager, {3} automatic (Plug and Play), {4} by bitBybit; {5} refused by the device installation policy. Most recent: {6}.",
+                sections.Length, count(InstallOrigin.WindowsUpdate), count(InstallOrigin.DeviceManager), count(InstallOrigin.PlugAndPlay),
+                count(InstallOrigin.BitByBit), refused, FormatDate(sections[0].Start)),
             evidence,
             []));
+    }
+
+    /// <summary>A Device Manager uninstall followed later by a successful automatic or Windows Update install of a Realtek driver.</summary>
+    private static bool UninstallDidNotStick(IReadOnlyList<SetupApiSectionSummary> sections)
+    {
+        var uninstalls = sections
+            .Where(s => s.Start is not null && s.Header.Contains("Device Uninstall", StringComparison.OrdinalIgnoreCase) &&
+                        SetupApiQuickParser.ClassifyOrigin(s) == InstallOrigin.DeviceManager)
+            .Select(s => s.Start!.Value)
+            .ToArray();
+        return uninstalls.Length > 0 && sections.Any(s =>
+            s.Start is { } at && uninstalls.Any(u => at > u) &&
+            s.Header.StartsWith("Device Install", StringComparison.OrdinalIgnoreCase) &&
+            (s.ExitStatus?.Contains("SUCCESS", StringComparison.OrdinalIgnoreCase) ?? false) &&
+            SetupApiQuickParser.ClassifyOrigin(s) is InstallOrigin.PlugAndPlay or InstallOrigin.WindowsUpdate);
     }
 
     private static void AnalyzeGpuAudio(List<DiagnosticFinding> findings, QuickSnapshot snapshot, DeviceSummary[] gpuAudio)
@@ -190,19 +294,25 @@ public static class RealtekDisplayPortQuickAnalyzer
                 [
                     new ProposedAction("device.restart",
                         T("quickdiag.action.restartGpuAudio.title", "Restart the GPU audio device"),
-                        T("quickdiag.action.restartGpuAudio.impact", "Briefly interrupts HDMI/DisplayPort audio. Available in a later version."),
+                        T("quickdiag.action.restartGpuAudio.impact", "Briefly interrupts HDMI/DisplayPort audio. Requires administrator rights."),
                         RiskLevel.Medium, MayInterruptAudio: true,
                         Parameters: new Dictionary<string, string> { ["instanceId"] = withProblem[0].InstanceId }),
                 ]));
         }
         else if (present.Length > 0)
         {
+            var evidence = present.Select(DeviceFact).ToList();
+            foreach (var d in present)
+            {
+                evidence.AddRange(GpuAudioDriverHistory(snapshot, d));
+            }
+
             findings.Add(new DiagnosticFinding(
                 "audioCase.gpuAudio.present",
                 FindingSeverity.Info,
                 T("quickdiag.gpuAudio.present.title", "GPU HDMI/DisplayPort audio device is present"),
                 T("quickdiag.gpuAudio.present.detail", "{0} GPU display-audio function(s) are present and report no problem.", present.Length),
-                present.Select(DeviceFact).ToArray(),
+                evidence,
                 []));
         }
         else
@@ -232,7 +342,7 @@ public static class RealtekDisplayPortQuickAnalyzer
         }
     }
 
-    private static void AnalyzeMonitors(List<DiagnosticFinding> findings, MonitorSummary[] digital, IReadOnlyList<MonitorSummary> all)
+    private static void AnalyzeMonitors(List<DiagnosticFinding> findings, MonitorSummary[] digital, IReadOnlyList<MonitorSummary> all, AudioEndpointSummary[] displayEndpoints)
     {
         if (all.Count == 0)
         {
@@ -252,14 +362,7 @@ public static class RealtekDisplayPortQuickAnalyzer
             {
                 EvidenceItem.Fact("CCD:DisplayConfigGetDeviceInfo", $"Monitor '{m.FriendlyName}' connected via {m.OutputTechnologyName}", m.OutputTechnology?.ToString(CultureInfo.InvariantCulture)),
             };
-            if (m.EdidAnnouncesAudio is { } announces)
-            {
-                evidence.Add(EvidenceItem.Fact("EDID", announces ? "EDID announces audio support" : "EDID does not announce audio support", m.EdidAudioFormats));
-            }
-            else
-            {
-                evidence.Add(EvidenceItem.Observation("EDID", "EDID could not be read."));
-            }
+            evidence.AddRange(EdidEvidence(m));
 
             var announcesAudio = m.EdidAnnouncesAudio == true;
             findings.Add(new DiagnosticFinding(
@@ -274,9 +377,104 @@ public static class RealtekDisplayPortQuickAnalyzer
                 evidence,
                 []));
         }
+
+        foreach (var m in all.Where(m => m.IsDvi))
+        {
+            AddDviLinkFinding(findings, m, displayEndpoints);
+        }
     }
 
-    private static void AnalyzeDisplayEndpoints(List<DiagnosticFinding> findings, AudioEndpointSummary[] endpoints, DeviceSummary[] gpuAudio, MonitorSummary[] digitalMonitors)
+    /// <summary>
+    /// The active link runs as DVI: the GPU sends no audio over it. Typical with passive DisplayPort→HDMI/DVI adapters and
+    /// cables, or when the sink is detected as DVI at start-up.
+    /// </summary>
+    private static void AddDviLinkFinding(List<DiagnosticFinding> findings, MonitorSummary m, AudioEndpointSummary[] displayEndpoints)
+    {
+        var evidence = new List<EvidenceItem>
+        {
+            EvidenceItem.Fact("CCD:DisplayConfigGetDeviceInfo", $"Monitor '{m.FriendlyName}' is driven over a DVI link (DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DVI)", m.OutputTechnology?.ToString(CultureInfo.InvariantCulture)),
+            EvidenceItem.Fact("CCD:QueryDisplayConfig", "Current mode", FormatMode(m.Width, m.Height, m.RefreshHz)),
+        };
+        evidence.AddRange(EdidEvidence(m));
+
+        if (m.EdidHasHdmiVsdb == true)
+        {
+            evidence.Add(EvidenceItem.Inference(Src,
+                "The monitor declares HDMI capability, yet the link runs as DVI: the cable/adapter or the link detection limits the connection, not the monitor.",
+                Confidence.High));
+        }
+        else if (m.EdidHasCeaExtension == false)
+        {
+            evidence.Add(EvidenceItem.Inference(Src,
+                "On this connection the monitor presents itself without CEA-861 capabilities (no audio, no HDMI), which makes the graphics driver use DVI mode.",
+                Confidence.Medium));
+        }
+
+        if (m.IsBelowNativeMode && m.EdidNativePixelClockMHz > PassiveLinkClockLimitMHz)
+        {
+            evidence.Add(EvidenceItem.Inference(Src,
+                $"The monitor's preferred mode needs {m.EdidNativePixelClockMHz:0.#} MHz but the link runs at a lower mode; this matches a link limited to ~{PassiveLinkClockLimitMHz:0} MHz (single-link DVI / HDMI through a passive DisplayPort adapter).",
+                Confidence.Medium));
+        }
+
+        var liveEndpoints = displayEndpoints.Where(e => e.State is not EndpointState.NotPresent).ToArray();
+        foreach (var e in liveEndpoints.Take(3))
+        {
+            evidence.Add(EvidenceItem.Observation("CoreAudio:EnumAudioEndpoints", $"The graphics card's display audio device '{e.Name}' exists (state {e.State}).", e.AdapterName));
+        }
+
+        if (liveEndpoints.Length > 0)
+        {
+            evidence.Add(EvidenceItem.Inference(Src,
+                "The display audio device exists, so the missing piece is the link mode (DVI carries no audio), not the audio driver.",
+                Confidence.Medium));
+        }
+
+        evidence.Add(EvidenceItem.Hypothesis(Src,
+            "A passive DisplayPort→HDMI/DVI adapter or cable sits between the computer and the monitor, and the graphics driver detects the monitor as DVI — at least in some sessions (for example when the monitor is off or still waking up at start-up), which would also explain sound that disappears after a restart.",
+            Confidence.Medium));
+
+        findings.Add(new DiagnosticFinding(
+            "audioCase.monitor.dviMode",
+            FindingSeverity.Warning,
+            T("quickdiag.monitor.dvi.title", "Monitor '{0}' is connected in DVI mode, which carries no sound", m.FriendlyName ?? "?"),
+            T("quickdiag.monitor.dvi.detail",
+                "Windows reports that the link to this monitor works as DVI. In DVI mode the graphics card sends no audio, so the HDMI/DisplayPort sound output stays 'unplugged'. This typically happens with passive DisplayPort→HDMI/DVI cables or adapters, or when the link is detected as DVI at start-up."),
+            evidence,
+            [
+                new ProposedAction("guidance.displayLink",
+                    T("quickdiag.action.displayLink.title", "Test the monitor connection"),
+                    T("quickdiag.action.displayLink.impact",
+                        "With the computer on, switch the monitor off and on again (or unplug and plug in the video cable) and check whether the HDMI/DisplayPort sound output appears. Lasting fix: a DisplayPort-to-DisplayPort cable (if the monitor has a DisplayPort input) or an active DisplayPort→HDMI adapter. No setting is changed."),
+                    RiskLevel.None),
+            ]));
+    }
+
+    private static IEnumerable<EvidenceItem> EdidEvidence(MonitorSummary m)
+    {
+        if (m.EdidAnnouncesAudio is null)
+        {
+            yield return EvidenceItem.Observation("EDID", "EDID could not be read.");
+            yield break;
+        }
+
+        yield return EvidenceItem.Fact("EDID", m.EdidAnnouncesAudio == true ? "EDID announces audio support" : "EDID does not announce audio support", m.EdidAudioFormats);
+        if (m.EdidHasCeaExtension is { } cea)
+        {
+            yield return EvidenceItem.Fact("EDID", cea
+                ? (m.EdidHasHdmiVsdb == true ? "EDID has a CEA-861 extension with an HDMI data block" : "EDID has a CEA-861 extension without an HDMI data block")
+                : "EDID has no CEA-861 extension (base block only)",
+                m.EdidLength?.ToString(CultureInfo.InvariantCulture) + " bytes");
+        }
+
+        if (m.EdidNativeWidth is not null)
+        {
+            yield return EvidenceItem.Fact("EDID", "Preferred (native) mode",
+                $"{m.EdidNativeWidth}×{m.EdidNativeHeight}, {m.EdidNativePixelClockMHz:0.##} MHz");
+        }
+    }
+
+    private static void AnalyzeDisplayEndpoints(List<DiagnosticFinding> findings, AudioEndpointSummary[] endpoints, DeviceSummary[] gpuAudio, MonitorSummary[] digitalMonitors, IReadOnlyList<MonitorSummary> allMonitors)
     {
         if (endpoints.Length == 0)
         {
@@ -296,7 +494,25 @@ public static class RealtekDisplayPortQuickAnalyzer
             return;
         }
 
-        foreach (var e in endpoints)
+        // Endpoints that are not present while another display endpoint exists are left over from earlier drivers or
+        // devices (e.g. the manufacturer driver was replaced, a wireless display adapter): history, not the cause.
+        var live = endpoints.Where(e => e.State != EndpointState.NotPresent).ToArray();
+        var stale = endpoints.Where(e => e.State == EndpointState.NotPresent &&
+                                         (live.Length > 0 || e.AdapterName?.Contains("WiDi", StringComparison.OrdinalIgnoreCase) == true)).ToArray();
+        if (stale.Length > 0)
+        {
+            findings.Add(new DiagnosticFinding(
+                "audioCase.endpoint.stale",
+                FindingSeverity.Info,
+                T("quickdiag.endpoint.stale.title", "{0} old display playback device(s) (not present)", stale.Length),
+                T("quickdiag.endpoint.stale.detail",
+                    "Windows keeps these devices from earlier configurations (another driver, a wireless display adapter or a previous monitor). They are not present and are not the cause of the problem."),
+                stale.Select(e => EvidenceItem.Observation("CoreAudio:IMMDevice.GetState", $"'{e.Name}': State={e.State}, adapter={e.AdapterName}", ((int)e.State).ToString(CultureInfo.InvariantCulture))).ToArray(),
+                []));
+        }
+
+        var dvi = allMonitors.FirstOrDefault(m => m.IsDvi);
+        foreach (var e in endpoints.Except(stale))
         {
             var (id, severity, title, detail) = e.State switch
             {
@@ -320,7 +536,11 @@ public static class RealtekDisplayPortQuickAnalyzer
             {
                 EvidenceItem.Observation("CoreAudio:IMMDevice.GetState", $"State={e.State}, adapter={e.AdapterName}", ((int)e.State).ToString(CultureInfo.InvariantCulture)),
             };
-            if (e.State == EndpointState.Unplugged && digitalMonitors.Length == 0)
+            if (e.State == EndpointState.Unplugged && dvi is not null)
+            {
+                evidence.Add(EvidenceItem.Inference(Src, $"The active monitor '{dvi.FriendlyName}' is connected over a DVI link, which carries no audio: this explains the 'unplugged' state.", Confidence.High));
+            }
+            else if (e.State == EndpointState.Unplugged && digitalMonitors.Length == 0)
             {
                 evidence.Add(EvidenceItem.Inference(Src, "No active HDMI/DisplayPort monitor path was reported, consistent with the 'unplugged' state.", Confidence.Medium));
             }
@@ -330,7 +550,7 @@ public static class RealtekDisplayPortQuickAnalyzer
             {
                 actions.Add(new ProposedAction("audio.enableEndpoint",
                     T("quickdiag.action.enableEndpoint.title", "Enable this playback device"),
-                    T("quickdiag.action.enableEndpoint.impact", "Low risk and reversible. Available in a later version; meanwhile use Settings › System › Sound."),
+                    T("quickdiag.action.enableEndpoint.impact", "Low risk and reversible in the bitBybit changes tab. Uses an undocumented Windows interface."),
                     RiskLevel.Low,
                     Parameters: new Dictionary<string, string> { ["endpointId"] = e.Id }));
             }
@@ -362,7 +582,7 @@ public static class RealtekDisplayPortQuickAnalyzer
             [
                 new ProposedAction("audio.setDefaultEndpoint",
                     T("quickdiag.action.setDefault.title", "Set '{0}' as the default device", activeDisplay.Name ?? activeDisplay.Id),
-                    T("quickdiag.action.setDefault.impact", "Low risk and reversible; some open applications keep using the previous device until restarted. Available in a later version; meanwhile use Settings › System › Sound."),
+                    T("quickdiag.action.setDefault.impact", "Low risk and reversible in the bitBybit changes tab; some open applications keep using the previous device until restarted."),
                     RiskLevel.Low,
                     Parameters: new Dictionary<string, string> { ["endpointId"] = activeDisplay.Id }),
             ]));
@@ -484,7 +704,7 @@ public static class RealtekDisplayPortQuickAnalyzer
         {
             if (before.TryGetValue(now.InstanceId, out var was) && was.Driver?.Version != now.Driver?.Version && (was.Driver is not null || now.Driver is not null))
             {
-                evidence.Add(EvidenceItem.Observation("WMI:Win32_PnPSignedDriver", $"Driver of '{now.Name}' changed: {was.Driver?.Version ?? "-"} → {now.Driver?.Version ?? "-"} ({now.Driver?.Provider})."));
+                evidence.Add(EvidenceItem.Observation("WMI:Win32_PnPSignedDriver", $"Driver of '{now.Name}' changed: {DriverLabel(was)} → {DriverLabel(now)}."));
                 changes++;
             }
         }
@@ -506,12 +726,66 @@ public static class RealtekDisplayPortQuickAnalyzer
 
     private static EvidenceItem DeviceFact(DeviceSummary d)
     {
-        var driver = d.Driver is null ? "no driver data" : $"driver {d.Driver.Version} ({d.Driver.Provider}, {d.Driver.InfName})";
         var presence = d.IsPresent switch { true => "present", false => "not present", null => "presence unknown" };
         return EvidenceItem.Fact("PnP/WMI",
-            $"{d.Name}: {presence}, status {d.Status ?? "?"}, problem code {d.ProblemCode?.ToString(CultureInfo.InvariantCulture) ?? "-"}, {driver}",
+            $"{d.Name}: {presence}, status {d.Status ?? "?"}, {DeviceProblemCodes.EnglishSummary(d.ProblemCode)}, {DriverLabel(d)}",
             Redactor.RedactInstanceId(d.InstanceId));
     }
+
+    private static bool HasInstalledDriver(DeviceSummary d) =>
+        d.Driver is { } driver && (!string.IsNullOrWhiteSpace(driver.Version) || !string.IsNullOrWhiteSpace(driver.InfName));
+
+    private static string DriverLabel(DeviceSummary d) =>
+        HasInstalledDriver(d) ? $"driver {d.Driver!.Version} ({d.Driver.Provider}, {d.Driver.InfName})" : "no driver installed";
+
+    /// <summary>Generic-driver use and the driver changes recorded for a GPU audio function (setupapi + Kernel-PnP events).</summary>
+    private static IEnumerable<EvidenceItem> GpuAudioDriverHistory(QuickSnapshot snapshot, DeviceSummary device)
+    {
+        if (string.Equals(device.Driver?.InfName, "hdaudio.inf", StringComparison.OrdinalIgnoreCase))
+        {
+            yield return EvidenceItem.Observation("WMI:Win32_PnPSignedDriver",
+                "The display audio function uses Windows' generic HD Audio driver (hdaudio.inf), not the graphics manufacturer's audio driver.",
+                device.Driver?.Version);
+        }
+
+        var manual = snapshot.SetupApiSections
+            .Where(s => s.Header.Contains(device.InstanceId, StringComparison.OrdinalIgnoreCase) && SetupApiQuickParser.ClassifyOrigin(s) == InstallOrigin.DeviceManager)
+            .OrderByDescending(s => s.Start)
+            .ToArray();
+        if (manual.Length > 0)
+        {
+            yield return EvidenceItem.Fact("setupapi.dev.log",
+                $"{manual.Length} driver operation(s) on this device were done in Device Manager; the last: {manual[0].Header}", manual[0].ExitStatus, manual[0].Start);
+        }
+
+        var drivers = new List<(DateTimeOffset At, string Inf)>();
+        foreach (var e in snapshot.PnpEvents.Where(e => e.Time is not null && e.Message.Contains(device.InstanceId, StringComparison.OrdinalIgnoreCase)).OrderBy(e => e.Time))
+        {
+            var match = DriverNameRegex().Match(e.Message);
+            if (match.Success && (drivers.Count == 0 || !string.Equals(drivers[^1].Inf, match.Groups["inf"].Value, StringComparison.OrdinalIgnoreCase)))
+            {
+                drivers.Add((e.Time!.Value, match.Groups["inf"].Value));
+            }
+        }
+
+        if (drivers.Count > 1)
+        {
+            yield return EvidenceItem.Fact("Kernel-PnP",
+                "Driver changes recorded for this device: " + string.Join(" → ", drivers.TakeLast(6).Select(d => $"{d.Inf} ({FormatDate(d.At)})")));
+        }
+    }
+
+    private static string OriginLabel(InstallOrigin origin) => origin switch
+    {
+        InstallOrigin.WindowsUpdate => "Windows Update",
+        InstallOrigin.DeviceManager => "Device Manager",
+        InstallOrigin.PlugAndPlay => "Plug and Play",
+        InstallOrigin.BitByBit => "bitBybit",
+        _ => "other",
+    };
+
+    private static string FormatMode(int? width, int? height, double? refresh) =>
+        width is null ? "?" : $"{width}×{height} @ {refresh?.ToString("0.##", CultureInfo.InvariantCulture) ?? "?"} Hz";
 
     private static string MostSpecificId(DeviceSummary d) =>
         d.HardwareIds.Where(HardwareIdInfo.IsRealtekCodec).OrderByDescending(h => h.Length).FirstOrDefault() ?? d.InstanceId;

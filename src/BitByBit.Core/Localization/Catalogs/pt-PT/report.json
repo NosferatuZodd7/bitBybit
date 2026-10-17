@@ -1,5 +1,5 @@
 {
-  "report.title": "bitBybit — relatório de diagnóstico (só leitura)",
+  "report.title": "bitBybit — relatório de diagnóstico",
   "report.generated": "Gerado: {0} · bitBybit {1}",
   "report.machine": "Computador: {0}",
   "report.elevation": "Executado como administrador: {0}",
@@ -15,9 +15,20 @@
   "report.notPresent": "não presente",
   "report.problemCode": "código de problema",
   "report.issues": "Informação que não foi possível recolher",
-  "report.footer": "Este relatório foi gerado em modo só de leitura: o bitBybit não alterou nenhuma definição do sistema.",
+  "report.footer": "A criação deste relatório não altera o sistema.",
   "report.severity.critical": "CRÍTICO",
   "report.severity.problem": "PROBLEMA",
   "report.severity.warning": "AVISO",
-  "report.severity.info": "INFO"
+  "report.severity.info": "INFO",
+  "report.changes": "Alterações feitas pelo bitBybit",
+  "report.changes.none": "Nenhuma alteração registada.",
+  "report.changes.scope.user": "utilizador",
+  "report.changes.scope.machine": "computador",
+  "report.noDriver": "sem controlador",
+  "report.edidNoCea": "EDID sem extensão CEA-861 ({0} bytes)",
+  "report.edidHdmi": "declara HDMI",
+  "report.edidNative": "modo nativo {0}",
+  "report.policy": "Política de bloqueio de instalação de dispositivos",
+  "report.policy.none": "não configurada",
+  "report.policy.state": "DenyDeviceIDs = {0}; IDs bloqueados: {1}"
 }

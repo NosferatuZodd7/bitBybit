@@ -50,4 +50,26 @@ public class SetupApiQuickParserTests
         Assert.Empty(SetupApiQuickParser.Parse(new StringReader(string.Empty), _ => true));
         Assert.Empty(SetupApiQuickParser.Parse(new StringReader("<<<  [Exit status: SUCCESS]\nrandom\n>>> nope"), _ => true));
     }
+
+    [Theory]
+    [InlineData(@"Device Install (Install Windows Update driver) - hdaudio\func_01&ven_10ec", null, InstallOrigin.WindowsUpdate)]
+    [InlineData(@"Device Install (Hardware initiated) - HDAUDIO\FUNC_01", @"""C:\Windows\system32\wuauclt.exe"" /UpdateDeploymentProvider UpdateDeploymentProvider.dll", InstallOrigin.WindowsUpdate)]
+    [InlineData(@"Device Uninstall (Device Manager) - HDAUDIO\FUNC_01", @"""C:\Windows\system32\mmc.exe"" C:\Windows\system32\devmgmt.msc", InstallOrigin.DeviceManager)]
+    [InlineData(@"Device Install (DiShowUpdateDevice) - HDAUDIO\FUNC_01", null, InstallOrigin.DeviceManager)]
+    [InlineData(@"Driver Rollback (DiRollbackDriver) - HDAUDIO\FUNC_01", null, InstallOrigin.DeviceManager)]
+    [InlineData(@"Device Install (Hardware initiated) - HDAUDIO\FUNC_01", null, InstallOrigin.PlugAndPlay)]
+    [InlineData(@"Uninstall device subtree (DiUninstallDevice) - HDAUDIO\FUNC_01", @"""D:\Tools\bitBybit.exe"" --elevated block-driver --result 0", InstallOrigin.BitByBit)]
+    [InlineData(@"Device Install (DiInstallDriver) - C:\Realtek\hdxrt.inf", @"""C:\Realtek\Setup.exe""", InstallOrigin.Other)]
+    public void Classifies_who_started_an_operation_from_the_log_line(string header, string? command, InstallOrigin expected)
+    {
+        Assert.Equal(expected, SetupApiQuickParser.ClassifyOrigin(new SetupApiSectionSummary { Header = header, Command = command }));
+    }
+
+    [Fact]
+    public void Recognises_installs_refused_by_policy()
+    {
+        Assert.True(SetupApiQuickParser.IsBlockedByPolicy(new SetupApiSectionSummary { Header = "x", ExitStatus = "FAILURE(0xe0000248)" }));
+        Assert.False(SetupApiQuickParser.IsBlockedByPolicy(new SetupApiSectionSummary { Header = "x", ExitStatus = "FAILURE(0x000004c7)" }));
+        Assert.False(SetupApiQuickParser.IsBlockedByPolicy(new SetupApiSectionSummary { Header = "x" }));
+    }
 }

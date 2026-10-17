@@ -74,8 +74,10 @@ public sealed class QuickCollector
         var wu = Task.Run(() => Run("windowsUpdate", CollectWindowsUpdateHistory, (IReadOnlyList<WindowsUpdateEntry>)[]), cancellationToken);
         var setupApi = Task.Run(() => Run("setupapi", () => CollectSetupApi(issues), (IReadOnlyList<SetupApiSectionSummary>)[]), cancellationToken);
         var events = Task.Run(() => Run("pnpEvents", () => CollectPnpEvents(issues), (IReadOnlyList<PnpEventSummary>)[]), cancellationToken);
+        // Read-only: HKLM\SOFTWARE\Policies is readable by standard users.
+        var policy = Task.Run(() => Run("installPolicy", () => (BitByBit.Core.Drivers.DeviceInstallRestrictionsState?)Drivers.DeviceInstallPolicyStore.Read(), null), cancellationToken);
 
-        await Task.WhenAll(system, devices, audio, monitors, gpus, network, services, wu, setupApi, events).ConfigureAwait(false);
+        await Task.WhenAll(system, devices, audio, monitors, gpus, network, services, wu, setupApi, events, policy).ConfigureAwait(false);
         _logger.LogInformation("Snapshot collected in {Elapsed} ms with {IssueCount} issue(s)", started.ElapsedMilliseconds, issues.Count);
 
         return new QuickSnapshot
@@ -92,6 +94,7 @@ public sealed class QuickCollector
             WindowsUpdateHistory = wu.Result,
             SetupApiSections = setupApi.Result,
             PnpEvents = events.Result,
+            InstallPolicy = policy.Result,
             Issues = issues.ToArray(),
         };
     }

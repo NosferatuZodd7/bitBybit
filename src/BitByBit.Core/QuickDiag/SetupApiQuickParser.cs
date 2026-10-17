@@ -3,6 +3,20 @@ using System.Text.RegularExpressions;
 
 namespace BitByBit.Core.QuickDiag;
 
+/// <summary>Who started a driver operation recorded in setupapi.dev.log.</summary>
+public enum InstallOrigin
+{
+    Other = 0,
+    /// <summary>Windows Update delivered the driver (section type, deployment handler or SoftwareDistribution package).</summary>
+    WindowsUpdate = 1,
+    /// <summary>Someone used Device Manager (update, roll back, uninstall).</summary>
+    DeviceManager = 2,
+    /// <summary>Plug and Play installed a driver when the device appeared (from the Driver Store).</summary>
+    PlugAndPlay = 3,
+    /// <summary>bitBybit's elevated helper.</summary>
+    BitByBit = 4,
+}
+
 /// <summary>
 /// Streaming reader of setupapi.dev.log that keeps only sections matching a predicate (e.g. Realtek or GPU audio).
 /// Tolerates truncated sections and unknown lines. The Drivers module provides the full parser and classifier.
@@ -136,13 +150,55 @@ public static partial class SetupApiQuickParser
         sectionText.Contains("intcdaud", StringComparison.OrdinalIgnoreCase) ||
         sectionText.Contains("atihdw", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>True when the section was started by Windows Update (service command line or package under SoftwareDistribution).</summary>
+    /// <summary>
+    /// True when the log itself shows the section was started by Windows Update: the "Install Windows Update driver"
+    /// section type, the Windows Update deployment handler (<c>wuauclt.exe /UpdateDeploymentProvider</c>), the update
+    /// services, or a package under SoftwareDistribution.
+    /// </summary>
     public static bool LooksLikeWindowsUpdate(SetupApiSectionSummary section) =>
-        (section.Command?.Contains("wuauserv", StringComparison.OrdinalIgnoreCase) ?? false) ||
-        (section.Command?.Contains("UsoSvc", StringComparison.OrdinalIgnoreCase) ?? false) ||
-        (section.Command?.Contains("MoUsoCoreWorker", StringComparison.OrdinalIgnoreCase) ?? false) ||
+        section.Header.Contains("(Install Windows Update driver)", StringComparison.OrdinalIgnoreCase) ||
+        CommandMentions(section, "wuauclt") ||
+        CommandMentions(section, "UpdateDeploymentProvider") ||
+        CommandMentions(section, "wuauserv") ||
+        CommandMentions(section, "UsoSvc") ||
+        CommandMentions(section, "MoUsoCoreWorker") ||
         section.Header.Contains(@"\SoftwareDistribution\", StringComparison.OrdinalIgnoreCase) ||
         section.InfPaths.Any(p => p.Contains(@"\SoftwareDistribution\", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Who started a logged driver operation, judged only from what the log line says.</summary>
+    public static InstallOrigin ClassifyOrigin(SetupApiSectionSummary section)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+        if (LooksLikeWindowsUpdate(section))
+        {
+            return InstallOrigin.WindowsUpdate;
+        }
+
+        if ((CommandMentions(section, "bitBybit.exe") && CommandMentions(section, "--elevated")) ||
+            CommandMentions(section, @"\bitBybit\driver-backups\"))
+        {
+            return InstallOrigin.BitByBit;
+        }
+
+        if (CommandMentions(section, "devmgmt.msc") || CommandMentions(section, "mmc.exe") ||
+            section.Header.Contains("(Device Manager)", StringComparison.OrdinalIgnoreCase) ||
+            section.Header.Contains("(DiShowUpdateDevice)", StringComparison.OrdinalIgnoreCase) ||
+            section.Header.Contains("(DiRollbackDriver)", StringComparison.OrdinalIgnoreCase))
+        {
+            return InstallOrigin.DeviceManager;
+        }
+
+        return section.Header.Contains("(Hardware initiated)", StringComparison.OrdinalIgnoreCase)
+            ? InstallOrigin.PlugAndPlay
+            : InstallOrigin.Other;
+    }
+
+    /// <summary>The install was refused by a device installation restriction policy (ERROR_DEVICE_INSTALLATION_FORBIDDEN).</summary>
+    public static bool IsBlockedByPolicy(SetupApiSectionSummary section) =>
+        section.ExitStatus?.Contains("0xe0000248", StringComparison.OrdinalIgnoreCase) ?? false;
+
+    private static bool CommandMentions(SetupApiSectionSummary section, string text) =>
+        section.Command?.Contains(text, StringComparison.OrdinalIgnoreCase) ?? false;
 
     private static DateTimeOffset? ParseTimestamp(string value)
     {

@@ -103,9 +103,23 @@ public sealed record MonitorSummary
     /// <summary>True/false from EDID (CEA-861 basic audio flag or audio data block); null when no EDID was read.</summary>
     public bool? EdidAnnouncesAudio { get; init; }
     public string? EdidAudioFormats { get; init; }
+    /// <summary>EDID bytes Windows stored for the monitor (128 = base block only); null when no EDID was read.</summary>
+    public int? EdidLength { get; init; }
+    /// <summary>A CEA-861 extension block is present (audio and HDMI capabilities are declared there).</summary>
+    public bool? EdidHasCeaExtension { get; init; }
+    /// <summary>The EDID declares HDMI capability (HDMI Vendor-Specific Data Block).</summary>
+    public bool? EdidHasHdmiVsdb { get; init; }
+    /// <summary>Preferred (native) mode from the first detailed timing descriptor.</summary>
+    public int? EdidNativeWidth { get; init; }
+    public int? EdidNativeHeight { get; init; }
+    public double? EdidNativePixelClockMHz { get; init; }
 
     public bool IsDisplayPort => OutputTechnology is 10 or 11 or 18;
     public bool IsHdmi => OutputTechnology == 5;
+    /// <summary>DVI link (DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DVI): carries no audio.</summary>
+    public bool IsDvi => OutputTechnology == 4;
+    /// <summary>The active mode is smaller than the monitor's preferred (native) mode.</summary>
+    public bool IsBelowNativeMode => Width is { } w && Height is { } h && EdidNativeWidth is { } nw && EdidNativeHeight is { } nh && (w < nw || h < nh);
 }
 
 public sealed record GpuSummary
@@ -164,7 +178,7 @@ public sealed record CollectionIssue(string Area, string Message);
 
 public sealed record QuickSnapshot
 {
-    public int SchemaVersion { get; init; } = 1;
+    public int SchemaVersion { get; init; } = 2;
     public required string AppVersion { get; init; }
     public required DateTimeOffset CollectedAt { get; init; }
     public SystemSummary System { get; init; } = new();
@@ -177,5 +191,7 @@ public sealed record QuickSnapshot
     public IReadOnlyList<WindowsUpdateEntry> WindowsUpdateHistory { get; init; } = [];
     public IReadOnlyList<SetupApiSectionSummary> SetupApiSections { get; init; } = [];
     public IReadOnlyList<PnpEventSummary> PnpEvents { get; init; } = [];
+    /// <summary>Device installation restriction policy (HKLM\SOFTWARE\Policies\...\DeviceInstall\Restrictions), read-only; null when not read.</summary>
+    public BitByBit.Core.Drivers.DeviceInstallRestrictionsState? InstallPolicy { get; init; }
     public IReadOnlyList<CollectionIssue> Issues { get; init; } = [];
 }
