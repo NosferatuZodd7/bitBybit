@@ -1,0 +1,11 @@
+{
+  "ipc.error.unsupportedProtocol": "O serviço bitBybit usa uma versão de protocolo diferente ({0}). Reinstale ou atualize o bitBybit.",
+  "ipc.error.malformedRequest": "O pedido enviado ao serviço bitBybit não é válido.",
+  "ipc.error.confirmationInvalid": "A confirmação já não é válida. Reveja a operação e confirme de novo.",
+  "ipc.error.unknownOperation": "O serviço bitBybit não permite a operação '{0}'.",
+  "ipc.error.clientNotAuthorized": "Este programa não é um componente instalado do bitBybit e não pode usar o serviço bitBybit.",
+  "ipc.error.elevationRequired": "Esta operação requer privilégios de administrador. O bitBybit vai pedir autorização ao Windows (UAC).",
+  "ipc.error.busy": "Está em curso outra operação de '{0}'. Tente de novo dentro de instantes.",
+  "ipc.error.timeout": "A operação demorou demasiado tempo e foi interrompida.",
+  "ipc.error.internal": "O serviço bitBybit encontrou um erro inesperado. Os detalhes foram escritos no registo do serviço."
+}
