@@ -71,7 +71,7 @@ public static class RealtekDisplayPortQuickAnalyzer
                         T("quickdiag.action.blockRealtek.impact",
                             "Prevents Windows from installing drivers for the exact Realtek hardware ID only (not NVIDIA/AMD/Intel display audio). The internal speaker and Realtek jacks will stop working. Reversible. Available in a later version after a driver backup."),
                         RiskLevel.Medium,
-                        Parameters: new Dictionary<string, string> { ["hardwareId"] = MostSpecificId(present[0]) }),
+                        Parameters: new Dictionary<string, string> { ["hardwareId"] = MostSpecificId(present[0]), ["instanceId"] = present[0].InstanceId }),
                 ]));
         }
         else if (codecs.Length > 0)

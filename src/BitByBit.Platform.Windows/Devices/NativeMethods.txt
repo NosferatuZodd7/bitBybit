@@ -1,0 +1,17 @@
+SetupDiCreateDeviceInfoList
+SetupDiOpenDeviceInfo
+SetupDiDestroyDeviceInfoList
+SetupDiSetClassInstallParams
+SetupDiCallClassInstaller
+SetupDiGetDeviceInstallParams
+DiUninstallDevice
+CM_Locate_DevNode
+CM_Reenumerate_DevNode
+CM_Get_DevNode_Status
+SP_PROPCHANGE_PARAMS
+DI_FUNCTION
+SETUP_DI_STATE_CHANGE
+SETUP_DI_PROPERTY_CHANGE_SCOPE
+SETUP_DI_DEVICE_INSTALL_FLAGS
+CONFIGRET
+CM_DEVNODE_STATUS_FLAGS

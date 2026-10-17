@@ -1,0 +1,162 @@
+using System.Text;
+
+namespace BitByBit.Core.Platform;
+
+/// <summary>One allowlisted operation for the elevated helper instance (<c>bitBybit.exe --elevated &lt;verb&gt; ...</c>).</summary>
+/// <param name="Verb">One of <see cref="ElevatedCommandLine.Verbs"/>.</param>
+/// <param name="ResultId">Names the outcome file the elevated instance writes; chosen by the unelevated caller.</param>
+public sealed record ElevatedRequest(string Verb, string? InstanceId, IReadOnlyList<string> HardwareIds, bool Uninstall, Guid? ChangeId, Guid ResultId);
+
+/// <summary>
+/// Command-line contract of the elevated helper. The elevated instance trusts nothing it receives: <see cref="Parse"/>
+/// accepts only the allowlisted verbs with exactly the arguments each one needs, and the operations re-validate the
+/// values (hardware ids by the device install policy planner, instance ids against the live device).
+/// Arguments never carry commands or file paths.
+/// </summary>
+public static class ElevatedCommandLine
+{
+    public const string Flag = "--elevated";
+    public const string BlockDriver = "block-driver";
+    public const string RestartDevice = "restart-device";
+    public const string Revert = "revert";
+
+    public const int MaxHardwareIds = 16;
+    public const int MaxInstanceIdLength = 400;
+
+    public static IReadOnlyList<string> Verbs { get; } = [BlockDriver, RestartDevice, Revert];
+
+    public static IReadOnlyList<string> Build(ElevatedRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var args = new List<string> { Flag, request.Verb, "--result", request.ResultId.ToString("N") };
+        if (request.InstanceId is not null)
+        {
+            args.AddRange(["--instance", request.InstanceId]);
+        }
+
+        foreach (var id in request.HardwareIds)
+        {
+            args.AddRange(["--hwid", id]);
+        }
+
+        if (request.Uninstall)
+        {
+            args.Add("--uninstall");
+        }
+
+        if (request.ChangeId is { } change)
+        {
+            args.AddRange(["--change", change.ToString("N")]);
+        }
+
+        return args;
+    }
+
+    /// <summary>Parses the arguments after <see cref="Flag"/>; null when anything is missing, unknown, repeated or out of range.</summary>
+    public static ElevatedRequest? Parse(IReadOnlyList<string> args)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        var start = -1;
+        for (var i = 0; i < args.Count; i++)
+        {
+            if (string.Equals(args[i], Flag, StringComparison.Ordinal))
+            {
+                start = i;
+                break;
+            }
+        }
+
+        if (start < 0 || start + 1 >= args.Count)
+        {
+            return null;
+        }
+
+        var verb = args[start + 1];
+        if (!Verbs.Contains(verb, StringComparer.Ordinal))
+        {
+            return null;
+        }
+
+        string? instance = null;
+        var hwids = new List<string>();
+        var uninstall = false;
+        Guid? change = null;
+        Guid? result = null;
+        for (var i = start + 2; i < args.Count; i++)
+        {
+            switch (args[i])
+            {
+                case "--instance" when instance is null && i + 1 < args.Count:
+                    instance = args[++i];
+                    break;
+                case "--hwid" when i + 1 < args.Count:
+                    hwids.Add(args[++i]);
+                    break;
+                case "--uninstall" when !uninstall:
+                    uninstall = true;
+                    break;
+                case "--change" when change is null && i + 1 < args.Count && Guid.TryParseExact(args[i + 1], "N", out var c):
+                    change = c;
+                    i++;
+                    break;
+                case "--result" when result is null && i + 1 < args.Count && Guid.TryParseExact(args[i + 1], "N", out var r):
+                    result = r;
+                    i++;
+                    break;
+                default:
+                    return null;
+            }
+        }
+
+        if (result is null || hwids.Count > MaxHardwareIds || !IsPlainValue(instance) || !hwids.All(IsPlainValue))
+        {
+            return null;
+        }
+
+        return verb switch
+        {
+            BlockDriver when instance is not null && hwids.Count > 0 && change is null => new ElevatedRequest(verb, instance, hwids, uninstall, null, result.Value),
+            RestartDevice when instance is not null && hwids.Count == 0 && !uninstall && change is null => new ElevatedRequest(verb, instance, [], false, null, result.Value),
+            Revert when change is not null && instance is null && hwids.Count == 0 && !uninstall => new ElevatedRequest(verb, null, [], false, change, result.Value),
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// Joins arguments into a Windows command line (CommandLineToArgvW rules). Arguments with quotes or control characters
+    /// are refused rather than escaped: no allowlisted value needs them.
+    /// </summary>
+    public static string Join(IEnumerable<string> args)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        var sb = new StringBuilder();
+        foreach (var arg in args)
+        {
+            if (arg.Contains('"', StringComparison.Ordinal) || arg.Any(char.IsControl))
+            {
+                throw new ArgumentException("Arguments must not contain quotes or control characters.", nameof(args));
+            }
+
+            if (sb.Length > 0)
+            {
+                sb.Append(' ');
+            }
+
+            if (arg.Length > 0 && !arg.Any(char.IsWhiteSpace))
+            {
+                sb.Append(arg);
+                continue;
+            }
+
+            // Inside quotes, backslashes are literal except before the closing quote: double the trailing ones.
+            var trailing = arg.Length - arg.TrimEnd('\\').Length;
+            sb.Append('"').Append(arg).Append('\\', trailing).Append('"');
+        }
+
+        return sb.ToString();
+    }
+
+    private static bool IsPlainValue(string? value) =>
+        value is null || (value.Length is > 0 and <= MaxInstanceIdLength && !value.StartsWith("--", StringComparison.Ordinal) &&
+                          !value.Any(char.IsControl) && !value.Contains('"', StringComparison.Ordinal));
+}

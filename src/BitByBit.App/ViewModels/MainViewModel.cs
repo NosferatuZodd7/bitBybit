@@ -4,8 +4,15 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Security.Principal;
 using System.Windows.Data;
+using System.Windows;
 using BitByBit.App.Infrastructure;
+using BitByBit.Core.Audio;
+using BitByBit.Core.Config;
 using BitByBit.Core.Diagnostics;
+using BitByBit.Core.Journal;
+using BitByBit.Core.Platform;
+using BitByBit.Core.Profiles;
+using BitByBit.Platform.Windows.Audio;
 using BitByBit.Core.QuickDiag;
 using BitByBit.Platform.Windows.QuickDiag;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -51,6 +58,22 @@ public sealed partial class MainViewModel : ObservableObject
     public ObservableCollection<KeyValueRow> SystemInfo { get; } = [];
     public ObservableCollection<ServiceSummary> Services { get; } = [];
     public ObservableCollection<CollectionIssue> Issues { get; } = [];
+    public ObservableCollection<ChangeRow> Changes { get; } = [];
+
+    [ObservableProperty]
+    private string _profileStatus = Text.Get("app.profile.none");
+
+    [ObservableProperty]
+    private bool _hasProfile;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BackgroundToggleText))]
+    private bool _backgroundEnabled;
+
+    public string BackgroundToggleText => BackgroundEnabled ? Text.Get("app.profile.backgroundOff") : Text.Get("app.profile.backgroundOn");
+
+    [ObservableProperty]
+    private string _backgroundStatus = string.Empty;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(ExportCommand))]
@@ -104,6 +127,8 @@ public sealed partial class MainViewModel : ObservableObject
             }
 
             Apply(snapshot, report, previous);
+            await LoadProfileAsync();
+            await LoadChangesAsync();
             Status = Text.Get("app.status.done", snapshot.CollectedAt.ToString("HH:mm:ss", CultureInfo.InvariantCulture), snapshot.Issues.Count);
         }
         catch (Exception ex)
@@ -181,7 +206,7 @@ public sealed partial class MainViewModel : ObservableObject
         _report = report;
         ExportCommand.NotifyCanExecuteChanged();
 
-        Replace(Findings, report.Findings.OrderByDescending(f => f.Severity).Select(f => new FindingRow(f)));
+        Replace(Findings, report.Findings.OrderByDescending(f => f.Severity).Select(f => new FindingRow(f, ExecutorFor)));
         Replace(Endpoints, snapshot.AudioEndpoints.OrderBy(e => e.Flow).ThenByDescending(e => e.State == EndpointState.Active).ThenBy(e => e.Name).Select(e => new EndpointRow(e)));
         Replace(Monitors, snapshot.Monitors.Select(m => new MonitorRow(m)));
         Replace(Gpus, snapshot.Gpus);
@@ -211,6 +236,259 @@ public sealed partial class MainViewModel : ObservableObject
             ? Text.Get("app.compare.first")
             : Text.Get("app.compare.previous", previous.CollectedAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture));
         DevicesView.Refresh();
+    }
+
+    // ---- Actions -------------------------------------------------------------------------------------------------
+
+    private static readonly HashSet<string> ExecutableActions = new(StringComparer.Ordinal)
+    {
+        "audio.setDefaultEndpoint", "audio.enableEndpoint", "device.installPolicy.denyHardwareId", "device.restart",
+    };
+
+    private Func<ProposedAction, Task>? ExecutorFor(ProposedAction action) =>
+        ExecutableActions.Contains(action.ActionId) ? ExecuteActionAsync : null;
+
+    private static bool Confirm(ProposedAction action, string? extra = null)
+    {
+        var text = Text.Get("app.action.confirm", Text.Get(action.Title), Text.Get(action.Impact), ActionRow.RiskText(action.Risk)) +
+                   (extra is null ? string.Empty : "\n\n" + extra);
+        return System.Windows.MessageBox.Show(text, "bitBybit", MessageBoxButton.YesNo, action.Risk >= RiskLevel.Medium ? MessageBoxImage.Warning : MessageBoxImage.Question) == MessageBoxResult.Yes;
+    }
+
+    private async Task ExecuteActionAsync(ProposedAction action)
+    {
+        var p = action.Parameters ?? new Dictionary<string, string>();
+        try
+        {
+            switch (action.ActionId)
+            {
+                case "audio.setDefaultEndpoint" when p.TryGetValue("endpointId", out var endpointId):
+                    if (!Confirm(action))
+                    {
+                        return;
+                    }
+
+                    var change = await UserAudioChanges().SetDefaultEndpointAsync(endpointId, AudioRoles.DefaultDevice, CancellationToken.None);
+                    Report(change.IsSuccess && change.Value.Verified, change.IsSuccess ? Text.Get("app.action.defaultSet") : change.Error!.ToString());
+                    break;
+
+                case "audio.enableEndpoint" when p.TryGetValue("endpointId", out var endpointId):
+                    if (!Confirm(action, Text.Get("app.action.undocumented")))
+                    {
+                        return;
+                    }
+
+                    var enabled = await UserAudioChanges().SetEndpointEnabledAsync(endpointId, true, CancellationToken.None);
+                    Report(enabled.IsSuccess && enabled.Value.Verified, enabled.IsSuccess ? Text.Get("app.action.endpointEnabled") : enabled.Error!.ToString());
+                    break;
+
+                case "device.installPolicy.denyHardwareId" when p.TryGetValue("instanceId", out var instanceId) && p.TryGetValue("hardwareId", out var hardwareId):
+                    if (!Confirm(action, Text.Get("app.action.blockPlan", hardwareId)))
+                    {
+                        return;
+                    }
+
+                    var uninstall = System.Windows.MessageBox.Show(Text.Get("app.action.uninstallNow"), "bitBybit", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+                    if (uninstall == MessageBoxResult.Cancel)
+                    {
+                        return;
+                    }
+
+                    await RunElevatedAsync(new ElevatedRequest("block-driver", instanceId, [hardwareId], uninstall == MessageBoxResult.Yes, null, Guid.NewGuid()));
+                    break;
+
+                case "device.restart" when p.TryGetValue("instanceId", out var instanceId):
+                    if (!Confirm(action, Text.Get("app.action.needsAdmin")))
+                    {
+                        return;
+                    }
+
+                    await RunElevatedAsync(new ElevatedRequest("restart-device", instanceId, [], false, null, Guid.NewGuid()));
+                    break;
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _logger.LogError(ex, "Action {Action} failed", action.ActionId);
+            Report(false, ex.Message);
+        }
+
+        await RefreshAsync();
+    }
+
+    private async Task RunElevatedAsync(ElevatedRequest request)
+    {
+        IsBusy = true;
+        Status = Text.Get("app.action.waitingUac");
+        try
+        {
+            var (outcome, error) = await ElevatedCommand.RunAsync(request, CancellationToken.None);
+            if (outcome is null)
+            {
+                Report(false, error ?? Text.Get("app.action.noResult"));
+                return;
+            }
+
+            var body = string.Join("\n", outcome.Steps.Select(s => "• " + s));
+            if (outcome.Error is not null)
+            {
+                body += "\n\n" + outcome.Error;
+            }
+
+            if (outcome.RebootRequired)
+            {
+                body += "\n\n" + Text.Get("app.action.rebootRequired");
+            }
+
+            System.Windows.MessageBox.Show(body, outcome.Succeeded ? Text.Get("app.action.doneTitle") : Text.Get("app.action.failedTitle"),
+                MessageBoxButton.OK, outcome.Succeeded ? MessageBoxImage.Information : MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void Report(bool ok, string message)
+    {
+        Status = message;
+        if (!ok)
+        {
+            System.Windows.MessageBox.Show(message, Text.Get("app.action.failedTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    // ---- Profile ------------------------------------------------------------------------------------------------
+
+    private async Task LoadProfileAsync()
+    {
+        var profile = await AudioProfileHost.Store.LoadAsync(CancellationToken.None);
+        HasProfile = profile is not null;
+        BackgroundEnabled = AutoStart.IsEnabled();
+        ProfileStatus = profile is null
+            ? Text.Get("app.profile.none")
+            : Text.Get("app.profile.active", profile.PreferredEndpoint.FriendlyName ?? profile.PreferredEndpoint.EndpointId);
+        var status = AudioProfileHost.ReadStatus();
+        BackgroundStatus = status is null ? string.Empty : Text.Get("app.profile.lastDecision", status.At.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture), status.Reason);
+    }
+
+    [RelayCommand]
+    private async Task CreateProfileAsync()
+    {
+        var endpoints = await new WindowsAudioEndpoints().GetEndpointsAsync(new AudioEndpointQuery { Flow = AudioDataFlow.Render, IncludeVolume = false }, CancellationToken.None);
+        if (endpoints.IsFailure)
+        {
+            Report(false, endpoints.Error!.ToString());
+            return;
+        }
+
+        var display = endpoints.Value
+            .Where(e => e.State == AudioEndpointState.Active && e.FormFactor == EndpointFormFactor.DigitalAudioDisplayDevice)
+            .OrderByDescending(e => e.IsDefaultFor(AudioRole.Console))
+            .ToArray();
+        if (display.Length == 0)
+        {
+            Report(false, Text.Get("app.profile.noDisplayEndpoint"));
+            return;
+        }
+
+        var chosen = display[0];
+        if (System.Windows.MessageBox.Show(Text.Get("app.profile.confirmCreate", chosen.DisplayName), "bitBybit", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        await AudioProfileHost.Store.SaveAsync(AudioPreferenceProfile.ForDisplayPort(chosen, null, DateTimeOffset.Now), CancellationToken.None);
+        await SetBackgroundAsync(true);
+        await LoadProfileAsync();
+    }
+
+    [RelayCommand]
+    private async Task RemoveProfileAsync()
+    {
+        if (System.Windows.MessageBox.Show(Text.Get("app.profile.confirmRemove"), "bitBybit", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        AudioProfileHost.Store.Delete();
+        await SetBackgroundAsync(false);
+        await LoadProfileAsync();
+    }
+
+    [RelayCommand]
+    private async Task ToggleBackgroundAsync()
+    {
+        await SetBackgroundAsync(!AutoStart.IsEnabled());
+        await LoadProfileAsync();
+    }
+
+    private static Task SetBackgroundAsync(bool enabled)
+    {
+        AutoStart.Set(enabled);
+        if (enabled && Environment.ProcessPath is { } exe)
+        {
+            // Start (or no-op if already running: the background instance is single-instance).
+            Process.Start(new ProcessStartInfo(exe, "--background") { UseShellExecute = false });
+        }
+
+        return Task.CompletedTask;
+    }
+
+    // ---- Changes journal ----------------------------------------------------------------------------------------
+
+    /// <summary>Per-user audio changes (default device, enable/disable), journaled in the user's journal.</summary>
+    private static JournaledAudioChanges UserAudioChanges()
+    {
+        var audio = new WindowsAudioEndpoints();
+        return new JournaledAudioChanges(audio, audio, new JsonLinesChangeJournal(AppPaths.Default.UserJournalFile));
+    }
+
+    private async Task LoadChangesAsync()
+    {
+        var rows = new List<ChangeRow>();
+        foreach (var (path, userScope) in new[] { (AppPaths.Default.UserJournalFile, true), (AppPaths.Default.JournalFile, false) })
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    var records = await new JsonLinesChangeJournal(path).GetAllAsync(CancellationToken.None);
+                    rows.AddRange(records.Select(r => new ChangeRow(r, userScope, RevertChangeAsync)));
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogWarning(ex, "Could not read the change journal {Path}", path);
+            }
+        }
+
+        Replace(Changes, rows.OrderByDescending(r => r.CreatedAt));
+    }
+
+    private async Task RevertChangeAsync(ChangeRow change)
+    {
+        if (System.Windows.MessageBox.Show(Text.Get("app.changes.confirmRevert", change.Title), "bitBybit", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (change.IsUserScope)
+        {
+            // Per-user changes are reverted in this (unelevated) session, through the coordinator's drift check.
+            var journal = new JsonLinesChangeJournal(AppPaths.Default.UserJournalFile);
+            var coordinator = new RecoveryCoordinator(journal, UserAudioChanges().RevertHandlers, _loggerFactory.CreateLogger<RecoveryCoordinator>());
+            var outcomes = await coordinator.RevertAsync(r => r.Id == change.Id, force: false, CancellationToken.None);
+            var outcome = outcomes.FirstOrDefault();
+            Report(outcome?.NewStatus == ChangeStatus.Reverted,
+                outcome is null ? Text.Get("app.changes.notActive") : $"{ChangeRow.StatusText(outcome.NewStatus)}: {outcome.Detail}");
+        }
+        else
+        {
+            await RunElevatedAsync(new ElevatedRequest("revert", null, [], false, change.Id, Guid.NewGuid()));
+        }
+
+        await RefreshAsync();
     }
 
     private bool FilterDevice(object o)

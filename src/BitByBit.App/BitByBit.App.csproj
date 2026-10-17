@@ -8,6 +8,10 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
     <UseWPF>true</UseWPF>
+    <!-- Windows Forms is used only for the notification-area (tray) icon of the background mode. -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- WFO0003 targets WinForms apps; this is a WPF app whose per-monitor DPI awareness belongs in app.manifest. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
     <AssemblyName>bitBybit</AssemblyName>
     <RootNamespace>BitByBit.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -19,6 +23,9 @@
   <ItemGroup>
     <!-- WPF projects omit System.IO from implicit usings (name clash with System.Windows.Shapes.Path). -->
     <Using Include="System.IO" />
+    <!-- Keep WPF types unambiguous: WinForms/System.Drawing are referenced explicitly only by the tray icon. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" />

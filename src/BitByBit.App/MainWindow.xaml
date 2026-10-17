@@ -26,7 +26,7 @@
 
     <!-- Read-only banner -->
     <Border DockPanel.Dock="Top" Background="#FFF8E1" BorderBrush="#F0D27A" BorderThickness="0,0,0,1" Padding="16,6">
-      <TextBlock Text="{loc:T app.banner.readOnly}" TextWrapping="Wrap" Foreground="#6B4E00" />
+      <TextBlock Text="{loc:T app.banner.actions}" TextWrapping="Wrap" Foreground="#6B4E00" />
     </Border>
 
     <!-- Status bar -->
@@ -45,6 +45,25 @@
           <StackPanel DockPanel.Dock="Top">
             <TextBlock Style="{StaticResource Hint}" Text="{loc:T app.case.intro}" />
             <TextBlock Style="{StaticResource Hint}" Text="{Binding ComparisonInfo}" FontStyle="Italic" />
+            <!-- DisplayPort audio profile -->
+            <Border Background="{StaticResource CardBrush}" BorderBrush="#D5DCE4" BorderThickness="1" CornerRadius="4" Padding="12,8" Margin="0,4,0,10">
+              <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                  <Button Content="{loc:T app.profile.create}" Command="{Binding CreateProfileCommand}"
+                          Visibility="{Binding HasProfile, Converter={StaticResource InverseBoolToVisibility}}" />
+                  <Button Content="{Binding BackgroundToggleText}" Command="{Binding ToggleBackgroundCommand}"
+                          Visibility="{Binding HasProfile, Converter={StaticResource BoolToVisibility}}" />
+                  <Button Content="{loc:T app.profile.remove}" Command="{Binding RemoveProfileCommand}"
+                          Visibility="{Binding HasProfile, Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
+                <StackPanel>
+                  <TextBlock Text="{loc:T app.profile.title}" FontSize="14" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding ProfileStatus}" TextWrapping="Wrap" Margin="0,2,0,0" />
+                  <TextBlock Text="{Binding BackgroundStatus}" Style="{StaticResource Hint}" />
+                  <TextBlock Text="{loc:T app.profile.hint}" Style="{StaticResource Hint}" />
+                </StackPanel>
+              </DockPanel>
+            </Border>
           </StackPanel>
           <ScrollViewer VerticalScrollBarVisibility="Auto">
             <ItemsControl ItemsSource="{Binding Findings}">
@@ -80,13 +99,18 @@
                           <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:ActionRow}">
                               <Border Background="#EEF4FB" CornerRadius="3" Padding="8,4" Margin="0,2">
-                                <TextBlock TextWrapping="Wrap">
-                                  <Run Text="{loc:T app.case.proposed}" FontWeight="SemiBold" />
-                                  <Run Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" />
-                                  <Run Text="{Binding Risk, Mode=OneWay, StringFormat=' ({0})'}" />
-                                  <LineBreak />
-                                  <Run Text="{Binding Impact, Mode=OneWay}" Foreground="{StaticResource SubtleBrush}" />
-                                </TextBlock>
+                                <DockPanel>
+                                  <Button DockPanel.Dock="Right" VerticalAlignment="Center" Content="{loc:T app.action.execute}"
+                                          Command="{Binding ExecuteCommand}"
+                                          Visibility="{Binding IsExecutable, Converter={StaticResource BoolToVisibility}}" />
+                                  <TextBlock TextWrapping="Wrap">
+                                    <Run Text="{loc:T app.case.proposed}" FontWeight="SemiBold" />
+                                    <Run Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" />
+                                    <Run Text="{Binding Risk, Mode=OneWay, StringFormat=' ({0})'}" />
+                                    <LineBreak />
+                                    <Run Text="{Binding Impact, Mode=OneWay}" Foreground="{StaticResource SubtleBrush}" />
+                                  </TextBlock>
+                                </DockPanel>
                               </Border>
                             </DataTemplate>
                           </ItemsControl.ItemTemplate>
@@ -245,6 +269,31 @@
             </DataGrid>
           </StackPanel>
         </ScrollViewer>
+      </TabItem>
+
+      <!-- bitBybit changes (journal) -->
+      <TabItem Header="{loc:T app.tab.changes}">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Text="{loc:T app.changes.intro}" />
+          <DataGrid ItemsSource="{Binding Changes}">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="{loc:T app.col.date}" Binding="{Binding When}" />
+              <DataGridTextColumn Header="{loc:T app.col.kind}" Binding="{Binding Title}" />
+              <DataGridTextColumn Header="{loc:T app.col.description}" Binding="{Binding Description}" Width="2*" />
+              <DataGridTextColumn Header="{loc:T app.col.scope}" Binding="{Binding Scope}" />
+              <DataGridTextColumn Header="{loc:T app.col.status}" Binding="{Binding Status}" />
+              <DataGridTextColumn Header="{loc:T app.col.detail}" Binding="{Binding Detail}" Width="*" />
+              <DataGridTemplateColumn>
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate DataType="{x:Type vm:ChangeRow}">
+                    <Button Content="{loc:T app.changes.revert}" Command="{Binding RevertCommand}" Margin="2" Padding="8,2"
+                            Visibility="{Binding CanRevert, Converter={StaticResource BoolToVisibility}}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+        </DockPanel>
       </TabItem>
 
       <!-- System -->

@@ -8,11 +8,38 @@ namespace BitByBit.App.ViewModels;
 
 public sealed record EvidenceRow(string Kind, string Description, string? Value, string Source);
 
-public sealed record ActionRow(string Title, string Impact, string Risk);
+public sealed class ActionRow
+{
+    public ActionRow(ProposedAction action, Func<ProposedAction, Task>? execute)
+    {
+        Action = action;
+        Title = Text.Get(action.Title);
+        Impact = Text.Get(action.Impact);
+        Risk = RiskText(action.Risk);
+        IsExecutable = execute is not null;
+        ExecuteCommand = new CommunityToolkit.Mvvm.Input.AsyncRelayCommand(() => execute is null ? Task.CompletedTask : execute(action));
+    }
+
+    public ProposedAction Action { get; }
+    public string Title { get; }
+    public string Impact { get; }
+    public string Risk { get; }
+    public bool IsExecutable { get; }
+    public CommunityToolkit.Mvvm.Input.IAsyncRelayCommand ExecuteCommand { get; }
+
+    internal static string RiskText(RiskLevel risk) => risk switch
+    {
+        RiskLevel.None => Text.Get("risk.none"),
+        RiskLevel.Low => Text.Get("risk.low"),
+        RiskLevel.Medium => Text.Get("risk.medium"),
+        RiskLevel.High => Text.Get("risk.high"),
+        _ => Text.Get("risk.critical"),
+    };
+}
 
 public sealed class FindingRow
 {
-    public FindingRow(DiagnosticFinding finding)
+    public FindingRow(DiagnosticFinding finding, Func<ProposedAction, Func<ProposedAction, Task>?> executorFor)
     {
         Severity = finding.Severity;
         SeverityText = finding.Severity switch
@@ -25,7 +52,7 @@ public sealed class FindingRow
         Title = Text.Get(finding.Title);
         Detail = Text.Get(finding.Detail);
         Evidence = finding.Evidence.Select(e => new EvidenceRow(KindText(e.Kind), e.Description, e.Value, e.Source)).ToArray();
-        Actions = finding.Actions.Select(a => new ActionRow(Text.Get(a.Title), Text.Get(a.Impact), RiskText(a.Risk))).ToArray();
+        Actions = finding.Actions.Select(a => new ActionRow(a, executorFor(a))).ToArray();
     }
 
     public FindingSeverity Severity { get; }
@@ -44,14 +71,6 @@ public sealed class FindingRow
         _ => Text.Get("evidence.kind.hypothesis"),
     };
 
-    private static string RiskText(RiskLevel risk) => risk switch
-    {
-        RiskLevel.None => Text.Get("risk.none"),
-        RiskLevel.Low => Text.Get("risk.low"),
-        RiskLevel.Medium => Text.Get("risk.medium"),
-        RiskLevel.High => Text.Get("risk.high"),
-        _ => Text.Get("risk.critical"),
-    };
 }
 
 public sealed class EndpointRow(AudioEndpointSummary e)
@@ -150,3 +169,51 @@ public sealed class NetworkRow(NetworkAdapterSummary n)
 }
 
 public sealed record KeyValueRow(string Key, string? Value);
+
+public sealed class ChangeRow
+{
+    public ChangeRow(BitByBit.Core.Journal.ChangeRecord record, bool isUserScope, Func<ChangeRow, Task> revert)
+    {
+        Id = record.Id;
+        CreatedAt = record.CreatedAt;
+        IsUserScope = isUserScope;
+        When = record.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+        Title = record.TargetKind switch
+        {
+            BitByBit.Core.Audio.AudioChangeRecords.DefaultEndpointKind => Text.Get("app.changes.kind.audioDefault"),
+            BitByBit.Core.Audio.AudioChangeRecords.EndpointEnabledKind => Text.Get("app.changes.kind.audioEnabled"),
+            "policy.deviceInstallDeny" => Text.Get("app.changes.kind.installDeny"),
+            "device.uninstalled" => Text.Get("app.changes.kind.deviceUninstalled"),
+            _ => record.TargetKind,
+        };
+        Description = record.Description;
+        Scope = isUserScope ? Text.Get("app.changes.scope.user") : Text.Get("app.changes.scope.machine");
+        Status = StatusText(record.Status);
+        Detail = record.StatusDetail;
+        CanRevert = record.IsActive;
+        RevertCommand = new CommunityToolkit.Mvvm.Input.AsyncRelayCommand(() => revert(this));
+    }
+
+    public Guid Id { get; }
+    public DateTimeOffset CreatedAt { get; }
+    public bool IsUserScope { get; }
+    public string When { get; }
+    public string Title { get; }
+    public string Description { get; }
+    public string Scope { get; }
+    public string Status { get; }
+    public string? Detail { get; }
+    public bool CanRevert { get; }
+    public CommunityToolkit.Mvvm.Input.IAsyncRelayCommand RevertCommand { get; }
+
+    internal static string StatusText(BitByBit.Core.Journal.ChangeStatus status) => status switch
+    {
+        BitByBit.Core.Journal.ChangeStatus.Applied => Text.Get("app.changes.status.applied"),
+        BitByBit.Core.Journal.ChangeStatus.Reverted => Text.Get("app.changes.status.reverted"),
+        BitByBit.Core.Journal.ChangeStatus.RevertFailed => Text.Get("app.changes.status.revertFailed"),
+        BitByBit.Core.Journal.ChangeStatus.TargetGone => Text.Get("app.changes.status.gone"),
+        BitByBit.Core.Journal.ChangeStatus.DriftDetected => Text.Get("app.changes.status.drift"),
+        BitByBit.Core.Journal.ChangeStatus.Superseded => Text.Get("app.changes.status.superseded"),
+        _ => status.ToString(),
+    };
+}

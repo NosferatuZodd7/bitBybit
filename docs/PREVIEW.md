@@ -1,8 +1,8 @@
-# bitBybit 0.1 — pré-visualização de diagnóstico (só leitura)
+# bitBybit 0.2 — pré-visualização (diagnóstico + primeiras correções)
 
-Esta é a primeira versão executável do bitBybit, para testar no seu PC. **Não altera nada no sistema**: só lê
-informação e analisa-a. As ações (mudar o dispositivo predefinido, bloquear a reinstalação do Realtek, reiniciar
-dispositivos, partilha de rede, etc.) chegam em versões posteriores, sempre com confirmação explícita e reversíveis.
+Esta versão mantém todo o diagnóstico da 0.1 e acrescenta as primeiras **ações reversíveis** para o problema do
+Realtek / DisplayPort. Nada é alterado sem a sua confirmação, e cada alteração fica registada no separador
+**Alterações do bitBybit**, de onde a pode reverter.
 
 ## Como executar
 
@@ -15,37 +15,57 @@ dispositivos, partilha de rede, etc.) chegam em versões posteriores, sempre com
 
 Requisitos: Windows 10 1809 ou posterior, ou Windows 11, de 64 bits.
 
-## O que a versão 0.1 faz
+## Novidades da 0.2
 
-* **Caso Realtek / DisplayPort**: verifica se o Windows ainda enumera o codec Realtek (apesar da BIOS), se existem
-  componentes/extensões Realtek, o histórico do Windows Update e do `setupapi.dev.log` para o Realtek, se a função
-  de áudio HD da placa gráfica (NVIDIA/AMD/Intel) está presente, se o monitor está ligado por DisplayPort e se o EDID
-  anuncia áudio, o estado do ponto de saída HDMI/DisplayPort (ativo / desligado / desativado / não presente) e se o
-  dispositivo predefinido é o Realtek em vez do DisplayPort. Cada conclusão separa **factos** de **hipóteses**.
-* **Comparação automática** com a recolha anterior (guardada em `%LocalAppData%\bitBybit\snapshots`): indica se houve
-  reinício entre recolhas e o que mudou (ponto de saída DisplayPort desaparecido, dispositivo predefinido alterado,
-  driver alterado, dispositivo da placa gráfica desaparecido).
-* Listas de áudio (todos os estados), monitores e placas gráficas, dispositivos e drivers (incluindo não presentes,
-  com filtros), rede (física/virtual/VPN — estimativa nesta versão), histórico de drivers e serviços.
-* **Exportar relatório**: cria `Documentos\bitBybit\relatorio-bitbybit-<data>.txt` e `.json`. Os relatórios ocultam
-  números de série de dispositivos e a parte específica dos endereços MAC.
+* **Botão "Executar…"** nas ações propostas do separador *Caso Realtek / DisplayPort*. Cada ação mostra o impacto e
+  o risco e pede confirmação:
+  * **Tornar o DisplayPort o dispositivo predefinido** (risco baixo, sem administrador). Fica registado o
+    dispositivo anterior para poder reverter.
+  * **Ativar o ponto de saída DisplayPort** se estiver desativado (usa uma interface do Windows não documentada).
+  * **Impedir que o Windows volte a instalar o driver Realtek** (precisa de administrador / UAC):
+    1. faz cópia de segurança do pacote do driver Realtek (`%ProgramData%\bitBybit\driver-backups`);
+    2. cria uma política do Windows que bloqueia a instalação de drivers **só para o ID de hardware exato do codec
+       Realtek** (nunca para o áudio da placa gráfica, nunca para IDs genéricos);
+    3. opcionalmente desinstala já o dispositivo Realtek (o pacote fica no Driver Store).
+  * **Reiniciar o dispositivo de áudio** (só dispositivos de áudio presentes; administrador).
+* **Perfil "Áudio DisplayPort preferido"**: com o som DisplayPort a funcionar, clique em **Criar perfil**. O bitBybit
+  fica em segundo plano (ícone junto ao relógio, arranca com a sua sessão do Windows) e, quando o dispositivo
+  DisplayPort reaparece (após reiniciar, ligar o monitor ou acordar o PC), volta a torná-lo predefinido.
+  Respeita as suas escolhas manuais, tem limite de tentativas e nunca mexe em drivers. **Remover perfil** desliga tudo.
+* **Separador "Alterações do bitBybit"**: lista tudo o que o bitBybit alterou, com **Reverter**. A reversão só é feita
+  se o objeto continuar como o bitBybit o deixou; se outra pessoa/programa o alterou entretanto, aparece
+  "Alterado externamente (não revertido)" e nada é mexido.
 
-## Teste sugerido para o problema do DisplayPort
+## Teste sugerido
 
-1. Com o monitor DisplayPort ligado e o som a funcionar, abra o bitBybit e clique em **Exportar relatório**.
-2. Reinicie o computador.
-3. Volte a abrir o bitBybit (de preferência como administrador) e exporte de novo.
-4. A conclusão "alteração(ões) relevante(s) desde a recolha anterior" mostra exatamente o que mudou.
-5. Se quiser, envie-me os dois ficheiros `.txt` (ou `.json`) para eu analisar a causa.
+1. Abra o bitBybit, veja o separador *Caso Realtek / DisplayPort* e clique em **Exportar relatório**.
+2. Se o DisplayPort estiver ativo, clique em **Criar perfil**.
+3. Se aparecer "O Windows ainda enumera o codec Realtek", use **Executar…** nessa conclusão e escolha se quer
+   desinstalar já o dispositivo. Reinicie quando o Windows pedir.
+4. Depois de reiniciar, abra o bitBybit: a comparação com a recolha anterior mostra se o Realtek voltou e se o
+   DisplayPort continua presente e predefinido. Exporte o relatório.
+5. Repita o reinício 2–3 vezes. Envie-me os relatórios `.txt`/`.json` se algo não correr como esperado.
+6. Para desfazer: separador **Alterações do bitBybit › Reverter** (o bloqueio do driver é removido e o Windows
+   volta a procurar o dispositivo) e **Remover perfil**.
+
+## Onde ficam os dados
+
+* `%LocalAppData%\bitBybit`: perfil de áudio, registo de alterações do utilizador, recolhas anteriores, registos (logs).
+* `%ProgramData%\bitBybit`: registo de alterações do computador (políticas/dispositivos), cópias de segurança de
+  drivers e resultados das operações de administrador (pasta protegida: só administradores escrevem).
+* `Documentos\bitBybit`: relatórios exportados. Os relatórios ocultam números de série e parte dos endereços MAC.
 
 ## Linha de comandos (opcional)
 
-`bitbybit-cli.exe diagnose --out C:\caminho\relatorio` gera os mesmos relatórios sem interface.
+`bitbybit-cli.exe diagnose --out C:\caminho\relatorio` gera os mesmos relatórios sem interface (só leitura).
 
 ## Limitações conhecidas desta versão
 
-* Só leitura; nenhuma reparação é executada.
-* A classificação de interfaces de rede/VPN é uma estimativa (o módulo de rede completo está em desenvolvimento).
-* Testado apenas em compilação e num runner Windows Server do GitHub Actions (sem áudio, monitores ou Wi-Fi);
-  ainda **não foi validado em hardware real** com Windows 10/11.
-* Não assinado digitalmente (Authenticode).
+* As ações foram testadas com simulações (testes unitários) e compiladas para Windows; o diagnóstico correu num
+  runner Windows Server do GitHub Actions (sem áudio nem monitores). **Ainda não foram validadas em hardware real** —
+  o seu PC é o primeiro teste real.
+* A política de bloqueio de instalação de drivers é respeitada pelo Windows 10/11 Pro/Enterprise/Education; no
+  **Windows Home** o Windows pode ignorá-la. Depois de reiniciar, o bitBybit indica se o Realtek voltou.
+* O módulo de rede (hotspot, partilha, VPN, firewall) ainda não está incluído; a classificação de interfaces de rede
+  é uma estimativa.
+* Não assinado digitalmente (Authenticode); ainda sem instalador nem atualizações automáticas.

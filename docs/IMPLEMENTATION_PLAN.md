@@ -16,6 +16,24 @@ WPF UI and `bitbybit-cli diagnose`. Packaged as a single-file self-contained `bi
 The QuickDiag code is superseded module by module as the full Devices/Audio/Display/Network implementations land.
 User guide: [PREVIEW.md](PREVIEW.md).
 
+## Preview 0.2 (first reversible actions for the Realtek / DisplayPort case) — 🧪
+
+* Executable actions on findings (`audio.setDefaultEndpoint`, `audio.enableEndpoint`, `device.installPolicy.denyHardwareId`,
+  `device.restart`), each confirmed in the UI with impact and risk.
+* Per-user audio changes go through `JournaledAudioChanges` (read → journal with previous defaults → apply → verify) into
+  `%LocalAppData%\bitBybit\journal\changes.jsonl`, reverted in-session via `RecoveryCoordinator` with drift detection
+  (unit-tested with fakes).
+* Machine changes run in a one-shot elevated helper (`bitBybit.exe --elevated <verb>` via UAC; strict allowlisted
+  command line `ElevatedCommandLine`, unit-tested). `CaseOperations` backs up the driver package (`pnputil /export-driver`),
+  writes the device-specific `DenyDeviceIDs` policy (never `DenyDeviceIDsRetroactive`, never display-audio vendors,
+  never generic ids), optionally uninstalls the device instance and rescans; all journaled in
+  `%ProgramData%\bitBybit\journal` (protected ACL). Revert removes only bitBybit-owned policy entries, then rescans.
+* "DisplayPort Audio Preferred" profile: background tray instance in the user's session (HKCU Run), bounded reconciler
+  (manual changes respected, max applies per session, cool-down).
+* This is an interim path until the LocalSystem broker service + named-pipe IPC (Phase A) replace the elevated helper.
+* Validation: Core unit tests with fakes; Windows code compiled; CI smoke test on a Windows Server runner (read-only
+  paths only). Not validated on real hardware.
+
 ## Phase A — Foundation
 
 | Item | Status | Notes |
@@ -53,9 +71,10 @@ User guide: [PREVIEW.md](PREVIEW.md).
 | Item | Status | Notes |
 |---|---|---|
 | Evidence collection on the target PC | ⬜ | Wave 2 (`AudioCase` collector + CLI). Must run on the user's Windows 10 PC — not available in this environment. |
-| Realtek reinstall root-cause analysis | ⬜ | Wave 2 analyzer on top of setupapi/WU/event evidence. |
-| DisplayPort audio disappearance analysis (boot snapshots) | ⬜ | Wave 2. |
-| "DisplayPort Audio Preferred" profile + bounded reconciler | ⬜ | Wave 2. |
+| Realtek reinstall root-cause analysis | 🧪 | QuickDiag analyzer (setupapi/WU/software components, facts vs hypotheses); unit-tested with fixtures. |
+| DisplayPort audio disappearance analysis (boot snapshots) | 🧪 | QuickDiag before/after comparison across restarts; unit-tested with fixtures. |
+| "DisplayPort Audio Preferred" profile + bounded reconciler | 🧪 | Preview 0.2; reconciler unit-tested, host compiled only. |
+| Device-specific install deny policy + backup + revert | 🧪 | Preview 0.2; planner unit-tested, registry/SetupAPI code compiled only. |
 | Reboot persistence tests | ⬜ | Requires the user's hardware; procedure in REALTEK_DISPLAYPORT runbook. |
 
 ## Phase E — Video
