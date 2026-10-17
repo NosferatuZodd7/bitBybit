@@ -25,6 +25,11 @@ Requisitos: Windows 10 1809 ou posterior, ou Windows 11, de 64 bits.
 * **Páginas**: Caso Realtek / DisplayPort, Dispositivos (cartões, pesquisa, filtros por categoria, problemas
   primeiro), Atualizações (procura de drivers no Windows Update, **só leitura**), Driver Store, Cópias de segurança,
   Áudio, Ecrãs, Rede, Histórico, Alterações, Sistema e Registo (log).
+* **Listas em cartões agrupados** (0.3.2): Driver Store por categoria, Áudio por estado (a funcionar, sem nada
+  ligado, desativados, não presentes), Ecrãs, Rede por estado, Histórico, Alterações e Sistema.
+* O resumo de problemas na barra superior abre a lista de problemas e avisos com as opções para os resolver (0.3.1).
+* Quando o monitor está em modo DVI e as saídas de som HDMI/DisplayPort desaparecem, o bitBybit mostra um único aviso
+  com a causa (a ligação DVI) em vez de vários "problemas" (0.3.2).
 * As ações e o diagnóstico da 0.2 continuam iguais.
 * Cada versão enviada para o GitHub gera automaticamente um executável de teste (separador *Actions › Artifacts*,
   nome `bitBybit-<versão>-run<N>-<commit>-win-x64-unsigned`) e capturas de ecrã da interface.

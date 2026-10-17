@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 
 namespace BitByBit.App.ViewModels;
 
-public sealed record DriverPackageRow(string Inf, string? Provider, string? Version, string? Date, string Signed, string ClassName, int DeviceCount, string Devices);
+public sealed record DriverPackageRow(string Inf, string? Provider, string? Version, string? Date, string Signed, string ClassName, IReadOnlyList<string> DeviceNames);
 
 public sealed record BackupRow(string Name, string Created, string Size, int InfCount, string Path);
 
@@ -52,11 +52,11 @@ public sealed partial class MainViewModel
                     first.Driver.Date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                     first.Driver.IsSigned switch { true => Text.Get("common.yes"), false => Text.Get("common.no"), _ => "?" },
                     first.ClassName ?? "-",
-                    g.Count(),
-                    string.Join(", ", g.Select(d => d.Name).Where(n => !string.IsNullOrEmpty(n)).Distinct().Take(4)));
+                    g.Select(d => d.Name).Where(n => !string.IsNullOrEmpty(n)).Distinct().ToArray()!);
             })
             .OrderBy(p => int.TryParse(p.Inf.AsSpan(3, Math.Max(0, p.Inf.Length - 7)), out var n) ? n : int.MaxValue);
         Replace(DriverPackages, packages);
+        RefreshStoreCards();
     }
 
     /// <summary>Driver packages exported by bitBybit before a change (%ProgramData%\bitBybit\driver-backups).</summary>
@@ -82,6 +82,7 @@ public sealed partial class MainViewModel
         }
 
         Replace(Backups, rows);
+        RefreshBackupCards();
     }
 
     [RelayCommand]
@@ -109,6 +110,7 @@ public sealed partial class MainViewModel
             Replace(DriverUpdates, result.Value.Select(u => new DriverUpdateRow(
                 u.Title, u.DriverClass, u.Provider ?? u.Manufacturer ?? "-", u.DriverDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 u.MaxDownloadBytes is > 0 ? FormatSize(u.MaxDownloadBytes.Value) : null, u.HardwareId, u.Source)));
+            RefreshUpdateCards();
             UpdatesSearched = true;
             UpdatesSubtitle = Text.Get("app.page.updates.found", DriverUpdates.Count, DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture));
             ShowToast(DriverUpdates.Count == 0 ? Text.Get("app.page.updates.noneToast") : Text.Get("app.page.updates.foundToast", DriverUpdates.Count));

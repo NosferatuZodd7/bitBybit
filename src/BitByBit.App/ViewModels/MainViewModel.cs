@@ -222,6 +222,7 @@ public sealed partial class MainViewModel : ObservableObject
         RefreshDriverPackages(snapshot);
         RefreshBackups();
         UpdateShell(snapshot, report);
+        RefreshSnapshotCards(snapshot);
     }
 
     // ---- Actions -------------------------------------------------------------------------------------------------
@@ -443,6 +444,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         Replace(Changes, rows.OrderByDescending(r => r.CreatedAt));
+        RefreshChangeCards();
     }
 
     private async Task RevertChangeAsync(ChangeRow change)

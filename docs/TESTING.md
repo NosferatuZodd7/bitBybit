@@ -37,7 +37,9 @@ Windows 10/11 PC with the relevant devices and the evidence (exported report, lo
 | Scenario | Unit (fakes) | Compiled | CI runner | Real hardware |
 |---|---|---|---|---|
 | Theme palettes (Dark/Glass/Light/Custom, colour derivations, hex parsing) | ✅ | ✅ | ✅ (Core tests) | — |
-| Window builds, all icons parse, 4 looks × 4 pages render off-screen (`--smoke-test`) | — | ✅ | ⬜ pending first 0.3 run | ⬜ |
+| Window builds, all icons parse, 4 looks × 9 pages + issues view render off-screen (`--smoke-test`) | — | ✅ | ✅ runs 6–9 (0.3.0–0.3.1, 4 pages); 0.3.2 adds the card pages | 🟡 0.3.1 ran on the user's PC (screenshots of the store/audio pages received; "Evidências" header contrast bug found and fixed) |
+| Text/icon contrast check against composited backgrounds (canary: black on dark card must fail) | — | ✅ | ✅ run 9 (no unreadable element) | — |
+| DVI link + missing display outputs reported as one warning with cable guidance | ✅ (scenario shaped on the 0.3.1 report, synthetic ids) | ✅ | — | 🟡 replayed offline on the 0.3.1 report snapshot only |
 | DWM dark/caption colours | — | ✅ | ⬜ (not observable off-screen) | ⬜ |
 | Windows Update driver search (read-only COM) | — | ✅ | ⬜ | ⬜ |
 | Settings persistence (`settings.json`, atomic write) | — | ✅ | ⬜ | ⬜ |

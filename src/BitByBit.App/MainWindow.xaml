@@ -100,6 +100,111 @@
     </DataTemplate>
 
     <!-- Filter chip with its count. -->
+    <!-- Generic card of the list pages: tone-coloured icon tile, title, subtitle, tag, fields, note, optional action. -->
+    <DataTemplate x:Key="InfoCardTemplate" DataType="{x:Type vm:InfoCard}">
+      <Border x:Name="Card" Style="{StaticResource Surface.Card}" Margin="0,0,12,12" Padding="16,14" ToolTip="{Binding ToolTip}">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <Border x:Name="Tile" Width="38" Height="38" CornerRadius="12" Background="{DynamicResource Brush.AccentFill}" VerticalAlignment="Top" Margin="0,0,12,0">
+            <t:Icon x:Name="TileIcon" Glyph="{Binding Glyph}" Size="17" Foreground="{DynamicResource Brush.Accent}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <StackPanel Grid.Column="1">
+            <DockPanel>
+              <Border x:Name="Tag" DockPanel.Dock="Right" Style="{StaticResource Tag}" t:Ux.Tone="{Binding Tone}" Margin="8,1,0,0" VerticalAlignment="Top"
+                      Visibility="{Binding Tag, Converter={StaticResource EmptyToCollapsed}}">
+                <TextBlock Text="{Binding Tag}" />
+              </Border>
+              <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" MaxHeight="40" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+            <TextBlock Text="{Binding Subtitle}" FontSize="12" Foreground="{DynamicResource Brush.TextMuted}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"
+                       Visibility="{Binding Subtitle, Converter={StaticResource EmptyToCollapsed}}" />
+            <ItemsControl ItemsSource="{Binding Fields}" Margin="0,6,0,0">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="{x:Type vm:CardField}">
+                  <DockPanel Margin="0,2,0,0">
+                    <TextBlock DockPanel.Dock="Left" Text="{Binding Label}" FontSize="12" Foreground="{DynamicResource Brush.TextMuted}" Width="118" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding Value}" FontSize="12" TextTrimming="CharacterEllipsis" ToolTip="{Binding Value}" />
+                  </DockPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Text="{Binding Note}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource Brush.TextMuted}" Margin="0,6,0,0"
+                       Visibility="{Binding Note, Converter={StaticResource EmptyToCollapsed}}" />
+            <Button HorizontalAlignment="Right" Margin="0,8,0,0" Height="30" Padding="12,0" FontSize="12" t:Ux.IconSize="14"
+                    Content="{Binding ActionText}" t:Ux.Icon="{Binding ActionGlyph}" Command="{Binding ActionCommand}"
+                    Visibility="{Binding ShowAction, Converter={StaticResource BoolToVisibility}}" />
+            <Button Style="{StaticResource Button.Danger}" HorizontalAlignment="Right" Margin="0,8,0,0" Height="30" Padding="12,0" FontSize="12" t:Ux.IconSize="14"
+                    Content="{Binding ActionText}" t:Ux.Icon="{Binding ActionGlyph}" Command="{Binding ActionCommand}"
+                    Visibility="{Binding ShowDangerAction, Converter={StaticResource BoolToVisibility}}" />
+          </StackPanel>
+        </Grid>
+      </Border>
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding Tone}" Value="Ok">
+          <Setter TargetName="Tile" Property="Background" Value="{DynamicResource Brush.OkFill}" />
+          <Setter TargetName="TileIcon" Property="Foreground" Value="{DynamicResource Brush.Ok}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Tone}" Value="Warn">
+          <Setter TargetName="Tile" Property="Background" Value="{DynamicResource Brush.WarnFill}" />
+          <Setter TargetName="TileIcon" Property="Foreground" Value="{DynamicResource Brush.Warn}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Tone}" Value="Error">
+          <Setter TargetName="Tile" Property="Background" Value="{DynamicResource Brush.ErrorFill}" />
+          <Setter TargetName="TileIcon" Property="Foreground" Value="{DynamicResource Brush.Error}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding Tone}" Value="Neutral">
+          <Setter TargetName="Tile" Property="Background" Value="{DynamicResource Brush.NeutralFill}" />
+          <Setter TargetName="TileIcon" Property="Foreground" Value="{DynamicResource Brush.Neutral}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding IsDimmed}" Value="True">
+          <Setter TargetName="Card" Property="Opacity" Value="0.72" />
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <!-- A group of cards: icon, title, count, optional hint; cards in a responsive grid, or one per row for logs. -->
+    <DataTemplate x:Key="CardGroupTemplate" DataType="{x:Type vm:CardGroup}">
+      <StackPanel Margin="0,0,0,10">
+        <StackPanel Orientation="Horizontal" Margin="2,2,0,10">
+          <t:Icon Glyph="{Binding Glyph}" Size="16" Foreground="{DynamicResource Brush.Accent}" VerticalAlignment="Center" Margin="0,0,8,0" />
+          <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+          <Border Style="{StaticResource Tag}" Margin="8,0,0,0">
+            <TextBlock Text="{Binding CountText}" />
+          </Border>
+        </StackPanel>
+        <TextBlock Style="{StaticResource Text.Hint}" Text="{Binding Hint}" Margin="2,-4,0,10" TextWrapping="Wrap"
+                   Visibility="{Binding Hint, Converter={StaticResource EmptyToCollapsed}}" />
+        <ItemsControl ItemsSource="{Binding Cards}" ItemTemplate="{StaticResource InfoCardTemplate}">
+          <ItemsControl.Style>
+            <Style TargetType="ItemsControl">
+              <Setter Property="ItemsPanel">
+                <Setter.Value>
+                  <ItemsPanelTemplate>
+                    <UniformGrid VerticalAlignment="Top"
+                                 Columns="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ScrollViewer}, Converter={StaticResource WidthToColumns}, ConverterParameter=340}" />
+                  </ItemsPanelTemplate>
+                </Setter.Value>
+              </Setter>
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding IsList}" Value="True">
+                  <Setter Property="ItemsPanel">
+                    <Setter.Value>
+                      <ItemsPanelTemplate>
+                        <StackPanel />
+                      </ItemsPanelTemplate>
+                    </Setter.Value>
+                  </Setter>
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </ItemsControl.Style>
+        </ItemsControl>
+      </StackPanel>
+    </DataTemplate>
+
     <DataTemplate x:Key="ChipTemplate" DataType="{x:Type vm:FilterChip}">
       <Button Style="{StaticResource Chip}" Content="{Binding Text}" t:Ux.Active="{Binding IsActive}"
               Command="{Binding DataContext.SelectDeviceCategoryCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding Key}" />
@@ -325,189 +430,95 @@
                   <TextBlock Text="{loc:T app.page.updates.intro}" TextWrapping="Wrap" Foreground="{DynamicResource Brush.Text}" />
                 </DockPanel>
               </Border>
+              <StackPanel DockPanel.Dock="Top" Visibility="{Binding IsSearchingUpdates, Converter={StaticResource BoolToVisibility}}">
+                <t:SkeletonRow />
+                <t:SkeletonRow />
+              </StackPanel>
               <Grid>
-                <DataGrid ItemsSource="{Binding DriverUpdates}">
-                  <DataGrid.Columns>
-                    <DataGridTextColumn Header="{loc:T app.col.title}" Binding="{Binding Title}" Width="3*" />
-                    <DataGridTextColumn Header="{loc:T app.col.class}" Binding="{Binding DriverClass}" Width="*" />
-                    <DataGridTextColumn Header="{loc:T app.col.provider}" Binding="{Binding Provider}" Width="*" />
-                    <DataGridTextColumn Header="{loc:T app.col.driverDate}" Binding="{Binding Date}" />
-                    <DataGridTextColumn Header="{loc:T app.col.size}" Binding="{Binding Size}" />
-                    <DataGridTextColumn Header="{loc:T app.col.source}" Binding="{Binding Source}" />
-                  </DataGrid.Columns>
-                </DataGrid>
-                <StackPanel Visibility="{Binding IsSearchingUpdates, Converter={StaticResource BoolToVisibility}}" VerticalAlignment="Top" Margin="0,40,0,0">
-                  <t:SkeletonRow />
-                  <t:SkeletonRow />
-                </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                  <ItemsControl ItemsSource="{Binding UpdateGroups}" ItemTemplate="{StaticResource CardGroupTemplate}" Margin="0,0,0,12" />
+                </ScrollViewer>
               </Grid>
             </DockPanel>
 
-            <!-- Driver store: third-party packages in use -->
-            <DataGrid ItemsSource="{Binding DriverPackages}" Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=store}">
-              <DataGrid.Columns>
-                <DataGridTextColumn Header="INF" Binding="{Binding Inf}" FontFamily="{StaticResource Font.Mono}" />
-                <DataGridTextColumn Header="{loc:T app.col.provider}" Binding="{Binding Provider}" Width="*" />
-                <DataGridTextColumn Header="{loc:T app.col.driverVersion}" Binding="{Binding Version}" />
-                <DataGridTextColumn Header="{loc:T app.col.driverDate}" Binding="{Binding Date}" />
-                <DataGridTextColumn Header="{loc:T app.col.signed}" Binding="{Binding Signed}" />
-                <DataGridTextColumn Header="{loc:T app.col.class}" Binding="{Binding ClassName}" />
-                <DataGridTextColumn Header="{loc:T app.col.usedBy}" Binding="{Binding Devices}" Width="2*" />
-              </DataGrid.Columns>
-            </DataGrid>
+            <!-- Driver store: third-party packages in use, grouped by device category -->
+            <DockPanel Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=store}">
+              <Grid>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                  <ItemsControl ItemsSource="{Binding StoreGroups}" ItemTemplate="{StaticResource CardGroupTemplate}" Margin="0,0,0,12" />
+                </ScrollViewer>
+              </Grid>
+            </DockPanel>
 
             <!-- Backups made by bitBybit -->
-            <Grid Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=backups}">
-              <DataGrid ItemsSource="{Binding Backups}">
-                <DataGrid.Columns>
-                  <DataGridTextColumn Header="{loc:T app.col.name}" Binding="{Binding Name}" Width="2*" FontFamily="{StaticResource Font.Mono}" />
-                  <DataGridTextColumn Header="{loc:T app.col.date}" Binding="{Binding Created}" />
-                  <DataGridTextColumn Header="{loc:T app.col.size}" Binding="{Binding Size}" />
-                  <DataGridTextColumn Header="INF" Binding="{Binding InfCount}" />
-                  <DataGridTextColumn Header="{loc:T app.col.path}" Binding="{Binding Path}" Width="3*" FontFamily="{StaticResource Font.Mono}" />
-                </DataGrid.Columns>
-              </DataGrid>
+            <DockPanel Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=backups}">
+              <Grid>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                  <ItemsControl ItemsSource="{Binding BackupGroups}" ItemTemplate="{StaticResource CardGroupTemplate}" Margin="0,0,0,12" />
+                </ScrollViewer>
               <TextBlock Style="{StaticResource Text.Hint}" Text="{loc:T app.page.backups.empty}" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="520" TextAlignment="Center"
-                         Visibility="{Binding Backups.Count, Converter={StaticResource ZeroToVisibility}}" />
-            </Grid>
+                         Visibility="{Binding BackupGroups.Count, Converter={StaticResource ZeroToVisibility}}" />
+              </Grid>
+            </DockPanel>
 
-            <!-- Audio -->
-            <DataGrid ItemsSource="{Binding Endpoints}" Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=audio}">
-              <DataGrid.Columns>
-                <DataGridTextColumn Header="{loc:T app.col.flow}" Binding="{Binding Flow}" />
-                <DataGridTextColumn Header="{loc:T app.col.state}" Binding="{Binding State}" />
-                <DataGridTextColumn Header="{loc:T app.col.name}" Binding="{Binding Name}" Width="2*" />
-                <DataGridTextColumn Header="{loc:T app.col.adapter}" Binding="{Binding Adapter}" Width="2*" />
-                <DataGridTextColumn Header="{loc:T app.col.kind}" Binding="{Binding Kind}" />
-                <DataGridTextColumn Header="{loc:T app.col.default}" Binding="{Binding Default}" />
-              </DataGrid.Columns>
-            </DataGrid>
+            <!-- Audio: endpoints grouped by state -->
+            <DockPanel Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=audio}">
+              <TextBlock DockPanel.Dock="Top" Style="{StaticResource Text.Hint}" Text="{loc:T app.audio.intro}" Margin="0,0,0,10" />
+              <Grid>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                  <ItemsControl ItemsSource="{Binding AudioGroups}" ItemTemplate="{StaticResource CardGroupTemplate}" Margin="0,0,0,12" />
+                </ScrollViewer>
+              </Grid>
+            </DockPanel>
 
-            <!-- Displays -->
-            <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=displays}">
-              <StackPanel>
-                <TextBlock Style="{StaticResource Text.Section}" Text="{loc:T app.display.monitors}" Margin="2,0,0,6" />
-                <DataGrid ItemsSource="{Binding Monitors}">
-                  <DataGrid.Columns>
-                    <DataGridTextColumn Header="{loc:T app.col.name}" Binding="{Binding Name}" Width="2*" />
-                    <DataGridTextColumn Header="{loc:T app.col.connection}" Binding="{Binding Connection}" />
-                    <DataGridTextColumn Header="{loc:T app.col.mode}" Binding="{Binding Mode}" />
-                    <DataGridTextColumn Header="{loc:T app.col.source}" Binding="{Binding Source}" />
-                    <DataGridTextColumn Header="{loc:T app.col.audio}" Binding="{Binding Audio}" Width="2*" />
-                    <DataGridTextColumn Header="EDID" Binding="{Binding Edid}" />
-                  </DataGrid.Columns>
-                </DataGrid>
-                <TextBlock Style="{StaticResource Text.Section}" Text="{loc:T app.display.gpus}" />
-                <DataGrid ItemsSource="{Binding Gpus}">
-                  <DataGrid.Columns>
-                    <DataGridTextColumn Header="{loc:T app.col.name}" Binding="{Binding Name}" Width="2*" />
-                    <DataGridTextColumn Header="{loc:T app.col.driverVersion}" Binding="{Binding DriverVersion}" />
-                    <DataGridTextColumn Header="{loc:T app.col.driverDate}" Binding="{Binding DriverDate, StringFormat=yyyy-MM-dd}" />
-                    <DataGridTextColumn Header="{loc:T app.col.status}" Binding="{Binding Status}" />
-                    <DataGridTextColumn Header="{loc:T app.col.mode}" Binding="{Binding CurrentMode}" Width="*" />
-                  </DataGrid.Columns>
-                </DataGrid>
-              </StackPanel>
-            </ScrollViewer>
+            <!-- Displays: monitors and graphics cards -->
+            <DockPanel Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=displays}">
+              <Grid>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                  <ItemsControl ItemsSource="{Binding DisplayGroups}" ItemTemplate="{StaticResource CardGroupTemplate}" Margin="0,0,0,12" />
+                </ScrollViewer>
+              </Grid>
+            </DockPanel>
 
-            <!-- Network -->
-            <DataGrid ItemsSource="{Binding Network}" Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=network}">
-              <DataGrid.Columns>
-                <DataGridTextColumn Header="{loc:T app.col.name}" Binding="{Binding Name}" Width="*" />
-                <DataGridTextColumn Header="{loc:T app.col.kind}" Binding="{Binding Kind}" />
-                <DataGridTextColumn Header="{loc:T app.col.status}" Binding="{Binding Status}" />
-                <DataGridTextColumn Header="IPv4" Binding="{Binding IPv4}" />
-                <DataGridTextColumn Header="Gateway" Binding="{Binding Gateway}" />
-                <DataGridTextColumn Header="DNS" Binding="{Binding Dns}" />
-                <DataGridTextColumn Header="{loc:T app.col.speed}" Binding="{Binding Speed}" />
-                <DataGridTextColumn Header="{loc:T app.col.traffic}" Binding="{Binding Traffic}" />
-                <DataGridTextColumn Header="{loc:T app.col.description}" Binding="{Binding Description}" Width="*" />
-              </DataGrid.Columns>
-            </DataGrid>
+            <!-- Network: adapters grouped by state -->
+            <DockPanel Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=network}">
+              <TextBlock DockPanel.Dock="Top" Style="{StaticResource Text.Hint}" Text="{loc:T app.network.intro}" Margin="0,0,0,10" />
+              <Grid>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                  <ItemsControl ItemsSource="{Binding NetworkGroups}" ItemTemplate="{StaticResource CardGroupTemplate}" Margin="0,0,0,12" />
+                </ScrollViewer>
+              </Grid>
+            </DockPanel>
 
-            <!-- Driver history -->
-            <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=history}">
-              <StackPanel>
-                <TextBlock Style="{StaticResource Text.Section}" Text="{loc:T app.history.wu}" Margin="2,0,0,6" />
-                <DataGrid ItemsSource="{Binding WindowsUpdate}" MaxHeight="280">
-                  <DataGrid.Columns>
-                    <DataGridTextColumn Header="{loc:T app.col.date}" Binding="{Binding Date, StringFormat=yyyy-MM-dd HH:mm}" />
-                    <DataGridTextColumn Header="{loc:T app.col.title}" Binding="{Binding Title}" Width="*" />
-                    <DataGridTextColumn Header="{loc:T app.col.result}" Binding="{Binding Result}" />
-                    <DataGridTextColumn Header="{loc:T app.col.operation}" Binding="{Binding Operation}" />
-                  </DataGrid.Columns>
-                </DataGrid>
-                <TextBlock Style="{StaticResource Text.Section}" Text="{loc:T app.history.setupapi}" />
-                <TextBlock Style="{StaticResource Text.Hint}" Text="{loc:T app.history.setupapiHint}" />
-                <DataGrid ItemsSource="{Binding SetupApiSections}" MaxHeight="320">
-                  <DataGrid.Columns>
-                    <DataGridTextColumn Header="{loc:T app.col.date}" Binding="{Binding Start, StringFormat=yyyy-MM-dd HH:mm:ss}" />
-                    <DataGridTextColumn Header="{loc:T app.col.operation}" Binding="{Binding Header}" Width="3*" />
-                    <DataGridTextColumn Header="{loc:T app.col.command}" Binding="{Binding Command}" Width="2*" />
-                    <DataGridTextColumn Header="{loc:T app.col.result}" Binding="{Binding ExitStatus}" />
-                  </DataGrid.Columns>
-                </DataGrid>
-                <TextBlock Style="{StaticResource Text.Section}" Text="{loc:T app.history.events}" />
-                <DataGrid ItemsSource="{Binding PnpEvents}" MaxHeight="280">
-                  <DataGrid.Columns>
-                    <DataGridTextColumn Header="{loc:T app.col.date}" Binding="{Binding Time, StringFormat=yyyy-MM-dd HH:mm:ss}" />
-                    <DataGridTextColumn Header="ID" Binding="{Binding EventId}" />
-                    <DataGridTextColumn Header="{loc:T app.col.message}" Binding="{Binding Message}" Width="*" />
-                  </DataGrid.Columns>
-                </DataGrid>
-              </StackPanel>
-            </ScrollViewer>
+            <!-- Driver history: Windows Update, setupapi.dev.log, Plug and Play events -->
+            <DockPanel Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=history}">
+              <Grid>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                  <ItemsControl ItemsSource="{Binding HistoryGroups}" ItemTemplate="{StaticResource CardGroupTemplate}" Margin="0,0,0,12" />
+                </ScrollViewer>
+              </Grid>
+            </DockPanel>
 
-            <!-- bitBybit changes -->
+            <!-- bitBybit changes: active (revertible) and past -->
             <DockPanel Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=changes}">
-              <TextBlock DockPanel.Dock="Top" Style="{StaticResource Text.Hint}" Text="{loc:T app.changes.intro}" Margin="0,0,0,8" />
-              <DataGrid ItemsSource="{Binding Changes}">
-                <DataGrid.Columns>
-                  <DataGridTextColumn Header="{loc:T app.col.date}" Binding="{Binding When}" />
-                  <DataGridTextColumn Header="{loc:T app.col.kind}" Binding="{Binding Title}" />
-                  <DataGridTextColumn Header="{loc:T app.col.description}" Binding="{Binding Description}" Width="2*" />
-                  <DataGridTextColumn Header="{loc:T app.col.scope}" Binding="{Binding Scope}" />
-                  <DataGridTextColumn Header="{loc:T app.col.status}" Binding="{Binding Status}" />
-                  <DataGridTextColumn Header="{loc:T app.col.detail}" Binding="{Binding Detail}" Width="*" />
-                  <DataGridTemplateColumn>
-                    <DataGridTemplateColumn.CellTemplate>
-                      <DataTemplate DataType="{x:Type vm:ChangeRow}">
-                        <Button Style="{StaticResource Button.Danger}" Height="30" Padding="12,0" FontSize="12" Content="{loc:T app.changes.revert}" t:Ux.Icon="rotate-ccw" t:Ux.IconSize="14"
-                                Command="{Binding RevertCommand}" Visibility="{Binding CanRevert, Converter={StaticResource BoolToVisibility}}" />
-                      </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                  </DataGridTemplateColumn>
-                </DataGrid.Columns>
-              </DataGrid>
+              <TextBlock DockPanel.Dock="Top" Style="{StaticResource Text.Hint}" Text="{loc:T app.changes.intro}" Margin="0,0,0,10" />
+              <Grid>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                  <ItemsControl ItemsSource="{Binding ChangeGroups}" ItemTemplate="{StaticResource CardGroupTemplate}" Margin="0,0,0,12" />
+                </ScrollViewer>
+              <TextBlock Style="{StaticResource Text.Hint}" Text="{loc:T app.changes.empty}" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="520" TextAlignment="Center"
+                         Visibility="{Binding ChangeGroups.Count, Converter={StaticResource ZeroToVisibility}}" />
+              </Grid>
             </DockPanel>
 
             <!-- System -->
-            <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=system}">
-              <StackPanel>
-                <DataGrid ItemsSource="{Binding SystemInfo}" HeadersVisibility="None">
-                  <DataGrid.Columns>
-                    <DataGridTextColumn Binding="{Binding Key}" FontWeight="SemiBold" />
-                    <DataGridTextColumn Binding="{Binding Value}" Width="*" />
-                  </DataGrid.Columns>
-                </DataGrid>
-                <TextBlock Style="{StaticResource Text.Section}" Text="{loc:T app.system.services}" />
-                <DataGrid ItemsSource="{Binding Services}">
-                  <DataGrid.Columns>
-                    <DataGridTextColumn Header="{loc:T app.col.name}" Binding="{Binding Name}" />
-                    <DataGridTextColumn Header="{loc:T app.col.description}" Binding="{Binding DisplayName}" Width="*" />
-                    <DataGridTextColumn Header="{loc:T app.col.status}" Binding="{Binding Status}" />
-                    <DataGridTextColumn Header="{loc:T app.col.startType}" Binding="{Binding StartType}" />
-                  </DataGrid.Columns>
-                </DataGrid>
-                <TextBlock Style="{StaticResource Text.Section}" Text="{loc:T app.system.issues}" />
-                <DataGrid ItemsSource="{Binding Issues}">
-                  <DataGrid.Columns>
-                    <DataGridTextColumn Header="{loc:T app.col.area}" Binding="{Binding Area}" />
-                    <DataGridTextColumn Header="{loc:T app.col.message}" Binding="{Binding Message}" Width="*" />
-                  </DataGrid.Columns>
-                </DataGrid>
-              </StackPanel>
-            </ScrollViewer>
+            <DockPanel Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=system}">
+              <Grid>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                  <ItemsControl ItemsSource="{Binding SystemGroups}" ItemTemplate="{StaticResource CardGroupTemplate}" Margin="0,0,0,12" />
+                </ScrollViewer>
+              </Grid>
+            </DockPanel>
 
             <!-- Log: the tail of today's app log -->
             <Border Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=log}"

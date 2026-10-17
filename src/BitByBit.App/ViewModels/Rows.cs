@@ -133,7 +133,9 @@ public sealed class DeviceRow(DeviceSummary d)
 
     public string Category { get; } = CategoryOf(d.ClassName);
 
-    public string Glyph => Category switch
+    public string Glyph => GlyphOf(Category);
+
+    public static string GlyphOf(string category) => category switch
     {
         "audio" => "volume",
         "display" => "monitor",
@@ -172,7 +174,7 @@ public sealed class DeviceRow(DeviceSummary d)
         return i < 0 ? int.MaxValue : i;
     }
 
-    private static string CategoryOf(string? className) => className?.ToUpperInvariant() switch
+    public static string CategoryOf(string? className) => className?.ToUpperInvariant() switch
     {
         "MEDIA" or "AUDIOENDPOINT" or "SOFTWARECOMPONENT" => "audio",
         "DISPLAY" or "MONITOR" => "display",

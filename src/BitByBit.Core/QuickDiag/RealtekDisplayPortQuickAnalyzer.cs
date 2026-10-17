@@ -441,14 +441,15 @@ public static partial class RealtekDisplayPortQuickAnalyzer
             T("quickdiag.monitor.dvi.detail",
                 "Windows reports that the link to this monitor works as DVI. In DVI mode the graphics card sends no audio, so the HDMI/DisplayPort sound output stays 'unplugged'. This typically happens with passive DisplayPort→HDMI/DVI cables or adapters, or when the link is detected as DVI at start-up."),
             evidence,
-            [
-                new ProposedAction("guidance.displayLink",
-                    T("quickdiag.action.displayLink.title", "Test the monitor connection"),
-                    T("quickdiag.action.displayLink.impact",
-                        "With the computer on, switch the monitor off and on again (or unplug and plug in the video cable) and check whether the HDMI/DisplayPort sound output appears. Lasting fix: a DisplayPort-to-DisplayPort cable (if the monitor has a DisplayPort input) or an active DisplayPort→HDMI adapter. No setting is changed."),
-                    RiskLevel.None),
-            ]));
+            [DisplayLinkAction()]));
     }
+
+    /// <summary>Guidance only (nothing to execute): the fix for a DVI link is a cable or adapter.</summary>
+    private static ProposedAction DisplayLinkAction() => new("guidance.displayLink",
+        T("quickdiag.action.displayLink.title", "Test the monitor connection"),
+        T("quickdiag.action.displayLink.impact",
+            "With the computer on, switch the monitor off and on again (or unplug and plug in the video cable) and check whether the HDMI/DisplayPort sound output appears. Lasting fix: a DisplayPort-to-DisplayPort cable (if the monitor has a DisplayPort input) or an active DisplayPort→HDMI adapter. No setting is changed."),
+        RiskLevel.None);
 
     private static IEnumerable<EvidenceItem> EdidEvidence(MonitorSummary m)
     {
@@ -512,7 +513,29 @@ public static partial class RealtekDisplayPortQuickAnalyzer
         }
 
         var dvi = allMonitors.FirstOrDefault(m => m.IsDvi);
-        foreach (var e in endpoints.Except(stale))
+        var missing = endpoints.Except(stale).ToArray();
+        if (dvi is not null && live.Length == 0 && missing.Length > 0 && gpuAudio.Any(d => d.IsPresent != false && d.ProblemCode is null or 0))
+        {
+            // Same cause as the DVI finding: one warning that explains the missing outputs instead of one problem each.
+            findings.Add(new DiagnosticFinding(
+                "audioCase.endpoint.noneOverDvi",
+                FindingSeverity.Warning,
+                T("quickdiag.endpoint.noneOverDvi.title", "No HDMI/DisplayPort sound output while the monitor link is DVI"),
+                T("quickdiag.endpoint.noneOverDvi.detail",
+                    "The graphics card's audio device is installed, but its sound output(s) ({0}) are not present. The monitor is connected over a DVI link, which carries no audio, so there is nothing for the sound output to play to. Fix the link (see the DVI finding) and the output should come back.",
+                    string.Join(", ", missing.Select(e => e.Name ?? e.Id))),
+                [
+                    .. missing.Select(e => EvidenceItem.Observation("CoreAudio:IMMDevice.GetState", $"'{e.Name}': State={e.State}, adapter={e.AdapterName}", ((int)e.State).ToString(CultureInfo.InvariantCulture))),
+                    EvidenceItem.Fact("PnP/WMI", $"Display audio device present without a problem code: {gpuAudio.First(d => d.IsPresent != false && d.ProblemCode is null or 0).Name}"),
+                    EvidenceItem.Inference(Src,
+                        $"The active monitor '{dvi.FriendlyName}' is on a DVI link (no audio sink), which is consistent with the graphics audio driver not exposing a playback device.",
+                        Confidence.Medium),
+                ],
+                [DisplayLinkAction()]));
+            return;
+        }
+
+        foreach (var e in missing)
         {
             var (id, severity, title, detail) = e.State switch
             {

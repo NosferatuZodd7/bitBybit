@@ -207,10 +207,32 @@ public class RealPcScenarioTests
     {
         var report = RealtekDisplayPortQuickAnalyzer.Analyze(Snapshot(
             devices: [IntelAudio()],
+            monitors: [DviMonitor() with { OutputTechnology = 10, OutputTechnologyName = "DisplayPort" }],
             endpoints: [DisplayEndpoint("{0.0.0.00000000}.{b}", "Monitor (NVIDIA High Definition Audio)", "NVIDIA High Definition Audio", EndpointState.NotPresent)]));
 
         Assert.Equal(FindingSeverity.Problem, Find(report, "audioCase.endpoint.notPresent").Severity);
         Assert.DoesNotContain(report.Findings, f => f.FindingId == "audioCase.endpoint.stale");
+    }
+
+    [Fact]
+    public void Missing_display_outputs_on_a_dvi_link_are_one_warning_with_the_cable_guidance()
+    {
+        // Shaped on the 0.3.1 report: manufacturer display-audio driver back, both display outputs not present, DVI link.
+        var report = RealtekDisplayPortQuickAnalyzer.Analyze(Snapshot(
+            devices: [IntelAudio() with { Name = "Intel(R) Display Audio", Driver = new DriverSummary { Version = "6.16.0.3154", Provider = "Intel(R) Corporation", InfName = "oem14.inf" } }],
+            endpoints:
+            [
+                DisplayEndpoint("{0.0.0.00000000}.{a}", "Digital Audio (HDMI) (High Definition Audio Device)", "High Definition Audio Device", EndpointState.NotPresent),
+                DisplayEndpoint("{0.0.0.00000000}.{b}", "Intel(R) Display Audio - HDMI 1 (Intel(R) Display Audio)", "Intel(R) Display Audio", EndpointState.NotPresent),
+            ]));
+
+        var finding = Find(report, "audioCase.endpoint.noneOverDvi");
+        Assert.Equal(FindingSeverity.Warning, finding.Severity);
+        Assert.Equal(2, finding.Evidence.Count(e => e.Kind == EvidenceKind.Observation));
+        Assert.Contains(finding.Evidence, e => e.Kind == EvidenceKind.Inference && e.Description.Contains("DVI link", StringComparison.Ordinal));
+        Assert.Equal("guidance.displayLink", Assert.Single(finding.Actions).ActionId);
+        Assert.DoesNotContain(report.Findings, f => f.FindingId == "audioCase.endpoint.notPresent");
+        Assert.DoesNotContain(report.Findings, f => f.Severity >= FindingSeverity.Problem);
     }
 
     [Fact]

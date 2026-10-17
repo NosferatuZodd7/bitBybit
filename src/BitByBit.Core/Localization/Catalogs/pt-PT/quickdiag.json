@@ -36,6 +36,8 @@
   "quickdiag.endpoint.unplugged.detail": "O controlador existe, mas indica que não há nenhum recetor de áudio ligado: o monitor pode estar desligado/em suspensão, ligado a outra saída, ou não estar a anunciar áudio neste momento.",
   "quickdiag.endpoint.disabled.title": "'{0}' está desativado",
   "quickdiag.endpoint.disabled.detail": "O dispositivo de reprodução existe mas foi desativado (pelo utilizador, por uma aplicação ou por um controlador). Pode ser reativado nas definições de Som.",
+  "quickdiag.endpoint.noneOverDvi.title": "Sem saída de som HDMI/DisplayPort enquanto o monitor estiver ligado em modo DVI",
+  "quickdiag.endpoint.noneOverDvi.detail": "O dispositivo de áudio da placa gráfica está instalado, mas as respetivas saídas de som ({0}) não estão presentes. O monitor está ligado em modo DVI, que não transporta som, por isso não há onde reproduzir. Corrija a ligação (veja a conclusão sobre o modo DVI) e a saída de som deverá voltar.",
   "quickdiag.endpoint.notPresent.title": "'{0}' não está presente",
   "quickdiag.endpoint.notPresent.detail": "O Windows lembra-se deste dispositivo de reprodução, mas o respetivo dispositivo não está presente agora (dispositivo de áudio da placa gráfica em falta, ou o controlador não o criou nesta sessão).",
   "quickdiag.action.enableEndpoint.title": "Ativar este dispositivo de reprodução",

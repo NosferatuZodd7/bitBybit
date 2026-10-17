@@ -13,6 +13,15 @@ public sealed class EqualsConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => Binding.DoNothing;
 }
 
+/// <summary>Collapsed for a null or blank string (optional card parts).</summary>
+public sealed class EmptyToCollapsedConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
+        string.IsNullOrWhiteSpace(value?.ToString()) ? Visibility.Collapsed : Visibility.Visible;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => Binding.DoNothing;
+}
+
 /// <summary>Negates a boolean (e.g. "all" chip active when the "only issues" filter is off).</summary>
 public sealed class InverseBoolConverter : IValueConverter
 {

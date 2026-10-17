@@ -12,6 +12,7 @@
       <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
       <loc:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
       <loc:InverseBoolConverter x:Key="InverseBool" />
+      <loc:EmptyToCollapsedConverter x:Key="EmptyToCollapsed" />
       <loc:EqualsConverter x:Key="EqualsConverter" />
       <loc:EqualsToVisibilityConverter x:Key="EqualsToVisibility" />
       <loc:AllEqualConverter x:Key="AllEqualConverter" />
