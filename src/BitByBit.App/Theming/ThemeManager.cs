@@ -84,6 +84,9 @@ public static class ThemeManager
         r["Brush.SkeletonShine"] = Frozen(new LinearGradientBrush(
             new GradientStopCollection { new(Colors.Transparent, 0), new(shine, 0.5), new(Colors.Transparent, 1) }, 0));
         r["Color.Background"] = ToColor(p.Background);
+        // Wordmark: "bit" in black on light themes, in white on dark ones.
+        r["Image.Wordmark"] = Frozen(new System.Windows.Media.Imaging.BitmapImage(
+            new Uri(p.IsLight ? "pack://application:,,,/Assets/wordmark-light.png" : "pack://application:,,,/Assets/wordmark-dark.png")));
         Changed?.Invoke();
     }
 

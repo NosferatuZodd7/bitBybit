@@ -36,6 +36,17 @@ public sealed partial class MainViewModel
         new("system", "server", Text.Get("app.page.system.title")),
     ];
 
+    /// <summary>Pages in the top bar. "changes" has its own highlighted button that only appears when something can be reverted.</summary>
+    public IEnumerable<PageInfo> NavPages => Pages.Where(p => p.Key != "changes");
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActiveChanges), nameof(ActiveChangesText))]
+    private int _activeChangeCount;
+
+    public bool HasActiveChanges => ActiveChangeCount > 0;
+
+    public string ActiveChangesText => Text.Get("app.changes.badge", ActiveChangeCount);
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PageTitle), nameof(PageSubtitle), nameof(PageGlyph))]
     [NotifyCanExecuteChangedFor(nameof(BackCommand))]

@@ -15,6 +15,7 @@
     <AssemblyName>bitBybit</AssemblyName>
     <RootNamespace>BitByBit.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\BitByBit.Core\BitByBit.Core.csproj" />
@@ -30,6 +31,8 @@
   <ItemGroup>
     <!-- Inter (SIL OFL 1.1, third-party/inter/LICENSE.txt) bundled so the UI looks the same on every PC. -->
     <Resource Include="Fonts\*.ttf" />
+    <Resource Include="Assets\*.png" />
+    <Resource Include="Assets\app.ico" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" />

@@ -349,5 +349,10 @@
   "app.update.channel.stable": "Estável",
   "app.update.channelHint": "\"Testes\" recebe cada versão que é publicada no GitHub, logo a seguir a cada alteração. \"Estável\" só recebe versões marcadas como estáveis.",
   "app.update.auto": "Procurar atualizações automaticamente ao abrir (no máximo a cada 6 horas)",
-  "app.update.securityHint": "Só são instaladas versões do repositório do bitBybit no GitHub, com assinatura digital verificada com a chave incluída na aplicação, e nunca uma versão mais antiga do que a atual. Sem conta, sem telemetria."
+  "app.update.securityHint": "Só são instaladas versões do repositório do bitBybit no GitHub, com assinatura digital verificada com a chave incluída na aplicação, e nunca uma versão mais antiga do que a atual. Sem conta, sem telemetria.",
+  "app.changes.badge": "Reverter alterações ({0})",
+  "app.changes.badgeTip": "O bitBybit alterou coisas neste computador que ainda pode desfazer. Clique para ver e reverter.",
+  "app.cards.system.history": "Histórico de alterações do bitBybit",
+  "app.cards.system.historyHint": "{0} registadas · {1} ainda podem ser revertidas",
+  "app.cards.system.historyOpen": "Abrir"
 }

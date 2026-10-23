@@ -271,6 +271,15 @@
     </Style.Triggers>
   </Style>
 
+  <!-- Chip in the warning tone: used for "there are bitBybit changes you can revert". -->
+  <Style x:Key="Chip.Warn" TargetType="ButtonBase" BasedOn="{StaticResource Chip}">
+    <Setter Property="Background" Value="{DynamicResource Brush.WarnFill}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Brush.WarnEdge}" />
+    <Setter Property="Foreground" Value="{DynamicResource Brush.Warn}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="t:Ux.HaloBrush" Value="{DynamicResource Brush.WarnRing}" />
+  </Style>
+
   <!-- Icon-only tool button (36×36): no frame until hovered; Ux.Active = a toggle that is on (lit in the accent). -->
   <ControlTemplate x:Key="Template.ToolButton" TargetType="ButtonBase">
     <Grid x:Name="Root" RenderTransformOrigin="0.5,0.5" Background="Transparent">

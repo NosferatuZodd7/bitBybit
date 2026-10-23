@@ -6,7 +6,7 @@
         xmlns:t="clr-namespace:BitByBit.App.Theming"
         Title="{loc:T app.settings.title}" Width="780" Height="600" MinWidth="680" MinHeight="480"
         Background="{DynamicResource Brush.Background}" Foreground="{DynamicResource Brush.Text}"
-        FontFamily="{StaticResource Font.UI}" FontSize="13" UseLayoutRounding="True"
+        FontFamily="{StaticResource Font.UI}" FontSize="13" UseLayoutRounding="True" Icon="pack://application:,,,/Assets/app.ico"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
   <Grid>
     <t:GlassBackdrop />
@@ -148,11 +148,14 @@
             <TextBlock Style="{StaticResource Text.Section}" Text="{loc:T app.settings.about}" Margin="2,4,0,6" />
             <Border Style="{StaticResource Surface.Card}" Padding="16">
               <StackPanel>
-                <TextBlock FontSize="15" FontWeight="SemiBold">
-                  <Run Text="bitBybit" />
-                  <Run Text="{Binding Version, Mode=OneWay}" />
-                </TextBlock>
-                <TextBlock Style="{StaticResource Text.Hint}" Text="{loc:T app.settings.aboutText}" Margin="0,6,0,0" />
+                <StackPanel Orientation="Horizontal">
+                  <Image Source="pack://application:,,,/Assets/logo-mark.png" Height="56" Margin="0,0,14,0" RenderOptions.BitmapScalingMode="HighQuality" />
+                  <StackPanel VerticalAlignment="Center">
+                    <Image Source="{DynamicResource Image.Wordmark}" Height="34" HorizontalAlignment="Left" RenderOptions.BitmapScalingMode="HighQuality" />
+                    <TextBlock Text="{Binding Version}" FontSize="13" Foreground="{DynamicResource Brush.TextMuted}" Margin="2,4,0,0" />
+                  </StackPanel>
+                </StackPanel>
+                <TextBlock Style="{StaticResource Text.Hint}" Text="{loc:T app.settings.aboutText}" Margin="0,10,0,0" />
                 <TextBlock Style="{StaticResource Text.Section}" Text="{loc:T app.settings.dataFolders}" />
                 <TextBlock Text="{Binding DataFolders}" FontFamily="{StaticResource Font.Mono}" FontSize="12" TextWrapping="Wrap" />
                 <TextBlock Style="{StaticResource Text.Section}" Text="{loc:T app.settings.credits}" />

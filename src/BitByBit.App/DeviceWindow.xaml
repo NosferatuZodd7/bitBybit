@@ -6,7 +6,7 @@
         xmlns:t="clr-namespace:BitByBit.App.Theming"
         Title="{Binding Name}" Width="900" Height="720" MinWidth="720" MinHeight="520"
         Background="{DynamicResource Brush.Background}" Foreground="{DynamicResource Brush.Text}"
-        FontFamily="{StaticResource Font.UI}" FontSize="13" UseLayoutRounding="True"
+        FontFamily="{StaticResource Font.UI}" FontSize="13" UseLayoutRounding="True" Icon="pack://application:,,,/Assets/app.ico"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
   <Window.Resources>
     <DataTemplate x:Key="FieldTemplate" DataType="{x:Type vm:CardField}">

@@ -341,7 +341,17 @@ public sealed partial class MainViewModel
                 Tag = s.IsElevated ? Text.Get("app.cards.system.admin") : null,
                 Fields = SystemInfo.Skip(1).Where(k => !string.IsNullOrWhiteSpace(k.Value)).Select(k => new CardField(k.Key, k.Value!)).ToArray(),
             },
-        ]);
+            new InfoCard
+            {
+                Glyph = "rotate-ccw",
+                Title = Text.Get("app.cards.system.history"),
+                Subtitle = Text.Get("app.cards.system.historyHint", Changes.Count, ActiveChangeCount),
+                Tone = ActiveChangeCount > 0 ? "Warn" : "Neutral",
+                ActionText = Text.Get("app.cards.system.historyOpen"),
+                ActionGlyph = "chevron-right",
+                ActionCommand = new RelayCommand(() => Navigate("changes")),
+            },
+        ], IsList: true);
         yield return new CardGroup("settings", Text.Get("app.system.services"), snapshot.Services.Select(v => new InfoCard
         {
             Glyph = "settings",

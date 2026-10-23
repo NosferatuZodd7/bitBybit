@@ -7,7 +7,7 @@
         xmlns:diag="clr-namespace:BitByBit.Core.Diagnostics;assembly=BitByBit.Core"
         Title="{Binding Title}" Height="840" Width="1360" MinHeight="620" MinWidth="1100"
         Background="{DynamicResource Brush.Background}" Foreground="{DynamicResource Brush.Text}"
-        FontFamily="{StaticResource Font.UI}" FontSize="13" UseLayoutRounding="True"
+        FontFamily="{StaticResource Font.UI}" FontSize="13" UseLayoutRounding="True" Icon="pack://application:,,,/Assets/app.ico"
         WindowStartupLocation="CenterScreen">
   <Window.Resources>
     <!-- Card of a finding (Realtek / DisplayPort case). -->
@@ -117,9 +117,13 @@
       <Border DockPanel.Dock="Top" Style="{StaticResource Surface.Panel}" Margin="20,14,20,8" Padding="14,10,12,10">
         <DockPanel>
           <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+            <!-- Only when bitBybit changed something that can still be reverted: stands out, opens the changes page. -->
+            <Button Style="{StaticResource Chip.Warn}" Height="34" Margin="0,0,10,0" t:Ux.Icon="rotate-ccw" Content="{Binding ActiveChangesText}"
+                    ToolTip="{loc:T app.changes.badgeTip}" Command="{Binding NavigateCommand}" CommandParameter="changes"
+                    Visibility="{Binding HasActiveChanges, Converter={StaticResource BoolToVisibility}}" />
             <!-- Pages as icons -->
             <Border Style="{StaticResource Surface.BarGroup}">
-              <ItemsControl ItemsSource="{Binding Pages}" VerticalAlignment="Center">
+              <ItemsControl ItemsSource="{Binding NavPages}" VerticalAlignment="Center">
                 <ItemsControl.ItemsPanel>
                   <ItemsPanelTemplate>
                     <StackPanel Orientation="Horizontal" />
@@ -167,9 +171,7 @@
 
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
             <!-- Identity: this PC -->
-            <Border Width="38" Height="38" CornerRadius="19" Background="{DynamicResource Brush.AccentFill}" BorderBrush="{DynamicResource Brush.AccentEdge}" BorderThickness="1">
-              <t:Icon Glyph="monitor" Size="18" Foreground="{DynamicResource Brush.Accent}" HorizontalAlignment="Center" VerticalAlignment="Center" />
-            </Border>
+            <Image Source="pack://application:,,,/Assets/logo-mark.png" Height="40" RenderOptions.BitmapScalingMode="HighQuality" ToolTip="bitBybit" />
             <StackPanel Margin="10,0,12,0" VerticalAlignment="Center" MaxWidth="230">
               <TextBlock Text="{Binding MachineName}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
               <TextBlock Text="{Binding WindowsVersion}" FontSize="12" Foreground="{DynamicResource Brush.TextMuted}" TextTrimming="CharacterEllipsis" ToolTip="{Binding WindowsVersion}" />

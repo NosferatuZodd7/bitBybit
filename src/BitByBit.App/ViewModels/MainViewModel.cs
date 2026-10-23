@@ -463,6 +463,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         Replace(Changes, rows.OrderByDescending(r => r.CreatedAt));
+        ActiveChangeCount = Changes.Count(c => c.CanRevert);
         RefreshChangeCards();
     }
 
