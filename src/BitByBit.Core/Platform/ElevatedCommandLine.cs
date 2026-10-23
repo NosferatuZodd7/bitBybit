@@ -15,6 +15,9 @@ public sealed record ElevatedRequest(string Verb, string? InstanceId, IReadOnlyL
 
     /// <summary>Cleanup batch: absent devices (instance ids) to remove.</summary>
     public IReadOnlyList<string> RemoveDevices { get; init; } = [];
+
+    /// <summary>Windows Update driver updates (update ids, GUIDs) to install.</summary>
+    public IReadOnlyList<string> UpdateIds { get; init; } = [];
 }
 
 /// <summary>
@@ -37,6 +40,8 @@ public static class ElevatedCommandLine
     public const string DeletePackage = "delete-package";
     public const string Rescan = "rescan";
     public const string Cleanup = "cleanup";
+    public const string InstallUpdates = "install-updates";
+    public const int MaxUpdates = 20;
     public const int MaxRemoveInfs = 20;
     public const int MaxRemoveDevices = 10;
 
@@ -44,7 +49,7 @@ public static class ElevatedCommandLine
     public const int MaxInstanceIdLength = 400;
 
     public static IReadOnlyList<string> Verbs { get; } =
-        [BlockDriver, RestartDevice, Revert, EnableDevice, DisableDevice, UninstallDevice, InstallDriver, RollbackDriver, DeletePackage, Rescan, Cleanup];
+        [BlockDriver, RestartDevice, Revert, EnableDevice, DisableDevice, UninstallDevice, InstallDriver, RollbackDriver, DeletePackage, Rescan, Cleanup, InstallUpdates];
 
     public static IReadOnlyList<string> Build(ElevatedRequest request)
     {
@@ -85,6 +90,11 @@ public static class ElevatedCommandLine
             args.AddRange(["--remove-device", device]);
         }
 
+        foreach (var update in request.UpdateIds)
+        {
+            args.AddRange(["--update", update]);
+        }
+
         return args;
     }
 
@@ -121,6 +131,7 @@ public static class ElevatedCommandLine
         string? inf = null;
         var removeInfs = new List<string>();
         var removeDevices = new List<string>();
+        var updates = new List<string>();
         for (var i = start + 2; i < args.Count; i++)
         {
             switch (args[i])
@@ -133,6 +144,9 @@ public static class ElevatedCommandLine
                     break;
                 case "--remove-inf" when i + 1 < args.Count:
                     removeInfs.Add(args[++i]);
+                    break;
+                case "--update" when i + 1 < args.Count && Guid.TryParseExact(args[i + 1], "D", out _):
+                    updates.Add(args[++i].ToLowerInvariant());
                     break;
                 case "--remove-device" when i + 1 < args.Count:
                     removeDevices.Add(args[++i]);
@@ -161,6 +175,11 @@ public static class ElevatedCommandLine
             return null;
         }
 
+        if (updates.Count > 0 && (verb != InstallUpdates || updates.Count > MaxUpdates || updates.Distinct().Count() != updates.Count))
+        {
+            return null;
+        }
+
         var batch = removeInfs.Count + removeDevices.Count > 0;
         if (batch && (verb != Cleanup || removeInfs.Count > MaxRemoveInfs || removeDevices.Count > MaxRemoveDevices ||
                       !removeInfs.All(IsPublishedInfName) || !removeDevices.All(d => d is not null && IsPlainValue(d)) ||
@@ -178,7 +197,8 @@ public static class ElevatedCommandLine
             RestartDevice or EnableDevice or DisableDevice or UninstallDevice or RollbackDriver when onlyInstance => new ElevatedRequest(verb, instance, [], false, null, result.Value),
             InstallDriver when instance is not null && inf is not null && hwids.Count == 0 && !uninstall && change is null => new ElevatedRequest(verb, instance, [], false, null, result.Value, inf),
             DeletePackage when inf is not null && IsPublishedInfName(inf) && instance is null && hwids.Count == 0 && !uninstall && change is null => new ElevatedRequest(verb, null, [], false, null, result.Value, inf),
-            Rescan when nothing && !batch => new ElevatedRequest(verb, null, [], false, null, result.Value),
+            Rescan when nothing && !batch && updates.Count == 0 => new ElevatedRequest(verb, null, [], false, null, result.Value),
+            InstallUpdates when nothing && !batch && updates.Count > 0 => new ElevatedRequest(verb, null, [], false, null, result.Value) { UpdateIds = updates },
             Cleanup when nothing && batch => new ElevatedRequest(verb, null, [], false, null, result.Value) { RemoveInfs = removeInfs, RemoveDevices = removeDevices },
             Revert when change is not null && instance is null && hwids.Count == 0 && !uninstall && inf is null => new ElevatedRequest(verb, null, [], false, change, result.Value),
             _ => null,

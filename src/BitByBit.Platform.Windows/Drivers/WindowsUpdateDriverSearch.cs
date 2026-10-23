@@ -44,6 +44,7 @@ public static class WindowsUpdateDriverSearch
                     list.Add(new DriverUpdateCandidate
                     {
                         Title = (string)update.Title,
+                        UpdateId = Try(() => (string?)update.Identity.UpdateID),
                         DriverClass = Try(() => (string?)update.DriverClass),
                         Provider = Try(() => (string?)update.DriverProvider),
                         Manufacturer = Try(() => (string?)update.DriverManufacturer),

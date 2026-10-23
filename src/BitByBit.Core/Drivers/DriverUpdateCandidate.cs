@@ -4,6 +4,8 @@ namespace BitByBit.Core.Drivers;
 public sealed record DriverUpdateCandidate
 {
     public required string Title { get; init; }
+    /// <summary>Windows Update identity (GUID) used to install exactly this update.</summary>
+    public string? UpdateId { get; init; }
     public string? DriverClass { get; init; }
     public string? Provider { get; init; }
     public string? Manufacturer { get; init; }

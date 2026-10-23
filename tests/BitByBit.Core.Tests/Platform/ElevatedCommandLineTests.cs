@@ -25,6 +25,7 @@ public sealed class ElevatedCommandLineTests
             new ElevatedRequest(ElevatedCommandLine.DeletePackage, null, [], false, null, ResultId, "oem14.inf"),
             new ElevatedRequest(ElevatedCommandLine.Rescan, null, [], false, null, ResultId),
             new ElevatedRequest(ElevatedCommandLine.Cleanup, null, [], false, null, ResultId) { RemoveInfs = ["oem14.inf", "oem30.inf"], RemoveDevices = [Instance, @"USB\VID_1&PID_2\5&1&0&1"] },
+            new ElevatedRequest(ElevatedCommandLine.InstallUpdates, null, [], false, null, ResultId) { UpdateIds = ["2c4f1a2b-3d4e-4f50-8a9b-0c1d2e3f4a5b", "7d8e9f00-1112-4314-9516-a7b8c9d0e1f2"] },
         };
 
         foreach (var request in requests)
@@ -42,6 +43,7 @@ public sealed class ElevatedCommandLineTests
             Assert.Equal(request.InfName, parsed.InfName);
             Assert.Equal(request.RemoveInfs, parsed.RemoveInfs);
             Assert.Equal(request.RemoveDevices, parsed.RemoveDevices);
+            Assert.Equal(request.UpdateIds, parsed.UpdateIds);
         }
     }
 
@@ -69,6 +71,9 @@ public sealed class ElevatedCommandLineTests
     [InlineData("--elevated cleanup --remove-inf hdaudio.inf --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")] // inbox
     [InlineData("--elevated cleanup --remove-inf oem1.inf --remove-inf oem1.inf --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")] // duplicate
     [InlineData("--elevated rescan --remove-inf oem1.inf --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")]
+    [InlineData("--elevated install-updates --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")] // no update
+    [InlineData("--elevated install-updates --update KB123 --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")] // not a GUID
+    [InlineData("--elevated rescan --update 2c4f1a2b-3d4e-4f50-8a9b-0c1d2e3f4a5b --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")]
     public void Rejects_malformed_or_unexpected_arguments(string commandLine)
     {
         Assert.Null(ElevatedCommandLine.Parse(commandLine.Split(' ')));

@@ -1,4 +1,5 @@
 using System.Management;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text.Json;
 using BitByBit.Core.Common;
@@ -287,6 +288,137 @@ public sealed class DeviceOperations
             Error = failures == 0 ? null : $"{failures} item(s) were not removed (see the steps).",
             ChangeIds = changes,
         };
+    }
+
+    /// <summary>
+    /// Installs the chosen Windows Update driver updates. First a System Restore point (best effort), then for every
+    /// connected device the update applies to, the current driver is journaled (and its package backed up) so the change
+    /// can be reverted; then Windows Update downloads and installs.
+    /// </summary>
+    public async Task<CaseOperationOutcome> InstallWindowsUpdatesAsync(IReadOnlyList<string> updateIds, CancellationToken cancellationToken)
+    {
+        const string op = "driver.windowsUpdate";
+        var steps = new List<string> { CreateRestorePoint("bitBybit: drivers from Windows Update") };
+        using var prepared = Drivers.WindowsUpdateDriverInstaller.Prepare(updateIds) is { IsSuccess: true } p ? p.Value : null;
+        if (prepared is null)
+        {
+            return Failed(op, "Windows Update no longer offers the selected drivers, or the search failed.", steps);
+        }
+
+        var devices = PresentDevicesByHardwareId();
+        var records = new List<(Drivers.SelectedDriverUpdate Update, ChangeRecord Record, string Instance)>();
+        foreach (var update in prepared.Selected)
+        {
+            var targets = update.HardwareId is { } hwid && devices.TryGetValue(hwid, out var list) ? list : [];
+            foreach (var (instance, name) in targets)
+            {
+                var before = WindowsDriverSelection.ReadInstalled(instance);
+                if (DriverPackageExporter.IsPublishedName(before?.InfName))
+                {
+                    var export = await DriverPackageExporter.ExportAsync(_tools, before!.InfName!, _paths.DriverBackups, _clock.GetUtcNow(), cancellationToken).ConfigureAwait(false);
+                    steps.Add(export.IsSuccess ? $"Backed up {before.InfName} ({name}) to {export.Value}." : $"Backup of {before.InfName} failed: {export.Error!.Message}");
+                }
+
+                var record = NewRecord(ChangeCategory.Driver, DriverSelectedKind, instance,
+                    $"Windows Update driver \"{update.Title}\" on {name} (was {before?.InfName} {before?.Version})",
+                    JsonSerializer.Serialize(new SelectedDriver(before?.InfName, before?.Version), AtomicJsonFile.DefaultOptions), null);
+                await _journal.AppendAsync(record, cancellationToken).ConfigureAwait(false);
+                records.Add((update, record, instance));
+            }
+        }
+
+        var installed = prepared.Install();
+        if (installed.IsFailure)
+        {
+            foreach (var (_, record, _) in records)
+            {
+                await _journal.UpdateStatusAsync(record.Id, ChangeStatus.Superseded, "Not installed: " + installed.Error!.Message, cancellationToken).ConfigureAwait(false);
+            }
+
+            return Failed(op, installed.Error!.Message, steps);
+        }
+
+        var failures = 0;
+        foreach (var outcome in installed.Value)
+        {
+            failures += outcome.Succeeded ? 0 : 1;
+            steps.Add(outcome.Succeeded
+                ? $"Installed: {outcome.Update.Title}."
+                : $"Not installed: {outcome.Update.Title} (result {outcome.ResultCode}, 0x{outcome.HResult:X8}).");
+            foreach (var (_, record, instance) in records.Where(r => r.Update == outcome.Update))
+            {
+                var after = WindowsDriverSelection.ReadInstalled(instance);
+                if (outcome.Succeeded)
+                {
+                    steps.Add($"  now {after?.InfName} {after?.Version}");
+                }
+                else
+                {
+                    await _journal.UpdateStatusAsync(record.Id, ChangeStatus.Superseded, "Not installed by Windows Update.", cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
+
+        _logger.LogInformation("Windows Update drivers: {Count} selected, {Failures} failed", installed.Value.Count, failures);
+        return new CaseOperationOutcome
+        {
+            Operation = op,
+            Succeeded = failures == 0,
+            RebootRequired = prepared.RebootRequired,
+            Steps = steps,
+            Error = failures == 0 ? null : $"{failures} update(s) were not installed.",
+            ChangeIds = records.Select(r => r.Record.Id).ToArray(),
+        };
+    }
+
+    /// <summary>System Restore point before driver changes (best effort: off, or one was made in the last 24 h).</summary>
+    private string CreateRestorePoint(string description)
+    {
+        try
+        {
+            using var restore = new ManagementClass(@"\\.\root\default", "SystemRestore", null);
+            using var input = restore.GetMethodParameters("CreateRestorePoint");
+            input["Description"] = description;
+            input["RestorePointType"] = 10; // DEVICE_DRIVER_INSTALL
+            input["EventType"] = 100; // BEGIN_SYSTEM_CHANGE
+            using var output = restore.InvokeMethod("CreateRestorePoint", input, null);
+            var code = Convert.ToUInt32(output?["ReturnValue"] ?? 1u, System.Globalization.CultureInfo.InvariantCulture);
+            return code == 0 ? "System Restore point created." : $"No System Restore point (code {code}: System Restore off, or one was created recently).";
+        }
+        catch (Exception ex) when (ex is ManagementException or UnauthorizedAccessException or COMException)
+        {
+            _logger.LogWarning(ex, "Restore point not created");
+            return "No System Restore point: " + ex.Message;
+        }
+    }
+
+    /// <summary>Connected devices by every hardware and compatible id (upper case).</summary>
+    private static Dictionary<string, List<(string Instance, string Name)>> PresentDevicesByHardwareId()
+    {
+        var map = new Dictionary<string, List<(string, string)>>(StringComparer.OrdinalIgnoreCase);
+        using var searcher = new ManagementObjectSearcher(@"root\cimv2", "SELECT PNPDeviceID, Name, HardwareID, CompatibleID, Present FROM Win32_PnPEntity");
+        using var results = searcher.Get();
+        foreach (var o in results)
+        {
+            if (o["Present"] is not true || o["PNPDeviceID"]?.ToString() is not { } id)
+            {
+                continue;
+            }
+
+            var ids = (o["HardwareID"] as string[] ?? []).Concat(o["CompatibleID"] as string[] ?? []);
+            foreach (var hwid in ids.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (!map.TryGetValue(hwid, out var list))
+                {
+                    list = [];
+                    map[hwid] = list;
+                }
+
+                list.Add((id, o["Name"]?.ToString() ?? id));
+            }
+        }
+
+        return map;
     }
 
     public CaseOperationOutcome Rescan()

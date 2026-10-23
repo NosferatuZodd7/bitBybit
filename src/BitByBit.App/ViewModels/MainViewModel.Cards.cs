@@ -67,11 +67,20 @@ public sealed partial class MainViewModel
         }).ToArray()),
     ]);
 
-    private void RefreshUpdateCards() => Replace(UpdateGroups, DriverUpdates
+    private void RefreshUpdateCards()
+    {
+        Replace(UpdateGroups, UpdateCards());
+        UpdateUpdatesSelection();
+    }
+
+    private IEnumerable<CardGroup> UpdateCards() => DriverUpdates
         .GroupBy(u => string.IsNullOrWhiteSpace(u.DriverClass) ? Text.Get("app.devices.category.other") : u.DriverClass!)
         .OrderBy(g => g.Key, StringComparer.CurrentCulture)
         .Select(g => new CardGroup("download", g.Key, g.Select(u => new InfoCard
         {
+            IsSelectable = u.UpdateId is not null,
+            Key = u.UpdateId,
+            SelectionChanged = UpdateUpdatesSelection,
             Glyph = "download",
             Title = u.Title,
             Subtitle = u.Provider,
@@ -80,7 +89,7 @@ public sealed partial class MainViewModel
                 (Text.Get("app.col.driverDate"), u.Date),
                 (Text.Get("app.col.size"), u.Size),
                 (Text.Get("app.col.hardwareId"), u.HardwareId)),
-        }).ToArray())));
+        }).ToArray()));
 
     private void RefreshChangeCards()
     {

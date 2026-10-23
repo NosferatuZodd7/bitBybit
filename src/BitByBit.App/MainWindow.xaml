@@ -352,6 +352,18 @@
                   <TextBlock Text="{loc:T app.page.updates.intro}" TextWrapping="Wrap" Foreground="{DynamicResource Brush.Text}" />
                 </DockPanel>
               </Border>
+              <Border DockPanel.Dock="Top" Style="{StaticResource Surface.Card}" Padding="14,8,8,2" Margin="0,0,0,12"
+                      Visibility="{Binding HasInstallableUpdates, Converter={StaticResource BoolToVisibility}}">
+                <DockPanel>
+                  <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Style="{StaticResource Chip}" Content="{loc:T app.updates.selectAll}" t:Ux.Icon="check" Command="{Binding SelectAllUpdatesCommand}" />
+                    <Button Style="{StaticResource Chip}" Content="{loc:T app.cleanup.clear}" t:Ux.Icon="close" Command="{Binding ClearUpdatesSelectionCommand}" />
+                    <Button Style="{StaticResource Button.Primary}" Height="32" Margin="4,0,0,6" Content="{loc:T app.updates.install}" t:Ux.Icon="download" t:Ux.IconSize="14"
+                            Command="{Binding InstallSelectedUpdatesCommand}" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding SelectedUpdatesText}" VerticalAlignment="Center" Margin="0,0,0,6" FontWeight="SemiBold" />
+                </DockPanel>
+              </Border>
               <StackPanel DockPanel.Dock="Top" Visibility="{Binding IsSearchingUpdates, Converter={StaticResource BoolToVisibility}}">
                 <t:SkeletonRow />
                 <t:SkeletonRow />

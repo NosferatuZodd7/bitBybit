@@ -14,7 +14,7 @@ public sealed record DriverPackageRow(string Inf, string? Provider, string? Vers
 
 public sealed record BackupRow(string Name, string Created, string Size, int InfCount, string Path);
 
-public sealed record DriverUpdateRow(string Title, string? DriverClass, string Provider, string? Date, string? Size, string? HardwareId, string Source);
+public sealed record DriverUpdateRow(string Title, string? DriverClass, string Provider, string? Date, string? Size, string? HardwareId, string Source, string? UpdateId = null);
 
 /// <summary>Driver store, backups and Windows Update driver pages.</summary>
 public sealed partial class MainViewModel
@@ -109,7 +109,7 @@ public sealed partial class MainViewModel
 
             Replace(DriverUpdates, result.Value.Select(u => new DriverUpdateRow(
                 u.Title, u.DriverClass, u.Provider ?? u.Manufacturer ?? "-", u.DriverDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                u.MaxDownloadBytes is > 0 ? FormatSize(u.MaxDownloadBytes.Value) : null, u.HardwareId, u.Source)));
+                u.MaxDownloadBytes is > 0 ? FormatSize(u.MaxDownloadBytes.Value) : null, u.HardwareId, u.Source, u.UpdateId)));
             RefreshUpdateCards();
             UpdatesSearched = true;
             UpdatesSubtitle = Text.Get("app.page.updates.found", DriverUpdates.Count, DateTime.Now.ToString("HH:mm", CultureInfo.InvariantCulture));
@@ -119,5 +119,68 @@ public sealed partial class MainViewModel
         {
             IsSearchingUpdates = false;
         }
+    }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectedUpdatesText))]
+    [NotifyCanExecuteChangedFor(nameof(InstallSelectedUpdatesCommand))]
+    private int _selectedUpdateCount;
+
+    public string SelectedUpdatesText => Text.Get("app.updates.selected", SelectedUpdateCount, DriverUpdates.Count);
+
+    private IEnumerable<InfoCard> UpdateCardItems() => UpdateGroups.SelectMany(g => g.Cards).Where(c => c.IsSelectable);
+
+    /// <summary>True when at least one offered update can be installed by its Windows Update identity.</summary>
+    public bool HasInstallableUpdates => UpdateCardItems().Any();
+
+    private void UpdateUpdatesSelection()
+    {
+        SelectedUpdateCount = UpdateCardItems().Count(c => c.IsSelected);
+        OnPropertyChanged(nameof(HasInstallableUpdates));
+        OnPropertyChanged(nameof(SelectedUpdatesText));
+    }
+
+    [RelayCommand]
+    private void SelectAllUpdates()
+    {
+        foreach (var card in UpdateCardItems())
+        {
+            card.IsSelected = true;
+        }
+    }
+
+    [RelayCommand]
+    private void ClearUpdatesSelection()
+    {
+        foreach (var card in UpdateCardItems())
+        {
+            card.IsSelected = false;
+        }
+    }
+
+    private bool CanInstallSelectedUpdates() => SelectedUpdateCount > 0 && !IsBusy;
+
+    /// <summary>Installs the selected Windows Update drivers (one UAC prompt; restore point and journal first).</summary>
+    [RelayCommand(CanExecute = nameof(CanInstallSelectedUpdates))]
+    private async Task InstallSelectedUpdatesAsync()
+    {
+        var selected = UpdateCardItems().Where(c => c.IsSelected).ToArray();
+        if (selected.Length > BitByBit.Core.Platform.ElevatedCommandLine.MaxUpdates)
+        {
+            ShowToast(Text.Get("app.updates.tooMany", BitByBit.Core.Platform.ElevatedCommandLine.MaxUpdates), isError: true);
+            return;
+        }
+
+        var list = string.Join("\n", selected.Take(15).Select(c => "• " + c.Title));
+        if (!ConfirmDeviceAction(Text.Get("app.updates.confirm", selected.Length, list), BitByBit.Core.Diagnostics.RiskLevel.Medium))
+        {
+            return;
+        }
+
+        await RunDeviceRequestAsync(new BitByBit.Core.Platform.ElevatedRequest(BitByBit.Core.Platform.ElevatedCommandLine.InstallUpdates, null, [], false, null, Guid.NewGuid())
+        {
+            UpdateIds = selected.Select(c => c.Key!).ToArray(),
+        });
+        await SearchUpdatesAsync();
     }
 }
