@@ -29,6 +29,10 @@ Requisitos: Windows 10 1809 ou posterior, ou Windows 11, de 64 bits.
   instalado em teste e aparece uma faixa no topo com **Manter este controlador** e **Reverter agora**. Fechar o
   bitBybit termina o teste e repõe o controlador anterior (o Windows pede autorização). Se o bitBybit fechar sem
   conseguir reverter, propõe a reversão quando voltar a abrir.
+* **Resolver automaticamente (N)** na página do caso: o bitBybit junta num plano as ações recomendadas que consegue
+  fazer sozinho (risco baixo ou médio, reversíveis, sem reiniciar), mostra-o e, com a sua confirmação, faz uma a uma,
+  analisando o PC de novo depois de cada passo (os que deixaram de ser precisos são saltados). Ações de risco alto ficam
+  sempre para fazer uma a uma.
 * Logótipo e ícone novos; cartão Sistema a toda a largura; botão **Reverter alterações (N)** em destaque no topo, só
   quando há alterações ativas.
 

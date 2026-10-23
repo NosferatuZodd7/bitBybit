@@ -255,6 +255,11 @@
           <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
             <Button DockPanel.Dock="Left" Style="{StaticResource ToolButton}" t:Ux.Icon="chevron-left" ToolTip="{loc:T app.tool.back}" Command="{Binding BackCommand}" Margin="-6,0,6,0" VerticalAlignment="Center" />
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+              <!-- Guided fix: only on the case page, only when the diagnosis has actions bitBybit can run itself. -->
+              <StackPanel Orientation="Horizontal" Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=case}">
+                <Button Content="{Binding FixPlanText}" t:Ux.Icon="sparkles" Style="{StaticResource Button.Primary}" Command="{Binding RunFixPlanCommand}"
+                        ToolTip="{loc:T app.fix.tip}" Visibility="{Binding HasFixPlan, Converter={StaticResource BoolToVisibility}}" />
+              </StackPanel>
               <Button Content="{loc:T app.page.updates.search}" t:Ux.Icon="search" Style="{StaticResource Button.Primary}" Command="{Binding SearchUpdatesCommand}"
                       Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=updates}" />
               <Button Content="{loc:T app.devices.rescan}" t:Ux.Icon="refresh" Command="{Binding RescanHardwareCommand}" ToolTip="{loc:T app.devices.rescanTip}"

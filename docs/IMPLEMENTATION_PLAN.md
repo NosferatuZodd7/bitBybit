@@ -74,7 +74,11 @@ User guide: [PREVIEW.md](PREVIEW.md).
 * Driver test mode: "Test" next to "Install" in the device window installs a compatible driver as a test; banner
   "Keep / Revert now"; closing bitBybit reverts it (one UAC prompt); a test left over by a crash is offered for
   revert at the next start (`DriverTestPolicy`, Core, unit-tested; session in %LocalAppData%\bitBybit\driver-test.json).
-* Not yet: guided "fix it" automation for findings, operation queue, network module.
+* Guided fix ("Resolver automaticamente (N)" on the case page): `FixPlanner` (Core, unit-tested) takes, per problem or
+  warning backed by a fact/observation, the first action bitBybit can run itself that is ≤ Medium risk, reversible and
+  needs no restart (one per target, max 6). One confirmation shows the whole plan; the PC is diagnosed again after
+  each step and steps that no longer apply are skipped; a refused UAC prompt stops the plan.
+* Not yet: operation queue, network module.
 
 ## Phase A — Foundation
 

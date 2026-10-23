@@ -78,6 +78,8 @@ Windows 10/11 PC with the relevant devices and the evidence (exported report, lo
 | Driver test decisions (revert while applied, forget when reverted/drifted/missing, keep when journal unreadable) | ✅ (synthetic journal) | ✅ | ✅ (Core tests) | — |
 | Driver test banner rendered (synthetic session, nothing installed) | — | ✅ | ⬜ (smoke screenshot `dark-driver-test.png` on the next CI run) | — |
 | Driver test install / keep / revert / revert on close / revert at next start | — | ✅ | ⬜ (changes system state; not run on CI) | ⬜ |
+| Guided fix plan (severity order, ≤ Medium/reversible/no restart, evidence-backed only, one per target, cap, re-check) | ✅ (synthetic findings) | ✅ | ✅ (Core tests) | — |
+| Guided fix run (steps without per-step dialogs, re-diagnosis between steps, stop on refused UAC) | — | ✅ | ⬜ (changes system state; not run on CI) | ⬜ |
 
 ## Broker IPC (not shipped yet)
 

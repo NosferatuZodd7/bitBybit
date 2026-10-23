@@ -72,7 +72,7 @@ public sealed partial class MainViewModel : ObservableObject
     private string _backgroundStatus = string.Empty;
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(ExportCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RefreshCommand), nameof(ExportCommand), nameof(RunFixPlanCommand), nameof(RemoveSelectedCommand), nameof(InstallSelectedUpdatesCommand))]
     [NotifyPropertyChangedFor(nameof(ShowSkeletons), nameof(ShowDevicesEmpty), nameof(ShowNoIssues))]
     private bool _isBusy;
 
@@ -224,6 +224,7 @@ public sealed partial class MainViewModel : ObservableObject
         RefreshDriverPackages(snapshot);
         RefreshBackups();
         UpdateShell(snapshot, report);
+        RefreshFixPlan();
         RefreshSnapshotCards(snapshot);
     }
 
@@ -247,81 +248,91 @@ public sealed partial class MainViewModel : ObservableObject
 
     private async Task ExecuteActionAsync(ProposedAction action)
     {
+        await RunActionAsync(action, interactive: true);
+        await RefreshAsync();
+    }
+
+    /// <summary>
+    /// Runs one proposed action. Interactive: asks for confirmation and shows the result. Not interactive (a guided fix
+    /// the user already confirmed as a whole): no questions, the conservative choice where the action has options
+    /// (block driver installs without uninstalling the device), and the outcome is returned for the plan summary.
+    /// Null = not run (declined, UAC refused or unknown action).
+    /// </summary>
+    private async Task<(bool Succeeded, string Message)?> RunActionAsync(ProposedAction action, bool interactive)
+    {
         var p = action.Parameters ?? new Dictionary<string, string>();
+        bool Ask(string? extra = null) => !interactive || Confirm(action, extra);
+        async Task<(bool, string)?> Elevated(ElevatedRequest request)
+        {
+            var outcome = await RunElevatedAsync(request, showResult: interactive);
+            return outcome is null ? null : (outcome.Succeeded, outcome.Error ?? outcome.Steps.LastOrDefault() ?? string.Empty);
+        }
+
         try
         {
             switch (action.ActionId)
             {
                 case "audio.setDefaultEndpoint" when p.TryGetValue("endpointId", out var endpointId):
-                    if (!Confirm(action))
+                    if (!Ask())
                     {
-                        return;
+                        return null;
                     }
 
                     var change = await UserAudioChanges().SetDefaultEndpointAsync(endpointId, AudioRoles.DefaultDevice, CancellationToken.None);
-                    Report(change.IsSuccess && change.Value.Verified, change.IsSuccess ? Text.Get("app.action.defaultSet") : change.Error!.ToString());
-                    break;
+                    return Done(change.IsSuccess && change.Value.Verified, change.IsSuccess ? Text.Get("app.action.defaultSet") : change.Error!.ToString());
 
                 case "audio.enableEndpoint" when p.TryGetValue("endpointId", out var endpointId):
-                    if (!Confirm(action, Text.Get("app.action.undocumented")))
+                    if (!Ask(Text.Get("app.action.undocumented")))
                     {
-                        return;
+                        return null;
                     }
 
                     var enabled = await UserAudioChanges().SetEndpointEnabledAsync(endpointId, true, CancellationToken.None);
-                    Report(enabled.IsSuccess && enabled.Value.Verified, enabled.IsSuccess ? Text.Get("app.action.endpointEnabled") : enabled.Error!.ToString());
-                    break;
+                    return Done(enabled.IsSuccess && enabled.Value.Verified, enabled.IsSuccess ? Text.Get("app.action.endpointEnabled") : enabled.Error!.ToString());
 
                 case "device.installPolicy.denyHardwareId" when p.TryGetValue("instanceId", out var instanceId) && p.TryGetValue("hardwareId", out var hardwareId):
-                    if (!Confirm(action, Text.Get("app.action.blockPlan", hardwareId)))
+                    if (!Ask(Text.Get("app.action.blockPlan", hardwareId)))
                     {
-                        return;
+                        return null;
                     }
 
-                    var uninstall = System.Windows.MessageBox.Show(Text.Get("app.action.uninstallNow"), "bitBybit", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+                    var uninstall = interactive
+                        ? System.Windows.MessageBox.Show(Text.Get("app.action.uninstallNow"), "bitBybit", MessageBoxButton.YesNoCancel, MessageBoxImage.Question)
+                        : MessageBoxResult.No;
                     if (uninstall == MessageBoxResult.Cancel)
                     {
-                        return;
+                        return null;
                     }
 
-                    await RunElevatedAsync(new ElevatedRequest("block-driver", instanceId, [hardwareId], uninstall == MessageBoxResult.Yes, null, Guid.NewGuid()));
-                    break;
+                    return await Elevated(new ElevatedRequest("block-driver", instanceId, [hardwareId], uninstall == MessageBoxResult.Yes, null, Guid.NewGuid()));
 
                 case "device.restart" when p.TryGetValue("instanceId", out var instanceId):
-                    if (!Confirm(action, Text.Get("app.action.needsAdmin")))
-                    {
-                        return;
-                    }
-
-                    await RunElevatedAsync(new ElevatedRequest("restart-device", instanceId, [], false, null, Guid.NewGuid()));
-                    break;
+                    return Ask(Text.Get("app.action.needsAdmin")) ? await Elevated(new ElevatedRequest("restart-device", instanceId, [], false, null, Guid.NewGuid())) : null;
 
                 case "device.installDriver" when p.TryGetValue("instanceId", out var instanceId) && p.TryGetValue("inf", out var inf):
-                    if (!Confirm(action, Text.Get("app.action.needsAdmin")))
-                    {
-                        return;
-                    }
-
-                    await RunElevatedAsync(ElevatedRequest.For(ElevatedCommandLine.InstallDriver, instanceId, inf));
-                    break;
+                    return Ask(Text.Get("app.action.needsAdmin")) ? await Elevated(ElevatedRequest.For(ElevatedCommandLine.InstallDriver, instanceId, inf)) : null;
 
                 case "driverStore.deletePackage" when p.TryGetValue("inf", out var inf):
-                    if (!Confirm(action, Text.Get("app.action.needsAdmin")))
-                    {
-                        return;
-                    }
-
-                    await RunElevatedAsync(ElevatedRequest.For(ElevatedCommandLine.DeletePackage, infName: inf));
-                    break;
+                    return Ask(Text.Get("app.action.needsAdmin")) ? await Elevated(ElevatedRequest.For(ElevatedCommandLine.DeletePackage, infName: inf)) : null;
             }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             _logger.LogError(ex, "Action {Action} failed", action.ActionId);
-            Report(false, ex.Message);
+            return Done(false, ex.Message);
         }
 
-        await RefreshAsync();
+        return null;
+
+        (bool, string) Done(bool ok, string message)
+        {
+            if (interactive)
+            {
+                Report(ok, message);
+            }
+
+            return (ok, message);
+        }
     }
 
     /// <summary>
