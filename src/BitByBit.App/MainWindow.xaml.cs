@@ -16,6 +16,11 @@ public partial class MainWindow : Window
             {
                 await vm.RefreshCommand.ExecuteAsync(null);
             }
+
+            if (DataContext is MainViewModel main)
+            {
+                await main.AutoCheckForUpdatesAsync();
+            }
         };
     }
 }

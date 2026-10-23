@@ -74,6 +74,28 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public string Version => AppInfo.Version;
 
+    /// <summary>The main view model (update state and commands are shared with the top-bar button).</summary>
+    public MainViewModel Main => _main;
+
+    public string UpdateChannel => _main.UpdateChannel;
+
+    public bool AutomaticUpdateCheck
+    {
+        get => SettingsStore.Current.Updates.AutomaticCheck;
+        set
+        {
+            _main.SetAutomaticUpdateCheck(value);
+            OnPropertyChanged();
+        }
+    }
+
+    [RelayCommand]
+    private void SetUpdateChannel(string channel)
+    {
+        _main.SetUpdateChannel(channel);
+        OnPropertyChanged(nameof(UpdateChannel));
+    }
+
     public string DataFolders => $"{AppInfo.Paths.UserRoot}\n{AppInfo.Paths.MachineRoot}";
 
     [RelayCommand]

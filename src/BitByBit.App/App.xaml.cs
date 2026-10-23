@@ -73,9 +73,16 @@ public partial class App : System.Windows.Application
         }
 
         ThemeManager.Apply(SettingsStore.Current.Appearance);
-        var window = new MainWindow { DataContext = new MainViewModel(_loggerFactory) };
+        var vm = new MainViewModel(_loggerFactory);
+        var window = new MainWindow { DataContext = vm };
         MainWindow = window;
         window.Show();
+        if (Array.IndexOf(e.Args, UpdateService.AfterUpdateFlag) >= 0)
+        {
+            // Started by the previous version after it replaced itself: remove the old file and say so.
+            _ = UpdateService.CleanupAsync(logger);
+            vm.ShowToast(Text.Get("app.update.done", AppInfo.Version));
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)

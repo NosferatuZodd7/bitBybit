@@ -1,4 +1,4 @@
-# bitBybit 0.4 — pré-visualização (controlo de dispositivos e controladores)
+# bitBybit 0.5 — pré-visualização (atualizações automáticas pelo GitHub)
 
 Esta versão mantém todo o diagnóstico da 0.1 e acrescenta as primeiras **ações reversíveis** para o problema do
 Realtek / DisplayPort. Nada é alterado sem a sua confirmação, e cada alteração fica registada no separador
@@ -14,6 +14,15 @@ Realtek / DisplayPort. Nada é alterado sem a sua confirmação, e cada alteraç
 4. Para ver também o registo de instalação de drivers (`setupapi.dev.log`), clique em **Reabrir como administrador**.
 
 Requisitos: Windows 10 1809 ou posterior, ou Windows 11, de 64 bits.
+
+## Novidades da 0.5 — atualizações automáticas
+
+* O bitBybit procura versões novas no GitHub ao abrir (no máximo a cada 6 horas). Quando há uma, aparece um botão de
+  transferência aceso na barra de cima: um clique descarrega, verifica a assinatura digital e reinicia já atualizado.
+* **Definições › Atualizações**: canal **Testes** (cada alteração publicada) ou **Estável**, "Procurar agora" e notas da
+  versão.
+* Segurança: só versões do repositório do bitBybit, com a assinatura verificada com a chave incluída na aplicação, e
+  nunca uma versão mais antiga. Se algo não bater certo, a atualização é recusada.
 
 ## Novidades da 0.4 — controlar, não só ler
 

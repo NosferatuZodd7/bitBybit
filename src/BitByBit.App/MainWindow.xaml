@@ -159,6 +159,9 @@
                         Command="{Binding SetThemeCommand}" CommandParameter="custom" t:Ux.Active="{Binding Theme, Converter={StaticResource EqualsConverter}, ConverterParameter=custom}" />
               </StackPanel>
             </Border>
+            <!-- Lit when a new version is available: one click downloads, verifies and restarts. -->
+            <Button Style="{StaticResource ToolButton}" t:Ux.Icon="download" t:Ux.Active="True" ToolTip="{Binding UpdateMessage}" Command="{Binding InstallUpdateCommand}"
+                    Visibility="{Binding IsUpdateAvailable, Converter={StaticResource BoolToVisibility}}" Margin="0,0,4,0" />
             <Button Style="{StaticResource ToolButton}" t:Ux.Icon="settings" ToolTip="{loc:T app.tool.settings}" Command="{Binding OpenSettingsCommand}" />
           </StackPanel>
 

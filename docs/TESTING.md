@@ -57,6 +57,16 @@ Windows 10/11 PC with the relevant devices and the evidence (exported report, lo
 | Enable/disable, install chosen driver, rollback, delete package, rescan + revert handlers | — | ✅ | ⬜ (change system state; not run on CI) | ⬜ |
 | Analyzer: sound active over a link reported as DVI → information; keep-generic-driver proposal | ✅ (scenarios shaped on the 0.3.2 report, synthetic ids) | ✅ | — | 🟡 user reported sound working with Windows' generic HD Audio driver (0.3.2 report + screenshots); replayed offline |
 
+## Preview 0.5 — self-update
+
+| Scenario | Unit (fakes) | Compiled | CI runner | Real hardware |
+|---|---|---|---|---|
+| Semver ordering, channel choice, downgrade refusal, trusted URLs only | ✅ | ✅ | ✅ (Core tests) | — |
+| Manifest signature (ECDSA P-256) verify / tamper / unknown key / no key | ✅ (keys generated in the test) | ✅ | ✅ (Core tests) | — |
+| Release tool keygen → manifest → sign → verify with the embedded key (+ asset hashes) | — | ✅ | ✅ locally on Linux; CI publish job pending the signing secret | — |
+| Publish job (manifest, signature, embedded-key verification, GitHub pre-release) | — | — | ⬜ until BITBYBIT_UPDATE_SIGNING_KEY is set | — |
+| App: check, download + verify, swap exe, restart, cleanup | — | ✅ | ⬜ (needs a published release) | ⬜ |
+
 ## Broker IPC (not shipped yet)
 
 | Scenario | Unit (fakes) | Compiled | CI runner | Real hardware |

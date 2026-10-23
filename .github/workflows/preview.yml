@@ -1,11 +1,17 @@
-# Builds the read-only diagnostic preview on a real Windows runner, runs the unit + read-only integration tests,
-# executes the CLI and the app's headless smoke test on the runner, and uploads the (unsigned) executables.
-# It never publishes releases or tags.
+# Builds bitBybit on a real Windows runner, runs the unit + read-only integration tests, the CLI and the app's headless
+# smoke test, and uploads the executables as an artifact.
+#
+# Updates (like OrbisLink): every push to the development branch is also published as a TESTING build — a GitHub
+# pre-release vX.Y.Z-dev.N (N = this workflow's run number, always increasing) — which the app's "Testes" channel
+# installs by itself. A pushed tag vX.Y.Z publishes a STABLE release (tags are only pushed by the owner). Nothing is
+# published unless the release manifest is signed with the BITBYBIT_UPDATE_SIGNING_KEY secret and verifies with the
+# public key embedded in the app (fail closed).
 name: preview-build
 
 on:
   push:
     branches: ['claude/**']
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -16,7 +22,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Decides this build's version; every other job receives it from here.
+  # Testing: VersionPrefix from Directory.Build.props + "-dev.<run>". If that version was already published as stable,
+  # the testing build would be "older" than it and nobody would get it, so it moves to the next patch and warns.
+  # Stable (tag vX.Y.Z): the tag must equal VersionPrefix.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.decide.outputs.version }}
+      channel: ${{ steps.decide.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: decide
+        shell: bash
+        run: |
+          base=$(sed -n 's:.*<VersionPrefix>\([0-9.]*\)</VersionPrefix>.*:\1:p' Directory.Build.props | head -1)
+          if [ -z "$base" ]; then echo "::error::No VersionPrefix in Directory.Build.props"; exit 1; fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            tag="${GITHUB_REF_NAME#v}"
+            if [ "$tag" != "$base" ]; then echo "::error::Tag $GITHUB_REF_NAME does not match VersionPrefix $base"; exit 1; fi
+            echo "version=$base" >> "$GITHUB_OUTPUT"; echo "channel=stable" >> "$GITHUB_OUTPUT"
+          else
+            if git ls-remote --exit-code --tags origin "refs/tags/v$base" >/dev/null; then
+              IFS=. read -r major minor patch <<< "$base"; base="$major.$minor.$((patch + 1))"
+              echo "::warning::v$base is the next patch: the VersionPrefix version is already published as stable. Bump VersionPrefix."
+            fi
+            echo "version=$base-dev.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"; echo "channel=testing" >> "$GITHUB_OUTPUT"
+          fi
+
   windows-preview:
+    needs: version
     runs-on: windows-latest
     timeout-minutes: 45
     env:
@@ -30,7 +65,7 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Build
-        run: dotnet build bitBybit.sln -c Release -p:BitByBitUpdateRepository=${{ github.repository }}
+        run: dotnet build bitBybit.sln -c Release -p:Version=${{ needs.version.outputs.version }} -p:BitByBitUpdateRepository=${{ github.repository }}
 
       - name: Unit tests (Core)
         run: dotnet test tests/BitByBit.Core.Tests -c Release --no-build --logger "trx;LogFileName=core.trx" --results-directory artifacts/test-results
@@ -43,7 +78,7 @@ jobs:
         run: |
           $common = @('-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '-p:PublishSingleFile=true',
                       '-p:IncludeNativeLibrariesForSelfExtract=true', '-p:EnableCompressionInSingleFile=true', '-p:DebugType=none',
-                      "-p:BitByBitUpdateRepository=${{ github.repository }}")
+                      "-p:Version=${{ needs.version.outputs.version }}", "-p:BitByBitUpdateRepository=${{ github.repository }}")
           dotnet publish src/BitByBit.App @common -o artifacts/preview/app
           if ($LASTEXITCODE -ne 0) { throw "app publish failed" }
           dotnet publish src/BitByBit.Cli @common -o artifacts/preview/cli
@@ -87,7 +122,7 @@ jobs:
         id: name
         shell: pwsh
         run: |
-          $version = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.VersionPrefix | Where-Object { $_ } | Select-Object -First 1
+          $version = '${{ needs.version.outputs.version }}'
           $short = '${{ github.sha }}'.Substring(0, 7)
           "value=bitBybit-$version-run${{ github.run_number }}-$short-win-x64-unsigned" >> $env:GITHUB_OUTPUT
 
@@ -124,3 +159,79 @@ jobs:
           path: |
             artifacts/diagnostics
             artifacts/test-results
+
+  # Signs the release manifest and publishes the GitHub release the app updates from. Only for the development branch
+  # and v* tags. Skipped (with a warning) while the signing secret is not configured: nothing unsigned is ever published.
+  publish:
+    needs: [version, windows-preview]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/claude/windows-network-manager-hb8idp' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      CHANNEL: ${{ needs.version.outputs.channel }}
+      HAS_KEY: ${{ secrets.BITBYBIT_UPDATE_SIGNING_KEY != '' }}
+      DOTNET_NOLOGO: '1'
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    steps:
+      - name: Signing key configured?
+        if: env.HAS_KEY != 'true'
+        run: |
+          echo "::warning::Secret BITBYBIT_UPDATE_SIGNING_KEY is not set: this build is NOT published as an update (fail closed)."
+          echo "### Atualização não publicada" >> "$GITHUB_STEP_SUMMARY"
+          echo "Falta o segredo BITBYBIT_UPDATE_SIGNING_KEY (Settings › Secrets and variables › Actions)." >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@v5
+        if: env.HAS_KEY == 'true'
+
+      - uses: actions/setup-dotnet@v5
+        if: env.HAS_KEY == 'true'
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/download-artifact@v4
+        if: env.HAS_KEY == 'true'
+        with:
+          pattern: bitBybit-*-win-x64-unsigned
+          path: dl
+          merge-multiple: true
+
+      - name: Manifest, signature, verification with the app's embedded key
+        if: env.HAS_KEY == 'true'
+        env:
+          BITBYBIT_UPDATE_SIGNING_KEY: ${{ secrets.BITBYBIT_UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p rel
+          cp dl/app/bitBybit.exe rel/bitBybit.exe
+          cp dl/cli/bitbybit-cli.exe rel/bitbybit-cli.exe
+          tool="dotnet run --project tools/BitByBit.ReleaseTool -c Release --"
+          $tool manifest --version "$VERSION" --channel "$CHANNEL" --commit "$GITHUB_SHA" --repository "$GITHUB_REPOSITORY" \
+            --out rel/bitbybit-manifest.json rel/bitBybit.exe rel/bitbybit-cli.exe
+          $tool sign --manifest rel/bitbybit-manifest.json --out rel/bitbybit-manifest.json.sig
+          # The app only trusts its embedded public key(s): refuse to publish anything it would reject.
+          $tool verify --manifest rel/bitbybit-manifest.json --sig rel/bitbybit-manifest.json.sig --assets rel
+          (cd rel && sha256sum bitBybit.exe bitbybit-cli.exe > SHA256SUMS.txt)
+
+      - name: Publish the GitHub release
+        if: env.HAS_KEY == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          {
+            if [ "$CHANNEL" = "testing" ]; then
+              echo "Versão de testes publicada automaticamente a partir de ${GITHUB_SHA:0:7}. O bitBybit no canal **Testes** instala-a sozinho."
+            else
+              echo "Versão estável."
+            fi
+            echo
+            git log -1 --format=%B "$GITHUB_SHA" | grep -v -E '^(Co-Authored-By|Claude-Session):' || true
+          } > notes.md
+          flags=()
+          if [ "$CHANNEL" = "testing" ]; then flags+=(--prerelease); else flags+=(--latest); fi
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "bitBybit $VERSION" --notes-file notes.md "${flags[@]}" \
+            rel/bitBybit.exe rel/bitbybit-cli.exe rel/bitbybit-manifest.json rel/bitbybit-manifest.json.sig rel/SHA256SUMS.txt
+          echo "### Publicado: $tag ($CHANNEL)" >> "$GITHUB_STEP_SUMMARY"

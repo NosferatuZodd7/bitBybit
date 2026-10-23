@@ -18,6 +18,9 @@
           <Button Style="{StaticResource Chip}" Height="36" HorizontalContentAlignment="Left" Content="{loc:T app.settings.appearance}" t:Ux.Icon="sparkles"
                   Command="{Binding ShowSectionCommand}" CommandParameter="appearance" Margin="0,0,0,6"
                   t:Ux.Active="{Binding Section, Converter={StaticResource EqualsConverter}, ConverterParameter=appearance}" />
+          <Button Style="{StaticResource Chip}" Height="36" HorizontalContentAlignment="Left" Content="{loc:T app.settings.updates}" t:Ux.Icon="download"
+                  Command="{Binding ShowSectionCommand}" CommandParameter="updates" Margin="0,0,0,6"
+                  t:Ux.Active="{Binding Section, Converter={StaticResource EqualsConverter}, ConverterParameter=updates}" />
           <Button Style="{StaticResource Chip}" Height="36" Content="{loc:T app.settings.about}" t:Ux.Icon="info"
                   Command="{Binding ShowSectionCommand}" CommandParameter="about"
                   t:Ux.Active="{Binding Section, Converter={StaticResource EqualsConverter}, ConverterParameter=about}" />
@@ -101,6 +104,42 @@
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
+            </StackPanel>
+          </ScrollViewer>
+
+          <!-- Updates: GitHub Releases of this repository, signed manifest verified with the embedded key -->
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding Section, Converter={StaticResource EqualsToVisibility}, ConverterParameter=updates}">
+            <StackPanel Margin="0,0,8,0">
+              <TextBlock Style="{StaticResource Text.Section}" Text="{loc:T app.settings.updates}" Margin="2,4,0,6" />
+              <Border Style="{StaticResource Surface.Card}" Padding="16" Margin="0,0,0,12">
+                <StackPanel>
+                  <TextBlock FontSize="15" FontWeight="SemiBold">
+                    <Run Text="bitBybit" />
+                    <Run Text="{Binding Version, Mode=OneWay}" />
+                  </TextBlock>
+                  <TextBlock Style="{StaticResource Text.Hint}" Text="{Binding Main.UpdateRepository, StringFormat='github.com/{0}'}" />
+                  <TextBlock Text="{Binding Main.UpdateMessage}" TextWrapping="Wrap" Margin="0,10,0,0" />
+                  <ProgressBar Height="4" Margin="0,8,0,0" Minimum="0" Maximum="1" Value="{Binding Main.UpdateProgress}"
+                               Visibility="{Binding Main.UpdateState, Converter={StaticResource EqualsToVisibility}, ConverterParameter=downloading}" />
+                  <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                    <Button Content="{loc:T app.update.checkNow}" t:Ux.Icon="refresh" Command="{Binding Main.CheckForUpdatesCommand}" Margin="0,0,8,0" />
+                    <Button Style="{StaticResource Button.Primary}" Content="{loc:T app.update.install}" t:Ux.Icon="download" Command="{Binding Main.InstallUpdateCommand}"
+                            Visibility="{Binding Main.IsUpdateAvailable, Converter={StaticResource BoolToVisibility}}" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding Main.UpdateNotes}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource Brush.TextMuted}" Margin="0,10,0,0"
+                             Visibility="{Binding Main.IsUpdateAvailable, Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
+              </Border>
+              <TextBlock Style="{StaticResource Text.Section}" Text="{loc:T app.update.channel}" />
+              <WrapPanel Margin="0,0,0,6">
+                <Button Style="{StaticResource Chip}" Content="{loc:T app.update.channel.testing}" Command="{Binding SetUpdateChannelCommand}" CommandParameter="testing"
+                        t:Ux.Active="{Binding UpdateChannel, Converter={StaticResource EqualsConverter}, ConverterParameter=testing}" />
+                <Button Style="{StaticResource Chip}" Content="{loc:T app.update.channel.stable}" Command="{Binding SetUpdateChannelCommand}" CommandParameter="stable"
+                        t:Ux.Active="{Binding UpdateChannel, Converter={StaticResource EqualsConverter}, ConverterParameter=stable}" />
+              </WrapPanel>
+              <TextBlock Style="{StaticResource Text.Hint}" Text="{loc:T app.update.channelHint}" TextWrapping="Wrap" />
+              <CheckBox Content="{loc:T app.update.auto}" IsChecked="{Binding AutomaticUpdateCheck}" Margin="0,14,0,0" />
+              <TextBlock Style="{StaticResource Text.Hint}" Text="{loc:T app.update.securityHint}" TextWrapping="Wrap" Margin="0,10,0,0" />
             </StackPanel>
           </ScrollViewer>
 

@@ -35,8 +35,11 @@ public sealed record AppearanceSettings
 public sealed record UpdateSettings
 {
     public bool AutomaticCheck { get; init; } = true;
-    public int CheckIntervalHours { get; init; } = 24;
-    /// <summary>"stable" only by default. Pre-releases are never installed unless explicitly enabled.</summary>
-    public bool IncludePrereleases { get; init; }
+    public int CheckIntervalHours { get; init; } = 6;
+    /// <summary>
+    /// "testing": the build published for every change (vX.Y.Z-dev.N, GitHub pre-releases); "stable": published versions
+    /// only. Testing is the default while bitBybit is a preview with no stable release.
+    /// </summary>
+    public string Channel { get; init; } = "testing";
     public DateTimeOffset? LastCheck { get; init; }
 }

@@ -559,6 +559,21 @@
     </Setter>
   </Style>
 
+  <!-- Thin progress line (update download). -->
+  <Style TargetType="ProgressBar">
+    <Setter Property="Height" Value="4" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ProgressBar">
+          <Grid>
+            <Border x:Name="PART_Track" CornerRadius="2" Background="{DynamicResource Brush.ControlFill}" />
+            <Border x:Name="PART_Indicator" CornerRadius="2" Background="{DynamicResource Brush.Accent}" HorizontalAlignment="Left" />
+          </Grid>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
   <!-- Expander used for evidence lists. -->
   <Style TargetType="Expander">
     <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
