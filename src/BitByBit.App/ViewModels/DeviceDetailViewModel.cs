@@ -110,6 +110,9 @@ public sealed partial class DeviceDetailViewModel : ObservableObject
                 ActionText = c.IsCurrent ? null : Text.Get("app.device.drivers.install"),
                 ActionGlyph = "download",
                 ActionCommand = c.IsCurrent ? null : new AsyncRelayCommand(() => InstallAsync(c)),
+                SecondaryActionText = c.IsCurrent || _owner.HasDriverTest ? null : Text.Get("app.driverTest.try"),
+                SecondaryActionGlyph = "flask",
+                SecondaryActionCommand = c.IsCurrent || _owner.HasDriverTest ? null : new AsyncRelayCommand(() => TestAsync(c)),
             }).ToArray();
             DriverGroups.Clear();
             if (cards.Length > 0)
@@ -138,6 +141,20 @@ public sealed partial class DeviceDetailViewModel : ObservableObject
 
         RequestClose?.Invoke(this, EventArgs.Empty);
         await _owner.RunDeviceRequestAsync(ElevatedRequest.For(ElevatedCommandLine.InstallDriver, _row.InstanceId, candidate.InfName));
+    }
+
+    /// <summary>Installs the driver as a test: bitBybit reverts it when the user ends the test or closes the app.</summary>
+    private async Task TestAsync(DriverCandidate candidate)
+    {
+        var previous = _row.Summary.Driver?.InfName;
+        var text = Text.Get("app.driverTest.confirm", candidate.Description, candidate.Version ?? "?", candidate.InfName, Name, previous ?? "-");
+        if (!_owner.ConfirmDeviceAction(text, RiskLevel.Medium))
+        {
+            return;
+        }
+
+        RequestClose?.Invoke(this, EventArgs.Empty);
+        await _owner.StartDriverTestAsync(_row.InstanceId, Name, candidate, previous);
     }
 
     private async Task RunAsync(DeviceActionVerdict verdict)

@@ -9,7 +9,7 @@ public sealed record CardField(string Label, string Value);
 
 /// <summary>
 /// Generic card used by the list pages (driver store, audio, displays, network, history, changes, system…): icon tile,
-/// title, subtitle, a state tag, a few fields, an optional note and an optional action button.
+/// title, subtitle, a state tag, a few fields, an optional note and up to two action buttons.
 /// </summary>
 public sealed partial class InfoCard : ObservableObject
 {
@@ -43,7 +43,13 @@ public sealed partial class InfoCard : ObservableObject
     public ICommand? ActionCommand { get; init; }
     public bool ActionIsDanger { get; init; }
 
+    /// <summary>Optional second, quieter action shown left of the main one (e.g. "Test" next to "Install").</summary>
+    public string? SecondaryActionText { get; init; }
+    public string? SecondaryActionGlyph { get; init; }
+    public ICommand? SecondaryActionCommand { get; init; }
+
     public bool HasAction => ActionCommand is not null && !string.IsNullOrEmpty(ActionText);
+    public bool ShowSecondaryAction => SecondaryActionCommand is not null && !string.IsNullOrEmpty(SecondaryActionText);
     public bool ShowAction => HasAction && !ActionIsDanger;
     public bool ShowDangerAction => HasAction && ActionIsDanger;
 

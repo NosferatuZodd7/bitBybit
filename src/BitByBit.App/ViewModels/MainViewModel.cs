@@ -11,6 +11,7 @@ using BitByBit.Core.Journal;
 using BitByBit.Core.Platform;
 using BitByBit.Core.Profiles;
 using BitByBit.Platform.Windows.Audio;
+using BitByBit.Platform.Windows.Operations;
 using BitByBit.Core.QuickDiag;
 using BitByBit.Platform.Windows.QuickDiag;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -323,7 +324,11 @@ public sealed partial class MainViewModel : ObservableObject
         await RefreshAsync();
     }
 
-    private async Task RunElevatedAsync(ElevatedRequest request)
+    /// <summary>
+    /// Runs one verb in the elevated helper. Null = not run (UAC refused, timeout, no result; already reported).
+    /// <paramref name="showResult"/> false leaves the result dialog to the caller (<see cref="ShowOutcome"/>).
+    /// </summary>
+    private async Task<CaseOperationOutcome?> RunElevatedAsync(ElevatedRequest request, bool showResult = true)
     {
         IsBusy = true;
         Status = Text.Get("app.action.waitingUac");
@@ -333,27 +338,42 @@ public sealed partial class MainViewModel : ObservableObject
             if (outcome is null)
             {
                 Report(false, error ?? Text.Get("app.action.noResult"));
-                return;
+                return null;
             }
 
-            var body = string.Join("\n", outcome.Steps.Select(s => "• " + s));
-            if (outcome.Error is not null)
+            if (showResult)
             {
-                body += "\n\n" + outcome.Error;
+                ShowOutcome(outcome);
             }
 
-            if (outcome.RebootRequired)
-            {
-                body += "\n\n" + Text.Get("app.action.rebootRequired");
-            }
-
-            System.Windows.MessageBox.Show(body, outcome.Succeeded ? Text.Get("app.action.doneTitle") : Text.Get("app.action.failedTitle"),
-                MessageBoxButton.OK, outcome.Succeeded ? MessageBoxImage.Information : MessageBoxImage.Error);
+            return outcome;
         }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    private static void ShowOutcome(CaseOperationOutcome outcome, string? extra = null)
+    {
+        var body = string.Join("\n", outcome.Steps.Select(s => "• " + s));
+        if (outcome.Error is not null)
+        {
+            body += "\n\n" + outcome.Error;
+        }
+
+        if (outcome.RebootRequired)
+        {
+            body += "\n\n" + Text.Get("app.action.rebootRequired");
+        }
+
+        if (extra is not null)
+        {
+            body += "\n\n" + extra;
+        }
+
+        System.Windows.MessageBox.Show(body, outcome.Succeeded ? Text.Get("app.action.doneTitle") : Text.Get("app.action.failedTitle"),
+            MessageBoxButton.OK, outcome.Succeeded ? MessageBoxImage.Information : MessageBoxImage.Error);
     }
 
     private void Report(bool ok, string message) => ShowToast(message, isError: !ok);
@@ -447,15 +467,14 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task LoadChangesAsync()
     {
         var rows = new List<ChangeRow>();
+        IReadOnlyList<ChangeRecord>? machineRecords = null;
         foreach (var (path, userScope) in new[] { (AppPaths.Default.UserJournalFile, true), (AppPaths.Default.JournalFile, false) })
         {
             try
             {
-                if (File.Exists(path))
-                {
-                    var records = await new JsonLinesChangeJournal(path).GetAllAsync(CancellationToken.None);
-                    rows.AddRange(records.Select(r => new ChangeRow(r, userScope, RevertChangeAsync)));
-                }
+                var records = File.Exists(path) ? await new JsonLinesChangeJournal(path).GetAllAsync(CancellationToken.None) : [];
+                rows.AddRange(records.Select(r => new ChangeRow(r, userScope, RevertChangeAsync)));
+                machineRecords = userScope ? machineRecords : records;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -466,6 +485,7 @@ public sealed partial class MainViewModel : ObservableObject
         Replace(Changes, rows.OrderByDescending(r => r.CreatedAt));
         ActiveChangeCount = Changes.Count(c => c.CanRevert);
         RefreshChangeCards();
+        SyncDriverTest(machineRecords);
     }
 
     private async Task RevertChangeAsync(ChangeRow change)

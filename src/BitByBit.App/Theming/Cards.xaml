@@ -44,12 +44,17 @@
           </ItemsControl>
           <TextBlock Text="{Binding Note}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource Brush.TextMuted}" Margin="0,6,0,0"
                      Visibility="{Binding Note, Converter={StaticResource EmptyToCollapsed}}" />
-          <Button HorizontalAlignment="Right" Margin="0,8,0,0" Height="30" Padding="12,0" FontSize="12" t:Ux.IconSize="14"
-                  Content="{Binding ActionText}" t:Ux.Icon="{Binding ActionGlyph}" Command="{Binding ActionCommand}"
-                  Visibility="{Binding ShowAction, Converter={StaticResource BoolToVisibility}}" />
-          <Button Style="{StaticResource Button.Danger}" HorizontalAlignment="Right" Margin="0,8,0,0" Height="30" Padding="12,0" FontSize="12" t:Ux.IconSize="14"
-                  Content="{Binding ActionText}" t:Ux.Icon="{Binding ActionGlyph}" Command="{Binding ActionCommand}"
-                  Visibility="{Binding ShowDangerAction, Converter={StaticResource BoolToVisibility}}" />
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Style="{StaticResource Button.Secondary}" Margin="0,8,6,0" Height="30" Padding="12,0" FontSize="12" t:Ux.IconSize="14"
+                    Foreground="{DynamicResource Brush.Accent}" Content="{Binding SecondaryActionText}" t:Ux.Icon="{Binding SecondaryActionGlyph}" Command="{Binding SecondaryActionCommand}"
+                    Visibility="{Binding ShowSecondaryAction, Converter={StaticResource BoolToVisibility}}" />
+            <Button Margin="0,8,0,0" Height="30" Padding="12,0" FontSize="12" t:Ux.IconSize="14"
+                    Content="{Binding ActionText}" t:Ux.Icon="{Binding ActionGlyph}" Command="{Binding ActionCommand}"
+                    Visibility="{Binding ShowAction, Converter={StaticResource BoolToVisibility}}" />
+            <Button Style="{StaticResource Button.Danger}" Margin="0,8,0,0" Height="30" Padding="12,0" FontSize="12" t:Ux.IconSize="14"
+                    Content="{Binding ActionText}" t:Ux.Icon="{Binding ActionGlyph}" Command="{Binding ActionCommand}"
+                    Visibility="{Binding ShowDangerAction, Converter={StaticResource BoolToVisibility}}" />
+          </StackPanel>
         </StackPanel>
       </Grid>
     </Border>

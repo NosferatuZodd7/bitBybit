@@ -93,6 +93,24 @@ public static class UiSmoke
             count++;
         }
 
+        // Driver test banner (keep / revert) with a synthetic session: nothing is installed or written to disk.
+        ThemeManager.Apply(looks[0].Palette);
+        vm.DriverTest = new BitByBit.Core.Drivers.DriverTestSession
+        {
+            ChangeId = Guid.NewGuid(),
+            InstanceId = device.InstanceId,
+            DeviceName = device.Name ?? device.InstanceId,
+            DriverDescription = "High Definition Audio Device",
+            DriverVersion = "10.0.19041.1",
+            InfName = "hdaudio.inf",
+            PreviousInfName = "oem14.inf",
+            StartedAt = DateTimeOffset.Now,
+        };
+        vm.NavigateCommand.Execute("devices");
+        Render(window, Path.Combine(directory, "dark-driver-test.png"));
+        count++;
+        vm.DriverTest = null; // closing the window with a test active would start the revert
+
         CheckDriverEnumeration(vm, logger);
         window.Close();
         File.WriteAllLines(Path.Combine(directory, "contrast.txt"), lowContrast.Distinct());

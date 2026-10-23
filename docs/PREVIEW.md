@@ -1,4 +1,4 @@
-# bitBybit 0.5 — pré-visualização (atualizações automáticas pelo GitHub)
+# bitBybit 0.6 — pré-visualização (limpeza, instalar atualizações, testar controladores)
 
 Esta versão mantém todo o diagnóstico da 0.1 e acrescenta as primeiras **ações reversíveis** para o problema do
 Realtek / DisplayPort. Nada é alterado sem a sua confirmação, e cada alteração fica registada no separador
@@ -14,6 +14,23 @@ Realtek / DisplayPort. Nada é alterado sem a sua confirmação, e cada alteraç
 4. Para ver também o registo de instalação de drivers (`setupapi.dev.log`), clique em **Reabrir como administrador**.
 
 Requisitos: Windows 10 1809 ou posterior, ou Windows 11, de 64 bits.
+
+## Novidades da 0.6 — limpeza, instalar atualizações e testar controladores
+
+* **Limpeza** (nova página): pacotes antigos substituídos por versões novas, pacotes de hardware que já não está
+  ligado, dispositivos que já não existem. Cada item diz o impacto (ou que não tem nenhum) e o risco. Selecione vários
+  (ou "Selecionar recomendados") e remova de uma vez: cada pacote é copiado para a pasta de cópias antes, e cada
+  remoção pode ser revertida. Controladores de arranque, armazenamento, teclado, rato, USB e chipset nunca aparecem.
+* **Arquivo de controladores**: os pacotes sem uso também se selecionam em conjunto, com a mesma descrição de impacto.
+* **Atualizações de controladores**: selecione uma, várias ou todas e clique em **Instalar selecionados**. Antes de
+  instalar, o bitBybit cria um ponto de restauro e copia o controlador atual de cada dispositivo; cada troca fica em
+  "Alterações do bitBybit".
+* **Testar um controlador**: na janela do dispositivo, ao lado de **Instalar**, há **Testar**. O controlador fica
+  instalado em teste e aparece uma faixa no topo com **Manter este controlador** e **Reverter agora**. Fechar o
+  bitBybit termina o teste e repõe o controlador anterior (o Windows pede autorização). Se o bitBybit fechar sem
+  conseguir reverter, propõe a reversão quando voltar a abrir.
+* Logótipo e ícone novos; cartão Sistema a toda a largura; botão **Reverter alterações (N)** em destaque no topo, só
+  quando há alterações ativas.
 
 ## Novidades da 0.5 — atualizações automáticas
 

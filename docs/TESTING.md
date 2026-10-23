@@ -67,6 +67,18 @@ Windows 10/11 PC with the relevant devices and the evidence (exported report, lo
 | Publish job (manifest, signature, embedded-key verification, GitHub pre-release) | — | — | ⬜ until BITBYBIT_UPDATE_SIGNING_KEY is set | — |
 | App: check, download + verify, swap exe, restart, cleanup | — | ✅ | ⬜ (needs a published release) | ⬜ |
 
+## Preview 0.6 — cleanup, Windows Update install, driver test mode
+
+| Scenario | Unit (fakes) | Compiled | CI runner | Real hardware |
+|---|---|---|---|---|
+| Cleanup advisor (superseded / absent hardware / no device / absent devices; protected classes excluded) | ✅ (synthetic snapshots) | ✅ | ✅ (Core tests) | — |
+| Elevated `cleanup` and `install-updates` command lines (caps, GUID ids, oemNN.inf only) | ✅ | ✅ | ✅ (Core tests) | — |
+| Cleanup run (package backup + pnputil delete, absent-device removal) | — | ✅ | ⬜ (changes system state; not run on CI) | ⬜ |
+| Windows Update driver install (restore point, backup, journal per device, WUA install) | — | ✅ | ⬜ (changes system state; not run on CI) | ⬜ |
+| Driver test decisions (revert while applied, forget when reverted/drifted/missing, keep when journal unreadable) | ✅ (synthetic journal) | ✅ | ✅ (Core tests) | — |
+| Driver test banner rendered (synthetic session, nothing installed) | — | ✅ | ⬜ (smoke screenshot `dark-driver-test.png` on the next CI run) | — |
+| Driver test install / keep / revert / revert on close / revert at next start | — | ✅ | ⬜ (changes system state; not run on CI) | ⬜ |
+
 ## Broker IPC (not shipped yet)
 
 | Scenario | Unit (fakes) | Compiled | CI runner | Real hardware |

@@ -61,6 +61,21 @@ User guide: [PREVIEW.md](PREVIEW.md).
 * Collector reads each device's driver from DEVPKEY_Device_Driver* (Device Manager's view).
 * Not yet: operation queue, restore point before driver changes, signature check of chosen drivers, network module.
 
+## Preview 0.6 (cleanup, Windows Update install, driver test mode) — 🧪
+
+* Brand assets: app logo (top bar, About), OS icon (`app.ico`), wordmarks per theme. System card full width with
+  wrapping values. "Revert changes (N)" chip in the top bar only while bitBybit changes are active.
+* Cleanup page (`CleanupAdvisor`, Core, unit-tested): superseded packages, packages for absent hardware or no device,
+  absent devices; each with its impact text and risk; multi-select (also on the Driver Store page) → one `cleanup`
+  elevated run (backup each package first, pnputil without /force, max 20 packages + 10 devices). Protected classes
+  are never proposed.
+* Windows Update drivers: select some or all → `install-updates` elevated verb (max 20 update ids): restore point,
+  backup + journal entry per affected device (revertible like a driver change), WUA download + install.
+* Driver test mode: "Test" next to "Install" in the device window installs a compatible driver as a test; banner
+  "Keep / Revert now"; closing bitBybit reverts it (one UAC prompt); a test left over by a crash is offered for
+  revert at the next start (`DriverTestPolicy`, Core, unit-tested; session in %LocalAppData%\bitBybit\driver-test.json).
+* Not yet: guided "fix it" automation for findings, operation queue, network module.
+
 ## Phase A — Foundation
 
 | Item | Status | Notes |

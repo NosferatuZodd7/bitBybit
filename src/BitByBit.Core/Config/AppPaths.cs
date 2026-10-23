@@ -33,6 +33,8 @@ public sealed class AppPaths
     public string Snapshots => Path.Combine(MachineRoot, "snapshots");
     public string UpdatesStaging => Path.Combine(MachineRoot, "updates");
     public string UserSettingsFile => Path.Combine(UserRoot, "settings.json");
+    /// <summary>The driver being tested, if any (reverted when bitBybit closes or at the next start).</summary>
+    public string DriverTestFile => Path.Combine(UserRoot, "driver-test.json");
 
     /// <summary>Journal of per-user changes made in the user's session (default audio device, endpoint enable/disable).</summary>
     public string UserJournalFile => Path.Combine(UserRoot, "journal", "changes.jsonl");
