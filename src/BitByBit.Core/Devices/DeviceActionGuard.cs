@@ -89,6 +89,9 @@ public static class DeviceActionGuard
         };
     }
 
+    /// <summary>Device classes whose drivers bitBybit never removes (boot, storage, input, USB, firmware…).</summary>
+    public static bool IsProtectedClass(string? className) => className is not null && ProtectedClasses.Contains(className);
+
     public static bool IsProtected(DeviceActionSubject device) =>
         (device.ClassName is not null && ProtectedClasses.Contains(device.ClassName)) ||
         device.HardwareIds.Any(id => ProtectedIdPrefixes.Any(p => id.StartsWith(p, StringComparison.OrdinalIgnoreCase)));

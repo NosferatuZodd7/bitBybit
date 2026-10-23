@@ -48,6 +48,87 @@ public static class InfVersionParser
         return new InfVersionInfo(Get("Provider"), Get("Class"), date, ver, Get("CatalogFile") ?? Get("CatalogFile.NTamd64"));
     }
 
+    /// <summary>
+    /// Hardware ids the package installs on: the ids listed in the models sections named by [Manufacturer]
+    /// ("Intel = Intel, NTamd64.10.0" → [Intel] and [Intel.NTamd64.10.0]; each line "desc = install, id1, id2…").
+    /// Upper case, distinct, at most <paramref name="max"/>.
+    /// </summary>
+    public static IReadOnlyList<string> ParseHardwareIds(string text, int max = 300)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        var sections = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        List<string>? current = null;
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = StripComment(raw).Trim();
+            if (line.Length == 0)
+            {
+                continue;
+            }
+
+            if (line.StartsWith('[') && line.EndsWith(']'))
+            {
+                var name = line[1..^1].Trim();
+                if (!sections.TryGetValue(name, out current))
+                {
+                    current = [];
+                    sections[name] = current;
+                }
+
+                continue;
+            }
+
+            current?.Add(line);
+        }
+
+        var models = new List<string>();
+        foreach (var entry in sections.GetValueOrDefault("Manufacturer") ?? [])
+        {
+            var eq = entry.IndexOf('=', StringComparison.Ordinal);
+            if (eq < 0)
+            {
+                continue;
+            }
+
+            var parts = entry[(eq + 1)..].Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Select(Unquote).ToArray();
+            if (parts.Length == 0)
+            {
+                continue;
+            }
+
+            models.Add(parts[0]);
+            models.AddRange(parts.Skip(1).Select(target => parts[0] + "." + target));
+        }
+
+        var ids = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var model in models)
+        {
+            foreach (var entry in sections.GetValueOrDefault(model) ?? [])
+            {
+                var eq = entry.IndexOf('=', StringComparison.Ordinal);
+                if (eq < 0)
+                {
+                    continue;
+                }
+
+                foreach (var id in entry[(eq + 1)..].Split(',', StringSplitOptions.TrimEntries).Skip(1).Select(Unquote))
+                {
+                    if (id.Length >= 4 && !id.Contains('%', StringComparison.Ordinal) && seen.Add(id))
+                    {
+                        ids.Add(id.ToUpperInvariant());
+                        if (ids.Count >= max)
+                        {
+                            return ids;
+                        }
+                    }
+                }
+            }
+        }
+
+        return ids;
+    }
+
     /// <summary>"10/19/2023,10.0.19041.3636" → date and version.</summary>
     public static (DateTimeOffset? Date, string? Version) ParseDriverVer(string? value)
     {

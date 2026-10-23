@@ -9,6 +9,12 @@ public sealed record ElevatedRequest(string Verb, string? InstanceId, IReadOnlyL
 {
     /// <summary>Request for one device or driver-package verb (enable, disable, uninstall, install-driver, rollback-driver, delete-package, rescan).</summary>
     public static ElevatedRequest For(string verb, string? instanceId = null, string? infName = null) => new(verb, instanceId, [], false, null, Guid.NewGuid(), infName);
+
+    /// <summary>Cleanup batch: third-party packages (oemNN.inf) to remove from the Driver Store.</summary>
+    public IReadOnlyList<string> RemoveInfs { get; init; } = [];
+
+    /// <summary>Cleanup batch: absent devices (instance ids) to remove.</summary>
+    public IReadOnlyList<string> RemoveDevices { get; init; } = [];
 }
 
 /// <summary>
@@ -30,12 +36,15 @@ public static class ElevatedCommandLine
     public const string RollbackDriver = "rollback-driver";
     public const string DeletePackage = "delete-package";
     public const string Rescan = "rescan";
+    public const string Cleanup = "cleanup";
+    public const int MaxRemoveInfs = 20;
+    public const int MaxRemoveDevices = 10;
 
     public const int MaxHardwareIds = 16;
     public const int MaxInstanceIdLength = 400;
 
     public static IReadOnlyList<string> Verbs { get; } =
-        [BlockDriver, RestartDevice, Revert, EnableDevice, DisableDevice, UninstallDevice, InstallDriver, RollbackDriver, DeletePackage, Rescan];
+        [BlockDriver, RestartDevice, Revert, EnableDevice, DisableDevice, UninstallDevice, InstallDriver, RollbackDriver, DeletePackage, Rescan, Cleanup];
 
     public static IReadOnlyList<string> Build(ElevatedRequest request)
     {
@@ -64,6 +73,16 @@ public static class ElevatedCommandLine
         if (request.InfName is not null)
         {
             args.AddRange(["--inf", request.InfName]);
+        }
+
+        foreach (var inf in request.RemoveInfs)
+        {
+            args.AddRange(["--remove-inf", inf]);
+        }
+
+        foreach (var device in request.RemoveDevices)
+        {
+            args.AddRange(["--remove-device", device]);
         }
 
         return args;
@@ -100,6 +119,8 @@ public static class ElevatedCommandLine
         Guid? change = null;
         Guid? result = null;
         string? inf = null;
+        var removeInfs = new List<string>();
+        var removeDevices = new List<string>();
         for (var i = start + 2; i < args.Count; i++)
         {
             switch (args[i])
@@ -109,6 +130,12 @@ public static class ElevatedCommandLine
                     break;
                 case "--hwid" when i + 1 < args.Count:
                     hwids.Add(args[++i]);
+                    break;
+                case "--remove-inf" when i + 1 < args.Count:
+                    removeInfs.Add(args[++i]);
+                    break;
+                case "--remove-device" when i + 1 < args.Count:
+                    removeDevices.Add(args[++i]);
                     break;
                 case "--inf" when inf is null && i + 1 < args.Count:
                     inf = args[++i];
@@ -134,6 +161,15 @@ public static class ElevatedCommandLine
             return null;
         }
 
+        var batch = removeInfs.Count + removeDevices.Count > 0;
+        if (batch && (verb != Cleanup || removeInfs.Count > MaxRemoveInfs || removeDevices.Count > MaxRemoveDevices ||
+                      !removeInfs.All(IsPublishedInfName) || !removeDevices.All(d => d is not null && IsPlainValue(d)) ||
+                      removeInfs.Distinct(StringComparer.OrdinalIgnoreCase).Count() != removeInfs.Count ||
+                      removeDevices.Distinct(StringComparer.OrdinalIgnoreCase).Count() != removeDevices.Count))
+        {
+            return null;
+        }
+
         var onlyInstance = instance is not null && hwids.Count == 0 && !uninstall && change is null && inf is null;
         var nothing = instance is null && hwids.Count == 0 && !uninstall && change is null && inf is null;
         return verb switch
@@ -142,7 +178,8 @@ public static class ElevatedCommandLine
             RestartDevice or EnableDevice or DisableDevice or UninstallDevice or RollbackDriver when onlyInstance => new ElevatedRequest(verb, instance, [], false, null, result.Value),
             InstallDriver when instance is not null && inf is not null && hwids.Count == 0 && !uninstall && change is null => new ElevatedRequest(verb, instance, [], false, null, result.Value, inf),
             DeletePackage when inf is not null && IsPublishedInfName(inf) && instance is null && hwids.Count == 0 && !uninstall && change is null => new ElevatedRequest(verb, null, [], false, null, result.Value, inf),
-            Rescan when nothing => new ElevatedRequest(verb, null, [], false, null, result.Value),
+            Rescan when nothing && !batch => new ElevatedRequest(verb, null, [], false, null, result.Value),
+            Cleanup when nothing && batch => new ElevatedRequest(verb, null, [], false, null, result.Value) { RemoveInfs = removeInfs, RemoveDevices = removeDevices },
             Revert when change is not null && instance is null && hwids.Count == 0 && !uninstall && inf is null => new ElevatedRequest(verb, null, [], false, change, result.Value),
             _ => null,
         };

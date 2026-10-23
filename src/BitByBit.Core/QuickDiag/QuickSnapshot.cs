@@ -43,6 +43,8 @@ public sealed record DeviceSummary
     public string? ClassName { get; init; }
     public string? ClassGuid { get; init; }
     public IReadOnlyList<string> HardwareIds { get; init; } = [];
+    /// <summary>Less specific ids Windows also matches drivers against (e.g. HDAUDIO\FUNC_01&amp;VEN_8086&amp;DEV_2806).</summary>
+    public IReadOnlyList<string> CompatibleIds { get; init; } = [];
     public string? Manufacturer { get; init; }
     public string? Service { get; init; }
     public string? Status { get; init; }
@@ -179,7 +181,13 @@ public sealed record PnpEventSummary(DateTimeOffset? Time, int EventId, string? 
 public sealed record CollectionIssue(string Area, string Message);
 
 /// <summary>A third-party driver package in the Driver Store (%windir%\INF\oemNN.inf), read from its [Version] section.</summary>
-public sealed record StorePackageSummary(string InfName, string? Provider, string? ClassName, DateTimeOffset? Date, string? Version);
+public sealed record StorePackageSummary(string InfName, string? Provider, string? ClassName, DateTimeOffset? Date, string? Version)
+{
+    /// <summary>Hardware ids the package installs on (from its models sections).</summary>
+    public IReadOnlyList<string> HardwareIds { get; init; } = [];
+    /// <summary>CatalogFile from [Version]: packages with the same catalog name and provider are versions of one driver.</summary>
+    public string? CatalogFile { get; init; }
+}
 
 public sealed record QuickSnapshot
 {

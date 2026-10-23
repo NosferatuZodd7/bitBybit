@@ -246,6 +246,49 @@ public sealed class DeviceOperations
         return new CaseOperationOutcome { Operation = op, Succeeded = true, Steps = steps, BackupPath = export.Value, ChangeIds = [record.Id] };
     }
 
+    /// <summary>
+    /// Cleanup batch confirmed by the user: absent devices first (that frees packages they still reference), then
+    /// packages. Each item is checked, backed up (packages) and journaled on its own; one failure does not stop the rest.
+    /// </summary>
+    public async Task<CaseOperationOutcome> CleanupAsync(IReadOnlyList<string> packages, IReadOnlyList<string> absentDevices, CancellationToken cancellationToken)
+    {
+        var steps = new List<string>();
+        var changes = new List<Guid>();
+        var failures = 0;
+        foreach (var instance in absentDevices.Take(ElevatedCommandLine.MaxRemoveDevices))
+        {
+            if (WindowsDeviceController.Status(instance).Present)
+            {
+                steps.Add($"Skipped {instance}: it is connected now.");
+                failures++;
+                continue;
+            }
+
+            var outcome = await UninstallAsync(instance, cancellationToken).ConfigureAwait(false);
+            failures += outcome.Succeeded ? 0 : 1;
+            steps.AddRange(outcome.Succeeded ? outcome.Steps : [$"{instance}: {outcome.Error}"]);
+            changes.AddRange(outcome.ChangeIds);
+        }
+
+        foreach (var inf in packages.Take(ElevatedCommandLine.MaxRemoveInfs))
+        {
+            var outcome = await DeletePackageAsync(inf, cancellationToken).ConfigureAwait(false);
+            failures += outcome.Succeeded ? 0 : 1;
+            steps.AddRange(outcome.Succeeded ? outcome.Steps : [$"{inf}: {outcome.Error}"]);
+            changes.AddRange(outcome.ChangeIds);
+        }
+
+        _logger.LogInformation("Cleanup: {Packages} package(s), {Devices} device(s), {Failures} failure(s)", packages.Count, absentDevices.Count, failures);
+        return new CaseOperationOutcome
+        {
+            Operation = "cleanup",
+            Succeeded = failures == 0,
+            Steps = steps,
+            Error = failures == 0 ? null : $"{failures} item(s) were not removed (see the steps).",
+            ChangeIds = changes,
+        };
+    }
+
     public CaseOperationOutcome Rescan()
     {
         var result = WindowsDeviceController.Rescan();

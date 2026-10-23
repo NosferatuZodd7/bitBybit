@@ -117,8 +117,13 @@ public sealed class QuickCollector
                 continue;
             }
 
-            var info = BitByBit.Core.Drivers.InfVersionParser.Parse(File.ReadAllText(file));
-            result.Add(new StorePackageSummary(name.ToLowerInvariant(), info.Provider, info.ClassName, info.Date, info.Version));
+            var text = File.ReadAllText(file);
+            var info = BitByBit.Core.Drivers.InfVersionParser.Parse(text);
+            result.Add(new StorePackageSummary(name.ToLowerInvariant(), info.Provider, info.ClassName, info.Date, info.Version)
+            {
+                HardwareIds = BitByBit.Core.Drivers.InfVersionParser.ParseHardwareIds(text),
+                CatalogFile = info.CatalogFile,
+            });
         }
 
         return result.OrderBy(p => p.InfName.Length).ThenBy(p => p.InfName, StringComparer.OrdinalIgnoreCase).ToArray();
@@ -262,6 +267,7 @@ public sealed class QuickCollector
                 ClassName = Str(e, "PNPClass"),
                 ClassGuid = Str(e, "ClassGuid"),
                 HardwareIds = hwids,
+                CompatibleIds = Get(e, "CompatibleID") as string[] ?? [],
                 Manufacturer = Str(e, "Manufacturer"),
                 Service = Str(e, "Service"),
                 Status = Str(e, "Status"),

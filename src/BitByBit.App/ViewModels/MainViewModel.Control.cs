@@ -54,14 +54,6 @@ public sealed partial class MainViewModel
         }
     }
 
-    private async Task RemovePackageAsync(string inf)
-    {
-        if (ConfirmDeviceAction(Text.Get("app.store.confirmRemove", inf), RiskLevel.Medium))
-        {
-            await RunDeviceRequestAsync(ElevatedRequest.For(ElevatedCommandLine.DeletePackage, infName: inf));
-        }
-    }
-
     /// <summary>Makes an endpoint the default playback device (journaled in the user's changes, no administrator rights).</summary>
     private async Task SetDefaultEndpointAsync(string endpointId)
     {

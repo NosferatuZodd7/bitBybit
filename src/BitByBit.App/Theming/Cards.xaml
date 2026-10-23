@@ -9,12 +9,15 @@
       <Grid>
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
-        <Border x:Name="Tile" Width="38" Height="38" CornerRadius="12" Background="{DynamicResource Brush.AccentFill}" VerticalAlignment="Top" Margin="0,0,12,0">
+        <CheckBox Style="{StaticResource CheckBox.Square}" IsChecked="{Binding IsSelected}" VerticalAlignment="Top" Margin="0,9,12,0"
+                  Visibility="{Binding IsSelectable, Converter={StaticResource BoolToVisibility}}" />
+        <Border x:Name="Tile" Grid.Column="1" Width="38" Height="38" CornerRadius="12" Background="{DynamicResource Brush.AccentFill}" VerticalAlignment="Top" Margin="0,0,12,0">
           <t:Icon x:Name="TileIcon" Glyph="{Binding Glyph}" Size="17" Foreground="{DynamicResource Brush.Accent}" HorizontalAlignment="Center" VerticalAlignment="Center" />
         </Border>
-        <StackPanel Grid.Column="1">
+        <StackPanel Grid.Column="2">
           <DockPanel>
             <Border x:Name="Tag" DockPanel.Dock="Right" Style="{StaticResource Tag}" t:Ux.Tone="{Binding Tone}" Margin="8,1,0,0" VerticalAlignment="Top"
                     Visibility="{Binding Tag, Converter={StaticResource EmptyToCollapsed}}">
@@ -66,6 +69,9 @@
       <DataTrigger Binding="{Binding Tone}" Value="Neutral">
         <Setter TargetName="Tile" Property="Background" Value="{DynamicResource Brush.NeutralFill}" />
         <Setter TargetName="TileIcon" Property="Foreground" Value="{DynamicResource Brush.Neutral}" />
+      </DataTrigger>
+      <DataTrigger Binding="{Binding IsSelected}" Value="True">
+        <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
       </DataTrigger>
       <DataTrigger Binding="{Binding IsDimmed}" Value="True">
         <Setter TargetName="Card" Property="Opacity" Value="0.72" />

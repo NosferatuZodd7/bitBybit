@@ -25,22 +25,8 @@ public sealed partial class MainViewModel
 
     private void RefreshStoreCards()
     {
-        var used = DriverPackages.Select(p => p.Inf).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var unused = (_snapshot?.DriverStorePackages ?? []).Where(p => !used.Contains(p.InfName)).Select(p => new InfoCard
-        {
-            Glyph = "package",
-            Title = p.InfName,
-            Subtitle = p.Provider,
-            Tag = p.Version,
-            Tone = "Neutral",
-            Fields = InfoCard.FieldsOf(
-                (Text.Get("app.col.driverDate"), p.Date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
-                (Text.Get("app.col.class"), p.ClassName)),
-            ActionText = Text.Get("app.store.remove"),
-            ActionGlyph = "trash",
-            ActionCommand = new AsyncRelayCommand(() => RemovePackageAsync(p.InfName)),
-            ActionIsDanger = true,
-        }).ToArray();
+        // Unused packages are the cleanup advisor's cards (impact, recommendation, selection shared with the cleanup page).
+        var unused = UnusedPackageCards().ToArray();
         Replace(StoreGroups, UsedStoreGroups().Concat(unused.Length == 0 ? [] :
             [new CardGroup("package", Text.Get("app.store.unused"), unused, Text.Get("app.store.unusedHint"))]));
     }

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Windows.Input;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace BitByBit.App.ViewModels;
 
@@ -10,8 +11,22 @@ public sealed record CardField(string Label, string Value);
 /// Generic card used by the list pages (driver store, audio, displays, network, history, changes, system…): icon tile,
 /// title, subtitle, a state tag, a few fields, an optional note and an optional action button.
 /// </summary>
-public sealed class InfoCard
+public sealed partial class InfoCard : ObservableObject
 {
+    /// <summary>Selectable cards (cleanup) show a check box; the page acts on the selected ones.</summary>
+    public bool IsSelectable { get; init; }
+
+    /// <summary>What the card stands for (e.g. an oemNN.inf name or a device instance id), for selection actions.</summary>
+    public string? Key { get; init; }
+
+    /// <summary>Called when <see cref="IsSelected"/> changes, so the page can update its counts.</summary>
+    public Action? SelectionChanged { get; init; }
+
+    [ObservableProperty]
+    private bool _isSelected;
+
+    partial void OnIsSelectedChanged(bool value) => SelectionChanged?.Invoke();
+
     public required string Glyph { get; init; }
     public required string Title { get; init; }
     public string? Subtitle { get; init; }

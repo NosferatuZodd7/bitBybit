@@ -219,6 +219,7 @@ public sealed partial class MainViewModel : ObservableObject
             ? Text.Get("app.compare.first")
             : Text.Get("app.compare.previous", previous.CollectedAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture));
         RefreshDeviceCards();
+        RefreshCleanup(snapshot);
         RefreshDriverPackages(snapshot);
         RefreshBackups();
         UpdateShell(snapshot, report);

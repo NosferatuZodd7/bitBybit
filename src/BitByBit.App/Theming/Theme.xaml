@@ -376,6 +376,31 @@
   </Style>
 
   <!-- On/off setting drawn as a switch: label left, switch right, the row fills the width so switches line up. -->
+  <!-- Square check box for selecting items (cleanup lists); the implicit CheckBox is a switch for settings. -->
+  <Style x:Key="CheckBox.Square" TargetType="CheckBox">
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="CheckBox">
+          <Border x:Name="Box" Width="20" Height="20" CornerRadius="6" Background="{DynamicResource Brush.Field}" BorderBrush="{DynamicResource Brush.Edge}" BorderThickness="1.5">
+            <t:Icon x:Name="Tick" Glyph="check" Size="14" StrokeWidth="2.5" Foreground="{DynamicResource Brush.TextOnAccent}" Visibility="Collapsed"
+                    HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="Box" Property="Background" Value="{DynamicResource Brush.Accent}" />
+              <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+              <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
   <Style TargetType="CheckBox">
     <Setter Property="FontFamily" Value="{StaticResource Font.UI}" />
     <Setter Property="FontSize" Value="{StaticResource Size.Body}" />

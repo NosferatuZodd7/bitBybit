@@ -24,6 +24,7 @@ public sealed class ElevatedCommandLineTests
             new ElevatedRequest(ElevatedCommandLine.InstallDriver, Instance, [], false, null, ResultId, "hdaudio.inf"),
             new ElevatedRequest(ElevatedCommandLine.DeletePackage, null, [], false, null, ResultId, "oem14.inf"),
             new ElevatedRequest(ElevatedCommandLine.Rescan, null, [], false, null, ResultId),
+            new ElevatedRequest(ElevatedCommandLine.Cleanup, null, [], false, null, ResultId) { RemoveInfs = ["oem14.inf", "oem30.inf"], RemoveDevices = [Instance, @"USB\VID_1&PID_2\5&1&0&1"] },
         };
 
         foreach (var request in requests)
@@ -39,6 +40,8 @@ public sealed class ElevatedCommandLineTests
             Assert.Equal(request.ChangeId, parsed.ChangeId);
             Assert.Equal(request.ResultId, parsed.ResultId);
             Assert.Equal(request.InfName, parsed.InfName);
+            Assert.Equal(request.RemoveInfs, parsed.RemoveInfs);
+            Assert.Equal(request.RemoveDevices, parsed.RemoveDevices);
         }
     }
 
@@ -62,6 +65,10 @@ public sealed class ElevatedCommandLineTests
     [InlineData("--elevated delete-package --inf oem14.inf --instance X --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")]
     [InlineData("--elevated rescan --instance X --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")]
     [InlineData("--elevated disable-device --instance X --inf oem1.inf --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")]
+    [InlineData("--elevated cleanup --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")] // nothing to remove
+    [InlineData("--elevated cleanup --remove-inf hdaudio.inf --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")] // inbox
+    [InlineData("--elevated cleanup --remove-inf oem1.inf --remove-inf oem1.inf --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")] // duplicate
+    [InlineData("--elevated rescan --remove-inf oem1.inf --result 0f8e2c1a3b4d4e5f8a9b0c1d2e3f4a5b")]
     public void Rejects_malformed_or_unexpected_arguments(string commandLine)
     {
         Assert.Null(ElevatedCommandLine.Parse(commandLine.Split(' ')));
@@ -156,5 +163,15 @@ public sealed class ElevatedCommandLineTests
         }
 
         return result;
+    }
+
+    [Fact]
+    public void Cleanup_batches_are_capped()
+    {
+        var tooMany = new ElevatedRequest(ElevatedCommandLine.Cleanup, null, [], false, null, ResultId)
+        {
+            RemoveDevices = Enumerable.Range(0, ElevatedCommandLine.MaxRemoveDevices + 1).Select(i => $@"USB\VID_1&PID_2\{i}").ToArray(),
+        };
+        Assert.Null(ElevatedCommandLine.Parse(ElevatedCommandLine.Build(tooMany)));
     }
 }

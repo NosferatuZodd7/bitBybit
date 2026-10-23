@@ -103,6 +103,22 @@
       </Button>
     </DataTemplate>
 
+    <!-- Selection bar of the cleanup lists (Driver Store unused packages and the cleanup page share the selection). -->
+    <ControlTemplate x:Key="CleanupSelectionBar" TargetType="ContentControl">
+      <Border Style="{StaticResource Surface.Card}" Padding="14,8,8,2" Margin="0,0,0,12">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+            <Button Style="{StaticResource Chip}" Content="{loc:T app.cleanup.selectRecommended}" t:Ux.Icon="sparkles" Command="{Binding SelectRecommendedCommand}" />
+            <Button Style="{StaticResource Chip}" Content="{loc:T app.cleanup.clear}" t:Ux.Icon="close" Command="{Binding ClearCleanupSelectionCommand}"
+                    Visibility="{Binding HasCleanupSelection, Converter={StaticResource BoolToVisibility}}" />
+            <Button Style="{StaticResource Button.DangerSolid}" Height="32" Margin="4,0,0,6" Content="{loc:T app.cleanup.remove}" t:Ux.Icon="trash" t:Ux.IconSize="14"
+                    Command="{Binding RemoveSelectedCommand}" />
+          </StackPanel>
+          <TextBlock Text="{Binding SelectedCleanupText}" VerticalAlignment="Center" Margin="0,0,0,6" FontWeight="SemiBold" />
+        </DockPanel>
+      </Border>
+    </ControlTemplate>
+
     <!-- Filter chip with its count. -->
     <DataTemplate x:Key="ChipTemplate" DataType="{x:Type vm:FilterChip}">
       <Button Style="{StaticResource Chip}" Content="{Binding Text}" t:Ux.Active="{Binding IsActive}"
@@ -347,12 +363,31 @@
               </Grid>
             </DockPanel>
 
-            <!-- Driver store: third-party packages in use, grouped by device category -->
+            <!-- Driver store: third-party packages in use, grouped by device category; unused ones selectable -->
             <DockPanel Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=store}">
+              <ContentControl DockPanel.Dock="Top" Template="{StaticResource CleanupSelectionBar}" />
               <Grid>
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                   <ItemsControl ItemsSource="{Binding StoreGroups}" ItemTemplate="{StaticResource CardGroupTemplate}" Margin="0,0,0,12" />
                 </ScrollViewer>
+              </Grid>
+            </DockPanel>
+
+            <!-- Cleanup: leftovers that can be removed, each with its impact; nothing happens without selection + confirmation -->
+            <DockPanel Visibility="{Binding CurrentPage, Converter={StaticResource EqualsToVisibility}, ConverterParameter=cleanup}">
+              <Border DockPanel.Dock="Top" Style="{StaticResource Banner}" t:Ux.Tone="Accent" Margin="0,0,0,10">
+                <DockPanel>
+                  <t:Icon Glyph="info" Size="16" Margin="0,0,10,0" VerticalAlignment="Top" Foreground="{DynamicResource Brush.Accent}" />
+                  <TextBlock Text="{loc:T app.cleanup.intro}" TextWrapping="Wrap" Foreground="{DynamicResource Brush.Text}" />
+                </DockPanel>
+              </Border>
+              <ContentControl DockPanel.Dock="Top" Template="{StaticResource CleanupSelectionBar}" />
+              <Grid>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                  <ItemsControl ItemsSource="{Binding CleanupGroups}" ItemTemplate="{StaticResource CardGroupTemplate}" Margin="0,0,0,12" />
+                </ScrollViewer>
+                <TextBlock Style="{StaticResource Text.Hint}" Text="{loc:T app.cleanup.empty}" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="520" TextAlignment="Center"
+                           Visibility="{Binding CleanupGroups.Count, Converter={StaticResource ZeroToVisibility}}" />
               </Grid>
             </DockPanel>
 

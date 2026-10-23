@@ -21,7 +21,7 @@ namespace BitByBit.App.Infrastructure;
 /// </summary>
 public static class UiSmoke
 {
-    private static readonly string[] PagesToCapture = ["case", "devices", "store", "audio", "displays", "network", "history", "system", "changes"];
+    private static readonly string[] PagesToCapture = ["case", "devices", "store", "cleanup", "audio", "displays", "network", "history", "system", "changes"];
 
     /// <summary>Below this WCAG contrast ratio text is unreadable (black on the dark card is about 1.3).</summary>
     private const double MinimumContrast = 1.8;

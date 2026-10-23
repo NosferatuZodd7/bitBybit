@@ -71,6 +71,7 @@ public static class ElevatedCommand
                 ElevatedCommandLine.RollbackDriver => await devices.RollbackDriverAsync(request.InstanceId!, ct),
                 ElevatedCommandLine.DeletePackage => await devices.DeletePackageAsync(request.InfName!, ct),
                 ElevatedCommandLine.Rescan => devices.Rescan(),
+                ElevatedCommandLine.Cleanup => await devices.CleanupAsync(request.RemoveInfs, request.RemoveDevices, ct),
                 _ => await ops.RevertAsync(request.ChangeId!.Value, ct),
             };
         }
