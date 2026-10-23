@@ -251,6 +251,13 @@
       <Trigger Property="IsPressed" Value="True">
         <Setter Property="Background" Value="{DynamicResource Brush.ErrorPressed}" />
       </Trigger>
+      <!-- Disabled (nothing selected yet): the soft danger look, still readable in every theme. -->
+      <Trigger Property="IsEnabled" Value="False">
+        <Setter Property="Background" Value="{DynamicResource Brush.ErrorSoft}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.ErrorSoftEdge}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Error}" />
+      </Trigger>
     </Style.Triggers>
   </Style>
 
