@@ -29,3 +29,6 @@ Thumbs.db
 
 # Claude Code agent worktrees (local only)
 .claude/worktrees/
+
+# Python bytecode (scripts/)
+__pycache__/
