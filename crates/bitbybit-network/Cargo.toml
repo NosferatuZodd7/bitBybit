@@ -1,0 +1,20 @@
+[package]
+name = "bitbybit-network"
+description = "Network logic of bitBybit: IP prefixes, interface classification, VPN and route analysis, topology validation, DHCP, DNS, leak-guard plan, firewall model, clients and sharing sessions."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+bitbybit-core.workspace = true
+bitbybit-evidence.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+time.workspace = true
+
+[dev-dependencies]
+bitbybit-localization.workspace = true
+
+[lints]
+workspace = true

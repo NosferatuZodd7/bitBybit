@@ -120,6 +120,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "bitbybit-network"
+version = "0.7.0"
+dependencies = [
+ "bitbybit-core",
+ "bitbybit-evidence",
+ "bitbybit-localization",
+ "serde",
+ "serde_json",
+ "time",
+]
+
+[[package]]
 name = "bitbybit-recovery"
 version = "0.7.0"
 dependencies = [
