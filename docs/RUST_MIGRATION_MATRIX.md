@@ -109,9 +109,9 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | SVC-05 | VPN leak watchdog | new | `bitbybit-service::watch::vpn` | Todo | state machine | blocks on VPN loss |
 | SVC-06 | Audio profile watchdog | `AudioProfileHost.cs` | `bitbybit-service::watch::audio` | Todo | reconciler tests | bounded |
 | SVC-07 | Elevated helper replacement (portable broker host) | `ElevatedCommand.cs` | `bitbybit-service` library hosted by the app | Todo | CI | same allowlist, UAC consent |
-| UPD-01 | SemVer with `-dev.N` | `Core/Updates/SemVersion.cs` | `bitbybit-updates::version` | Todo | ported | ordering |
-| UPD-02 | Signed manifest verification | `UpdateManifest.cs` | `bitbybit-updates::manifest` | Todo | ported + C#-signed fixture | fail closed |
-| UPD-03 | Release selection, trusted URLs, downgrade refusal | `UpdatePlanner.cs` | `bitbybit-updates::plan` | Todo | ported | repository-only |
+| UPD-01 | SemVer with `-dev.N` | `Core/Updates/SemVersion.cs` | `bitbybit-updates::version` | Logic | ported | ordering |
+| UPD-02 | Signed manifest verification | `UpdateManifest.cs` | `bitbybit-updates::manifest` | Logic | ported + C#-signed fixture | fail closed |
+| UPD-03 | Release selection, trusted URLs, downgrade refusal | `UpdatePlanner.cs` | `bitbybit-updates::plan` | Logic | ported | repository-only |
 | UPD-04 | Download, verify, install, restart, recover | `App/Infrastructure/UpdateService.cs` | `platform-windows::http`, app, service op | Todo | hash/atomic tests | atomic swap or MSI hand-off |
 | UPD-05 | Release tool | `tools/BitByBit.ReleaseTool` | `bitbybit-release` | Todo | round trip + cross-check with C# key format | same manifest format |
 | UPD-06 | CI pre-release publishing | `preview.yml` | `.github/workflows/rust.yml` | Todo | CI | `vX.Y.Z-dev.N`, signed, verified |

@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "product": "bitBybit",
+  "version": "0.6.0-dev.21",
+  "channel": "testing",
+  "commit": "ed2533bed59ecd4f4beb27a5a57282c010e43509",
+  "repository": "NosferatuZodd7/bitBybit",
+  "publishedAt": "2026-10-23T11:53:38.7382429+00:00",
+  "assets": [
+    {
+      "name": "bitBybit.exe",
+      "size": 77825460,
+      "sha256": "3b68a3ae72fdcf948753702b26b17221fa9d90a9391e7b8a7fc5f25a703c1523"
+    },
+    {
+      "name": "bitbybit-cli.exe",
+      "size": 44882058,
+      "sha256": "904dd3055d1a464d501495764ec7c05216234e321c419cec2d83aaddc7a9a09e"
+    }
+  ]
+}
