@@ -24,6 +24,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "bitbybit-devices"
+version = "0.7.0"
+dependencies = [
+ "bitbybit-core",
+ "bitbybit-domain",
+ "bitbybit-localization",
+ "serde",
+ "time",
+]
+
+[[package]]
 name = "bitbybit-domain"
 version = "0.7.0"
 dependencies = [

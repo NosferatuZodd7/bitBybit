@@ -19,6 +19,7 @@ bitbybit-domain = { path = "crates/bitbybit-domain" }
 bitbybit-security = { path = "crates/bitbybit-security" }
 bitbybit-journal = { path = "crates/bitbybit-journal" }
 bitbybit-recovery = { path = "crates/bitbybit-recovery" }
+bitbybit-devices = { path = "crates/bitbybit-devices" }
 
 
 serde = { version = "1.0.229", features = ["derive"] }
