@@ -1,0 +1,20 @@
+[package]
+name = "bitbybit-domain"
+description = "Domain models of bitBybit: diagnostics, guided fix, system snapshot, operations."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+bitbybit-core.workspace = true
+bitbybit-evidence.workspace = true
+serde.workspace = true
+time.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

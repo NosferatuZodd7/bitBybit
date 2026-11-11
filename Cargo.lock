@@ -24,6 +24,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "bitbybit-domain"
+version = "0.7.0"
+dependencies = [
+ "bitbybit-core",
+ "bitbybit-evidence",
+ "serde",
+ "serde_json",
+ "time",
+ "uuid",
+]
+
+[[package]]
 name = "bitbybit-evidence"
 version = "0.7.0"
 dependencies = [
