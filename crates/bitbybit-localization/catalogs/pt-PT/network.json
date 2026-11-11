@@ -44,5 +44,11 @@
   "network.topology.lanNotPrivate": "{0} não é uma rede IPv4 privada (10/8, 172.16/12, 192.168/16).",
   "network.topology.lanSize": "A rede partilhada tem de estar entre /16 e /30.",
   "network.topology.subnetConflict": "{0} sobrepõe-se a {1}, já usada por '{2}'.",
-  "network.topology.noFreeSubnet": "Não foi encontrada nenhuma subrede privada livre para a rede partilhada."
+  "network.topology.noFreeSubnet": "Não foi encontrada nenhuma subrede privada livre para a rede partilhada.",
+  "network.leak.off": "A proteção contra fugas está desligada.",
+  "network.leak.protected": "Protegido: os dispositivos partilhados só podem usar a Internet através da VPN.",
+  "network.leak.blockedVpnDown": "A VPN está em baixo: os dispositivos partilhados ficam sem Internet até a VPN voltar a ligar.",
+  "network.leak.needsReplan": "A VPN voltou a ligar com uma nova interface; a proteção está a ser reaplicada. O tráfego partilhado continua bloqueado.",
+  "network.leak.notGuaranteed": "A proteção não está garantida: os filtros do bitBybit estão em falta ou foram alterados. A partilha tem de parar.",
+  "network.leak.unknown": "Não foi possível ler o estado dos filtros de proteção; a proteção não é assumida."
 }

@@ -126,6 +126,7 @@ dependencies = [
  "bitbybit-core",
  "bitbybit-evidence",
  "bitbybit-localization",
+ "bitbybit-security",
  "serde",
  "serde_json",
  "time",

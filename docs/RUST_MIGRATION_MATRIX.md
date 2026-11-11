@@ -80,7 +80,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | NET-08 | WinNAT (owned `bitBybit-*` only) | new | `platform-windows::net::nat` | Todo | opt-in | never touches other NATs |
 | NET-09 | LAN address + forwarding | new | `platform-windows::net::ipconfig` | Todo | opt-in | previous state journaled |
 | NET-10 | Topology validator | new | `bitbybit-network::topology` | Logic | unit | subnet conflicts, default-route protection |
-| NET-11 | VPN sharing with WFP leak protection | new | `bitbybit-network::leak`, `platform-windows::net::wfp` | Todo | plan + state-machine tests, WFP API on CI | Protected only with filters verified; fail closed |
+| NET-11 | VPN sharing with WFP leak protection | new | `bitbybit-network::leak`, `platform-windows::net::wfp` | Logic | plan + state-machine tests, WFP API on CI | Protected only with filters verified; fail closed |
 | NET-12 | DHCP server | new | `bitbybit-network::dhcp` | Logic | codec, leases, loopback sockets | DISCOVER…RELEASE, conflicts, ranges |
 | NET-13 | DNS forwarder + cache | new | `bitbybit-network::dns` | Logic | codec, cache, loop guard, loopback sockets | fail closed without upstream |
 | NET-14 | Firewall rules (group bitBybit only) | new | `bitbybit-network::firewall`, `platform-windows::net::firewall` | Todo | model + opt-in | never disables the firewall |
