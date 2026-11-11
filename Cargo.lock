@@ -176,8 +176,10 @@ name = "bitbybit-platform-windows"
 version = "0.7.0"
 dependencies = [
  "bitbybit-core",
+ "bitbybit-ipc",
  "bitbybit-network",
  "log",
+ "serde_json",
  "time",
  "windows",
 ]

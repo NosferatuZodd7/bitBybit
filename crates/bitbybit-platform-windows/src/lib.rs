@@ -4,3 +4,5 @@
 
 #[cfg(windows)]
 pub mod net;
+#[cfg(windows)]
+pub mod pipe;

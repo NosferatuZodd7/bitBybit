@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dependencies]
 bitbybit-core.workspace = true
+bitbybit-ipc.workspace = true
 bitbybit-network.workspace = true
 log.workspace = true
 time.workspace = true
@@ -19,7 +20,16 @@ features = [
     "Win32_NetworkManagement_IpHelper",
     "Win32_NetworkManagement_Ndis",
     "Win32_Networking_WinSock",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
+    "Win32_System_Threading",
 ]
+
+[dev-dependencies]
+serde_json.workspace = true
 
 [lints]
 workspace = true
