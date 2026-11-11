@@ -32,3 +32,6 @@ Thumbs.db
 
 # Python bytecode (scripts/)
 __pycache__/
+
+# Rust
+/target/

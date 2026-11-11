@@ -1,0 +1,45 @@
+# bitBybit — Rust workspace. The C#/.NET implementation under src/ stays until the migration matrix
+# (docs/RUST_MIGRATION_MATRIX.md) is complete.
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.7.0"
+edition = "2024"
+rust-version = "1.97"
+publish = false
+repository = "https://github.com/NosferatuZodd7/bitBybit"
+
+[workspace.dependencies]
+bitbybit-evidence = { path = "crates/bitbybit-evidence" }
+bitbybit-core = { path = "crates/bitbybit-core" }
+bitbybit-localization = { path = "crates/bitbybit-localization" }
+bitbybit-domain = { path = "crates/bitbybit-domain" }
+bitbybit-security = { path = "crates/bitbybit-security" }
+bitbybit-journal = { path = "crates/bitbybit-journal" }
+bitbybit-recovery = { path = "crates/bitbybit-recovery" }
+
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+time = { version = "0.3.55", features = ["serde", "formatting", "parsing", "macros"] }
+uuid = { version = "1.29", features = ["v4", "serde"] }
+regex = "1.13"
+log = "0.4.35"
+sha2 = "0.11"
+tempfile = "3.27"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+todo = "warn"
+unimplemented = "warn"
+dbg_macro = "warn"
+
+[profile.release]
+lto = "thin"
+strip = "debuginfo"

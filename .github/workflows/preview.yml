@@ -12,6 +12,8 @@ on:
   push:
     branches: ['claude/**']
     tags: ['v*']
+    # The Rust rewrite (crates/, ui/) has its own workflow; only C# changes build and publish the C# app.
+    paths: ['src/**', 'tests/**', 'tools/**', 'installer/**', 'bitBybit.sln', 'Directory.*.props', 'global.json', '.github/workflows/preview.yml']
   workflow_dispatch:
 
 permissions:
