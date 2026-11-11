@@ -20,12 +20,13 @@ bitbybit-security = { path = "crates/bitbybit-security" }
 bitbybit-journal = { path = "crates/bitbybit-journal" }
 bitbybit-recovery = { path = "crates/bitbybit-recovery" }
 
+
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 time = { version = "0.3.55", features = ["serde", "formatting", "parsing", "macros"] }
 uuid = { version = "1.29", features = ["v4", "serde"] }
 regex = "1.13"
-log = "0.4.35"
+log = { version = "0.4.35", features = ["std"] }
 sha2 = "0.11"
 tempfile = "3.27"
 

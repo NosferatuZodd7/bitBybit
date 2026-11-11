@@ -1,0 +1,19 @@
+[package]
+name = "bitbybit-security"
+description = "Redaction, fixed-tool argument policy, ownership rules and the redacting file log of bitBybit."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+bitbybit-core.workspace = true
+log.workspace = true
+regex.workspace = true
+time.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

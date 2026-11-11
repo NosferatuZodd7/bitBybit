@@ -1,0 +1,20 @@
+[package]
+name = "bitbybit-recovery"
+description = "Drift-aware revert of journaled bitBybit changes."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+bitbybit-core.workspace = true
+bitbybit-journal.workspace = true
+log.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+time.workspace = true
+
+[lints]
+workspace = true

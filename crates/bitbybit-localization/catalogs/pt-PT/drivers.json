@@ -1,0 +1,5 @@
+{
+  "drivers.policy.invalidId": "'{0}' não é um ID de hardware válido e específico.",
+  "drivers.policy.displayAudio": "'{0}' pertence ao áudio HDMI/DisplayPort da placa gráfica (NVIDIA/AMD/Intel). O bitBybit nunca o bloqueia.",
+  "drivers.policy.tooGeneric": "'{0}' é demasiado genérico (tem de indicar o barramento, o fabricante e o dispositivo) e poderia bloquear outros dispositivos."
+}

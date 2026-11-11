@@ -11,17 +11,17 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 
 | Id | Feature | C# origin | Rust module | State | Tests | Done when |
 |---|---|---|---|---|---|---|
-| FND-01 | Result / stable error codes | `Core/Common/Result.cs` | `bitbybit-core::error` | Todo | code stability, mapping | codes equal the C# numbers; used by every crate |
-| FND-02 | LocalizedText + pt-PT catalogs | `Core/Common/LocalizedText.cs`, `Core/Localization` | `bitbybit-core::text`, `bitbybit-localization` | Todo | render, missing key, bad format, every key resolvable | catalogs load; fallback on missing keys; no pt-PT in code |
-| FND-03 | Capability model and probes | `Core/Capabilities` | `bitbybit-core::capability` | Todo | report aggregation, failing probe | every feature area exposes a probe |
-| FND-04 | Evidence (Fact/Observation/Inference/Hypothesis) | `Core/Evidence` | `bitbybit-evidence` | Todo | constructors, confirmed rule | hypotheses never upgrade to facts |
+| FND-01 | Result / stable error codes | `Core/Common/Result.cs` | `bitbybit-core::error` | Done | code stability, mapping | codes equal the C# numbers; used by every crate |
+| FND-02 | LocalizedText + pt-PT catalogs | `Core/Common/LocalizedText.cs`, `Core/Localization` | `bitbybit-core::text`, `bitbybit-localization` | Done | render, missing key, bad format, every key resolvable | catalogs load; fallback on missing keys; no pt-PT in code |
+| FND-03 | Capability model and probes | `Core/Capabilities` | `bitbybit-core::capability` | Done | report aggregation, failing probe | every feature area exposes a probe |
+| FND-04 | Evidence (Fact/Observation/Inference/Hypothesis) | `Core/Evidence` | `bitbybit-evidence` | Done | constructors, confirmed rule | hypotheses never upgrade to facts |
 | FND-05 | Findings, proposed actions, risk | `Core/Diagnostics` | `bitbybit-domain::diagnostics` | Todo | confirmation rule | Medium+/irreversible/reboot need confirmation |
-| FND-06 | Redaction | `Core/Logging/Redactor.cs` | `bitbybit-security::redact` | Todo | ported 8 tests | same inputs, same outputs |
-| FND-07 | Redacting file log | `Core/Logging/FileLoggerProvider.cs` | `bitbybit-core::logging` | Todo | rotation, redaction | logs English, rotated, redacted |
-| FND-08 | Paths, settings, atomic JSON | `Core/Config` | `bitbybit-core::{paths,settings,fsio}` | Todo | atomic replace, corrupt file | settings survive crashes |
-| FND-09 | Fixed tools + argument policy | `Core/Platform/IFixedToolRunner.cs`, `Platform/FixedToolRunner.cs` | `bitbybit-security::tools`, `platform-windows::tools` | Todo | policy tests, System32 resolution (Windows) | only System32 tools, validated args |
-| FND-10 | Change journal | `Core/Journal/*Journal*.cs` | `bitbybit-journal` | Todo | append/update, torn tail, tamper, concurrency | hash chain verified; crash-safe |
-| FND-11 | RecoveryCoordinator | `Core/Journal/RecoveryCoordinator.cs` | `bitbybit-recovery` | Todo | drift, gone, unknown, force, attempts, duplicates | refuses unsafe reverts |
+| FND-06 | Redaction | `Core/Logging/Redactor.cs` | `bitbybit-security::redact` | Done | ported 8 tests | same inputs, same outputs |
+| FND-07 | Redacting file log | `Core/Logging/FileLoggerProvider.cs` | `bitbybit-core::logging` | Done | rotation, redaction | logs English, rotated, redacted |
+| FND-08 | Paths, settings, atomic JSON | `Core/Config` | `bitbybit-core::{paths,settings,fsio}` | Done | atomic replace, corrupt file | settings survive crashes |
+| FND-09 | Fixed tools + argument policy | `Core/Platform/IFixedToolRunner.cs`, `Platform/FixedToolRunner.cs` | `bitbybit-security::tools`, `platform-windows::tools` | Logic | policy tests, System32 resolution (Windows) | only System32 tools, validated args |
+| FND-10 | Change journal | `Core/Journal/*Journal*.cs` | `bitbybit-journal` | Done | append/update, torn tail, tamper, concurrency | hash chain verified; crash-safe |
+| FND-11 | RecoveryCoordinator | `Core/Journal/RecoveryCoordinator.cs` | `bitbybit-recovery` | Done | drift, gone, unknown, force, attempts, duplicates | refuses unsafe reverts |
 
 ## Devices and drivers
 
@@ -145,4 +145,4 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 
 ## Completion
 
-Rows: 99. Done/Limited: 0. **0 %** (Phase A complete; implementation starts with Phase B).
+Rows: 106. Done/Limited: 9. **8 %**.

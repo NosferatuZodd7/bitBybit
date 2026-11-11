@@ -1,0 +1,9 @@
+{
+  "cleanup.impact.absentDevice": "Já não está ligado. O Windows guarda-o para o reconhecer se voltar a ser ligado; removê-lo só limpa a lista (volta a aparecer se o ligar).",
+  "cleanup.impact.printer": "Controlador de impressora. Pode estar a ser usado por uma impressora ou por uma impressora virtual (por exemplo, \"Microsoft Print to PDF\"), que não aparecem como dispositivos. Remova só se não precisar dessa impressora.",
+  "cleanup.impact.superseded": "Versão antiga ({0}) de um controlador que também tem uma versão mais recente neste computador ({1} {2}). Remover não afeta nenhum dispositivo.",
+  "cleanup.impact.microsoft": "Controlador publicado pela Microsoft que pode pertencer a uma funcionalidade do Windows. Mantenha-o, a não ser que saiba para que serve.",
+  "cleanup.impact.replaced": "Serve \"{0}\", que está ligado mas agora usa outro controlador ({1}). Remover impede que o Windows volte a trocar esse dispositivo para este; não muda o funcionamento atual.",
+  "cleanup.impact.absentHardware": "Serve \"{0}\", que já não está ligado. Se o voltar a ligar, o Windows procura um controlador (Windows Update).",
+  "cleanup.impact.noMatch": "Não corresponde a nenhum dispositivo que este computador conheça (ligado ou antigo). Remover não afeta nenhum dispositivo."
+}
