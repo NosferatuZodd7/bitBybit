@@ -7,7 +7,7 @@ Rewrite bitBybit in Rust + Slint (master prompt of 2026-11-11). C# under `src/` 
 stays until `docs/RUST_MIGRATION_MATRIX.md` is complete (Phase N).
 
 ## Current phase
-A–D, F1 and G1 (platform-neutral logic) done; next K1+H1 (`bitbybit-updates`, `bitbybit-ipc`).
+A–D, F1, G1, K1 and H1 (all platform-neutral logic) done; next E/F2/G2 (`bitbybit-platform-windows`).
 
 ## Done
 * Phase A: `docs/RUST_REWRITE_AUDIT.md`, `docs/RUST_MIGRATION_MATRIX.md` (99 rows, ids stable).
@@ -26,7 +26,14 @@ A–D, F1 and G1 (platform-neutral logic) done; next K1+H1 (`bitbybit-updates`, 
   topology validator, DHCPv4 server engine, fail-closed DNS forwarder, WFP leak-guard plan + `Protected` assessment
   (only with filters read back), owned firewall rules diff, clients merge, bridge/repeater detection, probe
   validation, sharing session orchestrator (journaled steps, leak guard before forwarding/NAT, reverse rollback).
-* Recovery fix: same-timestamp records now revert newest first. Workspace: 203 tests.
+* Recovery fix: same-timestamp records now revert newest first.
+* `bitbybit-updates` (13 tests): SemVersion, ECDSA P-256 manifest verifier (verifies the real v0.6.0-dev.21 manifest
+  signed by the C# pipeline with the embedded key), release planner, download size/hash check.
+* `bitbybit-ipc` (34 tests): framing, strict JSON (duplicates/depth/unknown fields), envelopes, closed registry
+  (frozen), authorization by tier + client image (+developer dir), HMAC two-phase confirmation bound to
+  params/client/plan (single use), category gate, redacted audit, event hub, ping/poll, per-connection server with 8
+  in flight, client with confirm callback; end-to-end tests over OS pipes. Service name `bitBybitService`,
+  exe `bitbybit-service.exe`, pipe `bitBybit.broker.v1` (protocol v1, unchanged). Workspace: 250 tests.
 * CI: `.github/workflows/rust.yml` (Linux fmt/clippy/test + Windows type-check; Windows clippy/test/release build).
   `preview.yml` (C#) now runs only when C# paths change, so Rust pushes do not republish the C# app.
 
@@ -48,11 +55,13 @@ cargo check --workspace --target x86_64-pc-windows-msvc
 ```
 
 ## Next concrete task
-`bitbybit-updates` (port `src/BitByBit.Core/Updates`: SemVersion, GitHub release parser, manifest + ECDSA P-256
-verifier with the embedded key from `UpdateKeys`, planner; port their tests) and `bitbybit-ipc` (port
-`src/BitByBit.Core/Ipc`: framing, strict JSON, envelopes, operation registry/allowlist, auth tiers, two-phase
-confirmation tokens, replay protection, audit, events, client; port `tests/BitByBit.Core.Tests/Ipc`). Then
-`bitbybit-platform-windows` (windows-rs) implementing the network/audio/devices ports.
+`bitbybit-platform-windows` (windows 0.62): start with read-only inventory that CI can exercise — network
+(`GetAdaptersAddresses`, `GetIfTable2`, `GetIpForwardTable2`, NLM connectivity, RAS) → `bitbybit_network::model`,
+audio endpoints (MMDevice API + `IPolicyConfig`, labelled undocumented) → `bitbybit_audio::changes::AudioDevices`,
+devices/drivers (SetupAPI/CfgMgr32) → `bitbybit_domain::snapshot`. Then the named-pipe transport for `bitbybit-ipc`
+(DACL: SYSTEM + interactive users, `GetNamedPipeClientProcessId`, token integrity/elevation → `ClientIdentity`),
+then WFP/WinNAT/ICS/firewall/hotspot mutators behind the sharing `SharingBackend` trait. Every Windows-only path is
+"compiled only" until the Windows CI job runs it.
 
 ## Known problems
 * The session worker restarts often: commit and push after every crate.

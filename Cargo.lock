@@ -117,6 +117,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "bitbybit-ipc"
+version = "0.7.0"
+dependencies = [
+ "bitbybit-core",
+ "bitbybit-localization",
+ "bitbybit-security",
+ "getrandom",
+ "log",
+ "serde",
+ "serde_json",
+ "sha2",
+ "time",
+ "uuid",
+]
+
+[[package]]
 name = "bitbybit-journal"
 version = "0.7.0"
 dependencies = [

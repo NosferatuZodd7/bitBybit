@@ -1,0 +1,24 @@
+[package]
+name = "bitbybit-ipc"
+description = "Broker protocol of bitBybit: framing, strict envelopes, closed operation allowlist, authorization tiers, two-phase confirmation, audit, events and the client."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+bitbybit-core.workspace = true
+bitbybit-security.workspace = true
+getrandom.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+time.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+bitbybit-localization.workspace = true
+
+[lints]
+workspace = true

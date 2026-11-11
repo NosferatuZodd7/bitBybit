@@ -93,15 +93,15 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 
 | Id | Feature | C# origin | Rust module | State | Tests | Done when |
 |---|---|---|---|---|---|---|
-| IPC-01 | Length-prefixed framing, limits, timeouts | `Core/Ipc/IpcFraming.cs` | `bitbybit-ipc::framing` | Todo | ported | 1 MiB cap, torn frames |
-| IPC-02 | Envelopes, strict typed JSON, versioning | `BrokerEnvelopes.cs`, `BrokerJson.cs` | `bitbybit-ipc::envelope` | Todo | ported | unknown fields rejected |
-| IPC-03 | Closed operation allowlist | `OperationRegistry.cs` | `bitbybit-ipc::registry` | Todo | ported | frozen before serving |
-| IPC-04 | Authorization by tier and client identity | `BrokerAuthorizationPolicy.cs`, `ClientIdentity.cs` | `bitbybit-ipc::auth` | Todo | ported | image, integrity, elevation |
-| IPC-05 | Two-phase confirmation, nonces, expiry, replay protection | `ConfirmationTokens.cs` | `bitbybit-ipc::confirm` | Todo | ported + replay | single-use, bound to plan |
-| IPC-06 | Concurrency gate, timeouts, cancellation, rate limit | `ConcurrencyGate.cs`, dispatcher | `bitbybit-ipc::dispatch` | Todo | ported + rate limit | one mutation per category |
-| IPC-07 | Audit log with redaction | `AuditRedaction.cs` | `bitbybit-ipc::audit` | Todo | ported | secrets masked |
-| IPC-08 | Event hub (long poll) | `BrokerEvents.cs` | `bitbybit-ipc::events` | Todo | ported | bounded ring |
-| IPC-09 | Client | `BrokerClient.cs` | `bitbybit-ipc::client` | Todo | end-to-end over a duplex stream | confirm callback |
+| IPC-01 | Length-prefixed framing, limits, timeouts | `Core/Ipc/IpcFraming.cs` | `bitbybit-ipc::framing` | Logic | ported | 1 MiB cap, torn frames |
+| IPC-02 | Envelopes, strict typed JSON, versioning | `BrokerEnvelopes.cs`, `BrokerJson.cs` | `bitbybit-ipc::envelope` | Logic | ported | unknown fields rejected |
+| IPC-03 | Closed operation allowlist | `OperationRegistry.cs` | `bitbybit-ipc::registry` | Logic | ported | frozen before serving |
+| IPC-04 | Authorization by tier and client identity | `BrokerAuthorizationPolicy.cs`, `ClientIdentity.cs` | `bitbybit-ipc::auth` | Logic | ported | image, integrity, elevation |
+| IPC-05 | Two-phase confirmation, nonces, expiry, replay protection | `ConfirmationTokens.cs` | `bitbybit-ipc::confirm` | Logic | ported + replay | single-use, bound to plan |
+| IPC-06 | Concurrency gate, timeouts, cancellation, rate limit | `ConcurrencyGate.cs`, dispatcher | `bitbybit-ipc::dispatch` | Logic | ported + rate limit | one mutation per category |
+| IPC-07 | Audit log with redaction | `AuditRedaction.cs` | `bitbybit-ipc::audit` | Logic | ported | secrets masked |
+| IPC-08 | Event hub (long poll) | `BrokerEvents.cs` | `bitbybit-ipc::events` | Logic | ported | bounded ring |
+| IPC-09 | Client | `BrokerClient.cs` | `bitbybit-ipc::client` | Logic | end-to-end over a duplex stream | confirm callback |
 | SVC-01 | Windows service (LocalSystem) `bitBybitService` | placeholder | `bitbybit-service` | Todo | CI install/start | runs, stops cleanly |
 | SVC-02 | Named-pipe server, ACL, client identity | new | `platform-windows::pipe` | Todo | CI round trip | remote clients rejected |
 | SVC-03 | Privileged operations behind the allowlist | `ElevatedCommand.cs` verbs | `bitbybit-service::ops` | Todo | dispatcher tests | every verb re-validated |
