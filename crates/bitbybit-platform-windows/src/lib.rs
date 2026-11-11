@@ -1,0 +1,6 @@
+//! Windows implementations of bitBybit's platform ports. Everything here is `cfg(windows)`: on other systems the
+//! crate is empty so the workspace still builds. Code paths are "compiled only" until the Windows CI job (or a
+//! real machine) runs them; readers never change system state.
+
+#[cfg(windows)]
+pub mod net;

@@ -70,7 +70,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 
 | Id | Feature | C# origin | Rust module | State | Tests | Done when |
 |---|---|---|---|---|---|---|
-| NET-01 | Interface inventory | `Core/Network` models, collector | `bitbybit-domain::network`, `platform-windows::net::inventory` | Todo | CI | LUID, type, flags, addresses, driver facts |
+| NET-01 | Interface inventory | `Core/Network` models, collector | `bitbybit-domain::network`, `platform-windows::net::inventory` | WIP | CI | LUID, type, flags, addresses, driver facts |
 | NET-02 | Interface classification / VPN detection | `AdapterSignatures.cs`, `Vpn/*` | `bitbybit-network::classify` | Logic | signature table tests | evidence-based, name hints are hypotheses |
 | NET-03 | Routes, default-route owner, connectivity | `RouteInfo`, `Connectivity.cs` | `bitbybit-network::routes` | Logic | unit | full/split tunnel detection |
 | NET-04 | Mobile Hotspot | new | `platform-windows::net::hotspot` | Todo | CI probe | config, start/stop, clients, capability reasons |

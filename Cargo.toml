@@ -26,6 +26,7 @@ bitbybit-audio = { path = "crates/bitbybit-audio" }
 bitbybit-network = { path = "crates/bitbybit-network" }
 bitbybit-updates = { path = "crates/bitbybit-updates" }
 bitbybit-ipc = { path = "crates/bitbybit-ipc" }
+bitbybit-platform-windows = { path = "crates/bitbybit-platform-windows" }
 
 
 serde = { version = "1.0.229", features = ["derive"] }

@@ -1,0 +1,25 @@
+[package]
+name = "bitbybit-platform-windows"
+description = "Windows implementations of bitBybit's platform ports (IP Helper, Core Audio, SetupAPI, WFP, WinNAT, ICS, firewall, named pipes, WinHTTP)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+bitbybit-core.workspace = true
+bitbybit-network.workspace = true
+log.workspace = true
+time.workspace = true
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_Networking_WinSock",
+]
+
+[lints]
+workspace = true
