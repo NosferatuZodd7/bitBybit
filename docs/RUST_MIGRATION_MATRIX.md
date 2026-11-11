@@ -82,7 +82,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | NET-10 | Topology validator | new | `bitbybit-network::topology` | Logic | unit | subnet conflicts, default-route protection |
 | NET-11 | VPN sharing with WFP leak protection | new | `bitbybit-network::leak`, `platform-windows::net::wfp` | Todo | plan + state-machine tests, WFP API on CI | Protected only with filters verified; fail closed |
 | NET-12 | DHCP server | new | `bitbybit-network::dhcp` | Logic | codec, leases, loopback sockets | DISCOVER…RELEASE, conflicts, ranges |
-| NET-13 | DNS forwarder + cache | new | `bitbybit-network::dns` | Todo | codec, cache, loop guard, loopback sockets | fail closed without upstream |
+| NET-13 | DNS forwarder + cache | new | `bitbybit-network::dns` | Logic | codec, cache, loop guard, loopback sockets | fail closed without upstream |
 | NET-14 | Firewall rules (group bitBybit only) | new | `bitbybit-network::firewall`, `platform-windows::net::firewall` | Todo | model + opt-in | never disables the firewall |
 | NET-15 | Clients (leases + neighbours + hotspot) | new | `bitbybit-network::clients`, `platform-windows::net::neighbors` | Todo | merge tests | IP, MAC, state, interface |
 | NET-16 | Bridge / repeater detection | new | `bitbybit-network::capability` | Todo | unit | detection only |

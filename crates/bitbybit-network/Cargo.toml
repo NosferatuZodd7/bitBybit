@@ -12,6 +12,7 @@ bitbybit-evidence.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 time.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 bitbybit-localization.workspace = true

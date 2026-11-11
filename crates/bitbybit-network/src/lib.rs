@@ -4,6 +4,7 @@
 pub mod classify;
 pub mod connectivity;
 pub mod dhcp;
+pub mod dns;
 pub mod model;
 pub mod prefix;
 pub mod routes;
