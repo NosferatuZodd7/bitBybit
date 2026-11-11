@@ -1,0 +1,29 @@
+[package]
+name = "bitbybit-audio"
+description = "Audio logic of bitBybit: the Realtek/DisplayPort diagnosis, reports, the DisplayPort profile, journaled audio changes."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+bitbybit-core.workspace = true
+bitbybit-devices.workspace = true
+bitbybit-domain.workspace = true
+bitbybit-drivers.workspace = true
+bitbybit-evidence.workspace = true
+bitbybit-journal.workspace = true
+bitbybit-localization.workspace = true
+bitbybit-recovery.workspace = true
+bitbybit-security.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+time.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

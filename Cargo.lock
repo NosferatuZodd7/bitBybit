@@ -12,6 +12,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "bitbybit-audio"
+version = "0.7.0"
+dependencies = [
+ "bitbybit-core",
+ "bitbybit-devices",
+ "bitbybit-domain",
+ "bitbybit-drivers",
+ "bitbybit-evidence",
+ "bitbybit-journal",
+ "bitbybit-localization",
+ "bitbybit-recovery",
+ "bitbybit-security",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "time",
+ "uuid",
+]
+
+[[package]]
 name = "bitbybit-core"
 version = "0.7.0"
 dependencies = [

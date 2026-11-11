@@ -22,6 +22,7 @@ bitbybit-recovery = { path = "crates/bitbybit-recovery" }
 bitbybit-devices = { path = "crates/bitbybit-devices" }
 bitbybit-drivers = { path = "crates/bitbybit-drivers" }
 bitbybit-display = { path = "crates/bitbybit-display" }
+bitbybit-audio = { path = "crates/bitbybit-audio" }
 
 
 serde = { version = "1.0.229", features = ["derive"] }
