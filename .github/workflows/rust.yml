@@ -5,7 +5,7 @@ name: rust
 on:
   push:
     branches: ['claude/**']
-    paths: ['crates/**', 'ui/**', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'rustfmt.toml', 'clippy.toml', '.github/workflows/rust.yml']
+    paths: ['crates/**', 'ui/**', '.gitattributes', '.gitignore', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'rustfmt.toml', 'clippy.toml', '.github/workflows/rust.yml']
   workflow_dispatch:
 
 permissions:
