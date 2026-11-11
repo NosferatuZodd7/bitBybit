@@ -1,0 +1,4 @@
+
+# Signed fixtures must keep their exact bytes (no line-ending conversion).
+crates/bitbybit-updates/tests/data/** binary
+crates/bitbybit-updates/keys/** -text
