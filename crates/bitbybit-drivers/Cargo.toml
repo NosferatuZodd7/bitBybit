@@ -1,0 +1,20 @@
+[package]
+name = "bitbybit-drivers"
+description = "Driver rules of bitBybit: INF parsing, pnputil arguments, install-restriction policy, setupapi.dev.log, driver test mode."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+bitbybit-core.workspace = true
+bitbybit-domain.workspace = true
+bitbybit-journal.workspace = true
+bitbybit-recovery.workspace = true
+regex.workspace = true
+serde.workspace = true
+time.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

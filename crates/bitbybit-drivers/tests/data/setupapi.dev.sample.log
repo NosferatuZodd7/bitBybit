@@ -1,0 +1,52 @@
+[Device Install Log]
+     OS Version = 10.0.19045
+     Service Pack = 0.0
+     Suite = 0x0100
+     ProductType = 1
+     Architecture = amd64
+
+[BeginLog]
+
+[Boot Session: 2026/10/10 08:01:12.500]
+
+>>>  [Setup Import Driver Package - C:\WINDOWS\SoftwareDistribution\Download\Install\hdxrt.inf]
+>>>  Section start 2026/10/10 09:15:02.120
+      cmd: C:\WINDOWS\System32\svchost.exe -k netsvcs -p -s wuauserv
+     sto: {Setup Import Driver Package: C:\WINDOWS\SoftwareDistribution\Download\Install\hdxrt.inf} 09:15:02.125
+     sto:      Driver package already imported as 'oem45.inf'.
+     sto: {Setup Import Driver Package - exit(0x00000000)} 09:15:02.300
+<<<  Section end 2026/10/10 09:15:02.310
+<<<  [Exit status: SUCCESS]
+
+
+>>>  [Device Install (Hardware initiated) - HDAUDIO\FUNC_01&VEN_10EC&DEV_0256&SUBSYS_10280A2E&REV_1000\4&2f9b5a5&0&0001]
+>>>  Section start 2026/10/10 09:15:10.500
+     ump: Creating Install Process: DrvInst.exe 09:15:10.501
+     ndv: Retrieving device info...
+     dvi:      Selected Driver:
+     dvi:           Description - Realtek High Definition Audio
+     dvi:           InfFile     - c:\windows\system32\driverstore\filerepository\hdxrt.inf_amd64_0123456789abcdef\hdxrt.inf
+     dvi:           Version     - 6.0.9549.1
+<<<  Section end 2026/10/10 09:15:14.000
+<<<  [Exit status: SUCCESS]
+
+
+>>>  [Device Install (Hardware initiated) - USB\VID_046D&PID_C52B\5&1234&0&2]
+>>>  Section start 2026/10/10 09:20:00.000
+     dvi:           InfFile     - c:\windows\inf\input.inf
+<<<  Section end 2026/10/10 09:20:01.000
+<<<  [Exit status: SUCCESS]
+
+
+>>>  [Device Install (DiInstallDriver) - C:\NVIDIA\DisplayDriver\Display.Driver\nvhda.inf]
+>>>  Section start 2026/10/11 18:02:33.040
+      cmd: "C:\NVIDIA\DisplayDriver\setup.exe" -s
+     sto: Driver package already imported as 'oem60.inf'.
+!!!  dvi: Device not started: Device has problem: 0x0a (CM_PROB_FAILED_START).
+<<<  Section end 2026/10/11 18:02:40.000
+<<<  [Exit status: FAILURE(0x00000103)]
+
+
+>>>  [Device Install (Hardware initiated) - HDAUDIO\FUNC_01&VEN_10EC&DEV_0256&SUBSYS_10280A2E&REV_1000\4&2f9b5a5&0&0001]
+>>>  Section start 2026/10/12 07:59:00.000
+     dvi:           InfFile     - c:\windows\system32\driverstore\filerepository\hdxrt.inf_amd64_0123456789abcdef\hdxrt.inf
