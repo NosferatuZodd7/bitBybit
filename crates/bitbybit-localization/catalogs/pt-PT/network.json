@@ -32,5 +32,17 @@
   "network.probe.sourceFamilyMismatch": "O endereço de origem tem de ser da mesma família (IPv4/IPv6) que o destino.",
   "network.probe.countOutOfRange": "O valor tem de estar entre {0} e {1}.",
   "network.probe.timeoutOutOfRange": "O tempo limite tem de estar entre 100 ms e 30 s.",
-  "network.probe.payloadOutOfRange": "O tamanho dos dados tem de estar entre 0 e {0} bytes."
+  "network.probe.payloadOutOfRange": "O tamanho dos dados tem de estar entre 0 e {0} bytes.",
+  "network.topology.sameInterface": "A origem da Internet e a rede partilhada têm de ser interfaces diferentes.",
+  "network.topology.upstreamMissing": "A interface de origem da Internet já não existe.",
+  "network.topology.upstreamDown": "'{0}' não está ligada.",
+  "network.topology.upstreamNoInternetRoute": "'{0}' não tem a rota predefinida; os clientes partilhados podem não chegar à Internet.",
+  "network.topology.downstreamMissing": "A interface para onde partilhar já não existe.",
+  "network.topology.downstreamUnsuitable": "'{0}' não pode ser usada para partilhar uma rede.",
+  "network.topology.downstreamOwnsDefaultRoute": "'{0}' tem a rota predefinida deste computador; alterá-la exige a sua autorização explícita.",
+  "network.topology.downstreamHasGateway": "'{0}' tem um gateway configurado; será substituído pelo endereço da rede partilhada.",
+  "network.topology.lanNotPrivate": "{0} não é uma rede IPv4 privada (10/8, 172.16/12, 192.168/16).",
+  "network.topology.lanSize": "A rede partilhada tem de estar entre /16 e /30.",
+  "network.topology.subnetConflict": "{0} sobrepõe-se a {1}, já usada por '{2}'.",
+  "network.topology.noFreeSubnet": "Não foi encontrada nenhuma subrede privada livre para a rede partilhada."
 }
