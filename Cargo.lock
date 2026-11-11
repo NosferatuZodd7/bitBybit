@@ -35,6 +35,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bitbybit-display"
+version = "0.7.0"
+dependencies = [
+ "bitbybit-core",
+ "serde",
+]
+
+[[package]]
 name = "bitbybit-domain"
 version = "0.7.0"
 dependencies = [
