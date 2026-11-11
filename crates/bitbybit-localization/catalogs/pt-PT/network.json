@@ -50,5 +50,7 @@
   "network.leak.blockedVpnDown": "A VPN está em baixo: os dispositivos partilhados ficam sem Internet até a VPN voltar a ligar.",
   "network.leak.needsReplan": "A VPN voltou a ligar com uma nova interface; a proteção está a ser reaplicada. O tráfego partilhado continua bloqueado.",
   "network.leak.notGuaranteed": "A proteção não está garantida: os filtros do bitBybit estão em falta ou foram alterados. A partilha tem de parar.",
-  "network.leak.unknown": "Não foi possível ler o estado dos filtros de proteção; a proteção não é assumida."
+  "network.leak.unknown": "Não foi possível ler o estado dos filtros de proteção; a proteção não é assumida.",
+  "network.bridge.macBridge": "Uma ponte de rede do Windows ('{0}') liga adaptadores na camada 2; a partilha através de um adaptador em ponte não é suportada.",
+  "network.bridge.wifiRepeater": "Modo repetidor: o hotspot e a ligação Wi-Fi partilham o mesmo rádio, por isso usam o mesmo canal e dividem a largura de banda."
 }

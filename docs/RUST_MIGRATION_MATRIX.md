@@ -83,10 +83,10 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | NET-11 | VPN sharing with WFP leak protection | new | `bitbybit-network::leak`, `platform-windows::net::wfp` | Logic | plan + state-machine tests, WFP API on CI | Protected only with filters verified; fail closed |
 | NET-12 | DHCP server | new | `bitbybit-network::dhcp` | Logic | codec, leases, loopback sockets | DISCOVER…RELEASE, conflicts, ranges |
 | NET-13 | DNS forwarder + cache | new | `bitbybit-network::dns` | Logic | codec, cache, loop guard, loopback sockets | fail closed without upstream |
-| NET-14 | Firewall rules (group bitBybit only) | new | `bitbybit-network::firewall`, `platform-windows::net::firewall` | Todo | model + opt-in | never disables the firewall |
-| NET-15 | Clients (leases + neighbours + hotspot) | new | `bitbybit-network::clients`, `platform-windows::net::neighbors` | Todo | merge tests | IP, MAC, state, interface |
-| NET-16 | Bridge / repeater detection | new | `bitbybit-network::capability` | Todo | unit | detection only |
-| NET-17 | Diagnostics tools (ping, trace, DNS, gateway) | `INetworkDiagnostics.cs` (types) | `bitbybit-network::diag`, `platform-windows::net::diag` | Todo | validation tests | bounded, cancellable |
+| NET-14 | Firewall rules (group bitBybit only) | new | `bitbybit-network::firewall`, `platform-windows::net::firewall` | Logic | model + opt-in | never disables the firewall |
+| NET-15 | Clients (leases + neighbours + hotspot) | new | `bitbybit-network::clients`, `platform-windows::net::neighbors` | Logic | merge tests | IP, MAC, state, interface |
+| NET-16 | Bridge / repeater detection | new | `bitbybit-network::capability` | Logic | unit | detection only |
+| NET-17 | Diagnostics tools (ping, trace, DNS, gateway) | `INetworkDiagnostics.cs` (types) | `bitbybit-network::diag`, `platform-windows::net::diag` | Logic | validation tests | bounded, cancellable |
 | NET-18 | Sharing session orchestration | new | `bitbybit-network::session` | Todo | fakes: rollback, stop, recovery | every step journaled, reverse-order stop |
 
 ## IPC, service, updates, distribution
