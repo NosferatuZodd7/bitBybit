@@ -28,43 +28,43 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | Id | Feature | C# origin | Rust module | State | Tests | Done when |
 |---|---|---|---|---|---|---|
 | DEV-01 | Device inventory (present + absent) | `QuickCollector.CollectDevices` (WMI) | `platform-windows::devices` (SetupAPI/CfgMgr32) | Todo | Windows read-only | lists devices with ids, class, problem, driver |
-| DEV-02 | Problem codes as text | `Core/Devices/DeviceProblemCodes.cs` | `bitbybit-devices::problem` | Todo | table | all CM_PROB codes mapped |
-| DEV-03 | DeviceActionGuard | `Core/Devices/DeviceActionGuard.cs` | `bitbybit-devices::guard` | Todo | ported 6 tests | same verdicts |
+| DEV-02 | Problem codes as text | `Core/Devices/DeviceProblemCodes.cs` | `bitbybit-devices::problem` | Logic | table | all CM_PROB codes mapped |
+| DEV-03 | DeviceActionGuard | `Core/Devices/DeviceActionGuard.cs` | `bitbybit-devices::guard` | Logic | ported 6 tests | same verdicts |
 | DEV-04 | Restart / enable / disable / uninstall / rescan, journaled | `Platform/Devices`, `Operations/DeviceOperations.cs` | `platform-windows::devices`, `bitbybit-service::ops::devices` | Todo | opt-in system test | guard enforced in broker; revert handlers |
 | DEV-05 | Device details and actions UI | `App/DeviceWindow`, `DeviceDetailViewModel` | `ui/pages/devices.slint`, `bitbybit-app` | Todo | view-model tests, render | every action wired or disabled with reason |
 | DRV-01 | Installed driver per device | `WindowsDriverSelection.ReadInstalled` | `platform-windows::drivers` | Todo | Windows read-only | DEVPKEY driver facts |
-| DRV-02 | Driver Store list (INF parser) | `Core/Drivers/InfVersionParser.cs`, collector | `bitbybit-drivers::inf`, `platform-windows::drivers` | Todo | ported parser tests | packages with provider/class/version/hwids |
+| DRV-02 | Driver Store list (INF parser) | `Core/Drivers/InfVersionParser.cs`, collector | `bitbybit-drivers::inf`, `platform-windows::drivers` | Logic | ported parser tests | packages with provider/class/version/hwids |
 | DRV-03 | Compatible drivers + install chosen | `WindowsDriverSelection` | `platform-windows::drivers` | Todo | enumeration on CI | install journaled and verified |
 | DRV-04 | Roll back driver | `WindowsDriverSelection.Rollback` | `platform-windows::drivers` | Todo | opt-in | journaled |
-| DRV-05 | Package backup + backups list | `DriverPackageExporter`, `Core/Drivers/PnpUtilArguments.cs` | `bitbybit-drivers::pnputil`, `platform-windows::drivers` | Todo | ported args tests | export before every destructive step |
+| DRV-05 | Package backup + backups list | `DriverPackageExporter`, `Core/Drivers/PnpUtilArguments.cs` | `bitbybit-drivers::pnputil`, `platform-windows::drivers` | Logic | ported args tests | export before every destructive step |
 | DRV-06 | Delete package (never /force) + restore | `DeviceOperations.DeletePackageAsync` | `bitbybit-service::ops::drivers` | Todo | opt-in | backup first; revert adds it back |
-| DRV-07 | Device-install deny policy + revert | `Core/Drivers/DeviceInstallPolicy.cs`, `DeviceInstallPolicyStore.cs` | `bitbybit-drivers::policy`, `platform-windows::policy` | Todo | ported 7 planner tests | only device-specific ids; owned entries only |
-| DRV-08 | Driver test mode | `Core/Drivers/DriverTestSession.cs`, `MainViewModel.DriverTest.cs` | `bitbybit-drivers::test_mode`, app | Todo | ported 5 tests | revert on close and at next start |
+| DRV-07 | Device-install deny policy + revert | `Core/Drivers/DeviceInstallPolicy.cs`, `DeviceInstallPolicyStore.cs` | `bitbybit-drivers::policy`, `platform-windows::policy` | Logic | ported 7 planner tests | only device-specific ids; owned entries only |
+| DRV-08 | Driver test mode | `Core/Drivers/DriverTestSession.cs`, `MainViewModel.DriverTest.cs` | `bitbybit-drivers::test_mode`, app | Logic | ported 5 tests | revert on close and at next start |
 | DRV-09 | Windows Update driver search | `WindowsUpdateDriverSearch.cs` | `platform-windows::wua` | Todo | Windows read-only | no third-party sources |
 | DRV-10 | Windows Update driver install | `WindowsUpdateDriverInstaller.cs` | `platform-windows::wua`, service op | Todo | opt-in | restore point, backup, journal |
-| DRV-11 | Driver history | `Core/QuickDiag/SetupApiQuickParser.cs`, collector | `bitbybit-drivers::setupapi`, `platform-windows::history` | Todo | ported 6 tests | origins classified from log lines |
-| DRV-12 | Cleanup advisor + batch | `Core/Cleanup/CleanupAdvisor.cs`, `DeviceOperations.CleanupAsync` | `bitbybit-devices::cleanup`, service op | Todo | ported 3 tests + caps | protected classes never offered |
+| DRV-11 | Driver history | `Core/QuickDiag/SetupApiQuickParser.cs`, collector | `bitbybit-drivers::setupapi`, `platform-windows::history` | Logic | ported 6 tests | origins classified from log lines |
+| DRV-12 | Cleanup advisor + batch | `Core/Cleanup/CleanupAdvisor.cs`, `DeviceOperations.CleanupAsync` | `bitbybit-devices::cleanup`, service op | Logic | ported 3 tests + caps | protected classes never offered |
 
 ## Audio, display, diagnosis
 
 | Id | Feature | C# origin | Rust module | State | Tests | Done when |
 |---|---|---|---|---|---|---|
 | AUD-01 | Endpoint inventory | `WindowsAudioEndpoints`, `CoreAudioQuick` | `platform-windows::audio` | Todo | Windows read-only | all states, defaults, formats |
-| AUD-02 | Set default endpoint (journaled) | `Core/Audio/AudioChangeJournaling.cs` | `bitbybit-audio::changes`, `platform-windows::audio` | Todo | ported 10 tests | verify + drift-aware revert; undocumented API labelled |
-| AUD-03 | Enable / disable endpoint | same | same | Todo | same | same |
+| AUD-02 | Set default endpoint (journaled) | `Core/Audio/AudioChangeJournaling.cs` | `bitbybit-audio::changes`, `platform-windows::audio` | Logic | ported 10 tests | verify + drift-aware revert; undocumented API labelled |
+| AUD-03 | Enable / disable endpoint | same | same | Logic | same | same |
 | AUD-04 | Volume and mute per device | `WindowsAudioEndpoints` (not in UI) | `platform-windows::audio`, UI | Todo | fake + Windows | exposed in UI |
-| AUD-05 | DisplayPort profile + reconciler | `Core/Profiles`, `AudioProfileHost.cs` | `bitbybit-audio::profile`, service watchdog | Todo | ported 11 tests | bounded applies, respects manual changes |
+| AUD-05 | DisplayPort profile + reconciler | `Core/Profiles`, `AudioProfileHost.cs` | `bitbybit-audio::profile`, service watchdog | Logic | ported 11 tests | bounded applies, respects manual changes |
 | AUD-06 | Audio services status / controlled restart | `QuickCollector.CollectServices` | `platform-windows::services` | Todo | Windows read-only | bounded retries |
 | AUD-07 | Device formats and sample rates | new | `bitbybit-audio::format`, `platform-windows::audio` | Todo | parser tests | read; change journaled |
 | CASE-01 | Snapshot collection | `QuickCollector.cs` | `platform-windows::collect` | Todo | CI runner | every area independent |
-| CASE-02 | Realtek/DisplayPort analyzer | `RealtekDisplayPortQuickAnalyzer.cs` | `bitbybit-audio::case` | Todo | ported 9 + 11 scenario tests | identical findings for the fixtures |
-| CASE-03 | Before/after comparison | same | same | Todo | fixtures | same |
-| CASE-04 | Reports (text pt-PT, JSON, redacted) | `QuickReportWriter.cs` | `bitbybit-audio::report` | Todo | redaction | no serials/tokens/user names |
+| CASE-02 | Realtek/DisplayPort analyzer | `RealtekDisplayPortQuickAnalyzer.cs` | `bitbybit-audio::case` | Logic | ported 9 + 11 scenario tests | identical findings for the fixtures |
+| CASE-03 | Before/after comparison | same | same | Logic | fixtures | same |
+| CASE-04 | Reports (text pt-PT, JSON, redacted) | `QuickReportWriter.cs` | `bitbybit-audio::report` | Logic | redaction | no serials/tokens/user names |
 | CASE-05 | Run proposed actions | `MainViewModel.RunActionAsync` | app + service ops | Todo | integration | confirmation + journal |
-| CASE-06 | Guided fix | `Core/Diagnostics/FixPlanner.cs`, `MainViewModel.Fix.cs` | `bitbybit-domain::fix`, app | Todo | ported 7 tests | never runs without confirmation |
-| DSP-01 | Monitors, EDID, topology (read) | `DisplayQuick.cs`, `EdidQuickParser.cs` | `bitbybit-display::edid`, `platform-windows::display` | Todo | ported 7 tests | audio capability from CEA-861 |
+| CASE-06 | Guided fix | `Core/Diagnostics/FixPlanner.cs`, `MainViewModel.Fix.cs` | `bitbybit-domain::fix`, app | Logic | ported 7 tests | never runs without confirmation |
+| DSP-01 | Monitors, EDID, topology (read) | `DisplayQuick.cs`, `EdidQuickParser.cs` | `bitbybit-display::edid`, `platform-windows::display` | Logic | ported 7 tests | audio capability from CEA-861 |
 | DSP-02 | GPU list | `QuickCollector.CollectGpus` | `platform-windows::display` | Todo | CI | adapters with driver |
-| DSP-03 | Mode / topology change with validation and auto-revert | new | `bitbybit-display::change`, `platform-windows::display` | Todo | state machine tests | unconfirmed change reverts |
+| DSP-03 | Mode / topology change with validation and auto-revert | new | `bitbybit-display::change`, `platform-windows::display` | Logic | state machine tests | unconfirmed change reverts |
 
 ## Network (mostly new)
 

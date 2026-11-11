@@ -7,7 +7,7 @@ Rewrite bitBybit in Rust + Slint (master prompt of 2026-11-11). C# under `src/` 
 stays until `docs/RUST_MIGRATION_MATRIX.md` is complete (Phase N).
 
 ## Current phase
-C/D done except `bitbybit-domain`; next F1 (domain logic ports).
+A–D done; F1 (platform-neutral domain logic) done; next G1 (`bitbybit-network`).
 
 ## Done
 * Phase A: `docs/RUST_REWRITE_AUDIT.md`, `docs/RUST_MIGRATION_MATRIX.md` (99 rows, ids stable).
@@ -16,6 +16,11 @@ C/D done except `bitbybit-domain`; next F1 (domain logic ports).
 * `bitbybit-localization` (catalogs + TextCatalog, 5 tests), `bitbybit-security` (redact, tools policy, ownership,
   redacting file log; 12 tests), `bitbybit-journal` (hash-chained JSONL, reads .NET lines; 6 tests),
   `bitbybit-recovery` (drift-aware coordinator, attempt limit; 7 tests).
+* `bitbybit-domain` (diagnostics, FixPlanner, operation queue, snapshot models; 11 tests), `bitbybit-devices`
+  (problem codes, DeviceActionGuard, CleanupAdvisor; 10), `bitbybit-drivers` (INF, pnputil args, deny policy,
+  setupapi parser, test mode; 24), `bitbybit-display` (EDID, mode change with 15 s auto-revert; 9),
+  `bitbybit-audio` (Realtek/DisplayPort analyzer + reports; DisplayPort profile fingerprint/matcher/reconciler/store;
+  journaled default/enable changes with drift-aware revert handlers; 45). Workspace: 148 tests.
 * CI: `.github/workflows/rust.yml` (Linux fmt/clippy/test + Windows type-check; Windows clippy/test/release build).
   `preview.yml` (C#) now runs only when C# paths change, so Rust pushes do not republish the C# app.
 
@@ -37,11 +42,10 @@ cargo check --workspace --target x86_64-pc-windows-msvc
 ```
 
 ## Next concrete task
-`bitbybit-domain` (diagnostics: severity, ProposedAction, DiagnosticFinding, report; FixPlanner port with its 7 C#
-tests from `tests/BitByBit.Core.Tests/QuickDiag/FixPlannerTests.cs`; snapshot models from
-`src/BitByBit.Core/QuickDiag/QuickSnapshot.cs`). Then `bitbybit-devices` (DeviceActionGuard, problem codes,
-CleanupAdvisor), `bitbybit-drivers` (INF parser, pnputil args, policy planner, test-mode policy, setupapi parser),
-`bitbybit-display` (EDID), `bitbybit-audio` (profile reconciler, case analyzer, report). Port each C# test file.
+`bitbybit-network` (G1), porting `src/BitByBit.Core/{Network,Sharing,Hotspot,Dhcp,Dns,Vpn,LeakProtection,Firewall,Clients}`
+with their tests: IPv4 prefixes, adapter classifier, VPN/route analysis, topology validator, DHCP server engine,
+DNS forwarder, leak-guard WFP filter plan (fail closed), firewall rule model (group `bitBybit` only), clients merge,
+sharing session orchestrator. Then `bitbybit-updates` + `bitbybit-ipc` (task K1+H1), then `platform-windows`.
 Matrix states are updated with the small Python snippet pattern used in the commits (regex on the State column).
 
 ## Known problems
