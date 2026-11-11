@@ -53,6 +53,8 @@ impl<'a> RecoveryCoordinator<'a> {
     /// drifted or unreadable targets too and ignores the attempt limit; only an explicit user decision sets it.
     pub fn revert(&self, filter: impl Fn(&ChangeRecord) -> bool, force: bool) -> Result<Vec<RevertOutcome>> {
         let mut selected: Vec<ChangeRecord> = self.journal.active()?.into_iter().filter(|r| filter(r)).collect();
+        // Journal order is oldest first; reversing before the stable sort keeps same-timestamp steps newest first.
+        selected.reverse();
         selected.sort_by_key(|r| std::cmp::Reverse(r.created_at));
         let mut outcomes = Vec::with_capacity(selected.len());
         for candidate in selected {

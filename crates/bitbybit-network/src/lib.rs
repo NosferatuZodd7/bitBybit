@@ -13,5 +13,6 @@ pub mod leak;
 pub mod model;
 pub mod prefix;
 pub mod routes;
+pub mod session;
 pub mod topology;
 pub mod vpn;

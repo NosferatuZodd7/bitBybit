@@ -1,0 +1,423 @@
+//! Sharing session orchestration. A session is an ordered list of steps; each step follows the change protocol:
+//! read the current state, journal it (correlated to the session, revert on recovery), apply, verify. A failed or
+//! unverified step rolls the whole session back in reverse order; stopping does the same. Reverts go through the
+//! drift-aware `RecoveryCoordinator`, so objects changed externally since are left alone.
+//!
+//! Order matters for leak protection: the WFP block filters are installed and verified *before* forwarding and
+//! NAT are enabled, so there is no moment where shared traffic can leave outside the VPN.
+
+use crate::dhcp::PoolConfig;
+use crate::firewall::FirewallRule;
+use crate::leak::FilterSpec;
+use crate::prefix::IpPrefix;
+use bitbybit_core::{Error, ErrorCode, Result, RiskLevel};
+use bitbybit_journal::{ChangeCategory, ChangeRecord, ChangeStatus, Journal};
+use bitbybit_recovery::{RecoveryCoordinator, RevertHandler, RevertOutcome};
+use bitbybit_security::ownership::OWNED_NAME_PREFIX;
+use serde::{Deserialize, Serialize};
+use std::net::{Ipv4Addr, SocketAddr};
+use time::OffsetDateTime;
+use uuid::Uuid;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum StepAction {
+    /// Mobile Hotspot (tethering manager); the platform records whether it was already on.
+    StartHotspot,
+    /// Static address on the downstream interface (previous addresses journaled).
+    SetLanAddress {
+        luid: u64,
+        address: Ipv4Addr,
+        prefix_len: u8,
+    },
+    InstallLeakGuard {
+        filters: Vec<FilterSpec>,
+    },
+    AddFirewallRules {
+        rules: Vec<FirewallRule>,
+    },
+    StartDhcp {
+        pool: PoolConfig,
+    },
+    StartDns {
+        upstreams: Vec<SocketAddr>,
+    },
+    /// IPv4 forwarding on the listed interfaces (previous values journaled).
+    EnableForwarding {
+        luids: Vec<u64>,
+    },
+    /// WinNAT instance named `bitBybit-*`; never touches other NATs.
+    CreateNat {
+        name: String,
+        internal: IpPrefix,
+    },
+    /// Windows ICS (public = upstream, private = downstream); ICS brings its own DHCP/DNS on 192.168.137.1.
+    EnableIcs {
+        public_luid: u64,
+        private_luid: u64,
+    },
+}
+
+impl StepAction {
+    pub fn target_kind(&self) -> &'static str {
+        match self {
+            Self::StartHotspot => "sharing.hotspot",
+            Self::SetLanAddress { .. } => "sharing.lanAddress",
+            Self::InstallLeakGuard { .. } => "sharing.leakGuard",
+            Self::AddFirewallRules { .. } => "sharing.firewallRules",
+            Self::StartDhcp { .. } => "sharing.dhcp",
+            Self::StartDns { .. } => "sharing.dns",
+            Self::EnableForwarding { .. } => "sharing.forwarding",
+            Self::CreateNat { .. } => "sharing.nat",
+            Self::EnableIcs { .. } => "sharing.ics",
+        }
+    }
+
+    fn category(&self) -> ChangeCategory {
+        match self {
+            Self::InstallLeakGuard { .. } => ChangeCategory::PacketFilter,
+            Self::AddFirewallRules { .. } => ChangeCategory::Firewall,
+            _ => ChangeCategory::Network,
+        }
+    }
+
+    fn risk(&self) -> RiskLevel {
+        match self {
+            Self::EnableForwarding { .. }
+            | Self::CreateNat { .. }
+            | Self::EnableIcs { .. }
+            | Self::SetLanAddress { .. } => RiskLevel::Medium,
+            _ => RiskLevel::Low,
+        }
+    }
+
+    fn target_id(&self) -> String {
+        match self {
+            Self::SetLanAddress { luid, .. } => luid.to_string(),
+            Self::CreateNat { name, .. } => name.clone(),
+            Self::EnableIcs { public_luid, private_luid } => format!("{public_luid}->{private_luid}"),
+            Self::EnableForwarding { luids } => luids.iter().map(u64::to_string).collect::<Vec<_>>().join(","),
+            _ => self.target_kind().to_owned(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SharingMode {
+    /// WinNAT + bitBybit DHCP/DNS: any LAN subnet, works with leak protection on the forward layer.
+    WinNat,
+    /// Windows ICS: fixed 192.168.137.0/24, Windows' own DHCP/DNS.
+    Ics,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlanInput {
+    pub mode: SharingMode,
+    pub use_hotspot: bool,
+    pub upstream_luid: u64,
+    pub downstream_luid: u64,
+    pub lan: IpPrefix,
+    pub gateway: Ipv4Addr,
+    pub pool: Option<PoolConfig>,
+    pub dns_upstreams: Vec<SocketAddr>,
+    pub firewall_rules: Vec<FirewallRule>,
+    /// Present when sharing a VPN with leak protection.
+    pub leak_filters: Option<Vec<FilterSpec>>,
+}
+
+/// Ordered steps. Leak guard first among the traffic-affecting steps; forwarding/NAT/ICS last.
+pub fn build_plan(input: &PlanInput) -> Vec<StepAction> {
+    let mut steps = Vec::new();
+    if input.use_hotspot {
+        steps.push(StepAction::StartHotspot);
+    }
+    if let Some(filters) = &input.leak_filters {
+        steps.push(StepAction::InstallLeakGuard { filters: filters.clone() });
+    }
+    match input.mode {
+        SharingMode::WinNat => {
+            steps.push(StepAction::SetLanAddress {
+                luid: input.downstream_luid,
+                address: input.gateway,
+                prefix_len: input.lan.prefix_len(),
+            });
+            if !input.firewall_rules.is_empty() {
+                steps.push(StepAction::AddFirewallRules { rules: input.firewall_rules.clone() });
+            }
+            if let Some(pool) = &input.pool {
+                steps.push(StepAction::StartDhcp { pool: pool.clone() });
+            }
+            steps.push(StepAction::StartDns { upstreams: input.dns_upstreams.clone() });
+            steps.push(StepAction::EnableForwarding { luids: vec![input.upstream_luid, input.downstream_luid] });
+            steps.push(StepAction::CreateNat { name: format!("{OWNED_NAME_PREFIX}share"), internal: input.lan });
+        }
+        SharingMode::Ics => {
+            steps.push(StepAction::EnableIcs { public_luid: input.upstream_luid, private_luid: input.downstream_luid })
+        }
+    }
+    steps
+}
+
+/// Applied state of one step as the platform reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StepStates {
+    /// What exists now (journaled as the previous state; no secrets).
+    pub previous: Option<String>,
+    /// What the step will leave in place.
+    pub applied: Option<String>,
+}
+
+/// Platform side of each step. `prepare` must not change anything.
+pub trait SharingBackend: Send + Sync {
+    fn prepare(&self, step: &StepAction) -> Result<StepStates>;
+    fn apply(&self, step: &StepAction) -> Result<()>;
+    /// For `InstallLeakGuard`: true only when the filters read back match (see `leak::assess`).
+    fn verify(&self, step: &StepAction) -> Result<bool>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StartFailure {
+    pub failed_step: usize,
+    pub error: Error,
+    pub rollback: Vec<RevertOutcome>,
+}
+
+pub struct SharingSessions<'a> {
+    journal: &'a dyn Journal,
+    backend: &'a dyn SharingBackend,
+    handlers: Vec<&'a dyn RevertHandler>,
+}
+
+impl<'a> SharingSessions<'a> {
+    pub fn new(journal: &'a dyn Journal, backend: &'a dyn SharingBackend, handlers: &[&'a dyn RevertHandler]) -> Self {
+        Self { journal, backend, handlers: handlers.to_vec() }
+    }
+
+    /// Runs the plan. On failure everything already applied is rolled back (reverse order) before returning.
+    pub fn start(&self, steps: &[StepAction], now: OffsetDateTime) -> std::result::Result<Uuid, Box<StartFailure>> {
+        let session = Uuid::new_v4();
+        for (n, step) in steps.iter().enumerate() {
+            if let Err(error) = self.run_step(session, step, now) {
+                log::error!(
+                    "Sharing step {n} ({}) failed: {error}; rolling back session {session}",
+                    step.target_kind()
+                );
+                let rollback = self.stop(session).unwrap_or_default();
+                return Err(Box::new(StartFailure { failed_step: n, error, rollback }));
+            }
+        }
+        Ok(session)
+    }
+
+    fn run_step(&self, session: Uuid, step: &StepAction, now: OffsetDateTime) -> Result<()> {
+        let states = self.backend.prepare(step)?;
+        let mut record = ChangeRecord::new(
+            step.category(),
+            step.target_kind(),
+            step.target_id(),
+            format!("Sharing: {}", step.target_kind()),
+            now,
+        )
+        .with_states(states.previous, states.applied)
+        .in_operation(session, true);
+        record.risk = step.risk();
+        let id = record.id;
+        self.journal.append(record)?;
+        let outcome = self.backend.apply(step).and_then(|()| self.backend.verify(step));
+        match outcome {
+            Ok(true) => Ok(()),
+            Ok(false) => {
+                self.journal.update_status(id, ChangeStatus::RevertFailed, Some("Applied but not verified.".into()))?;
+                Err(Error::new(ErrorCode::VerificationFailed, format!("{} could not be verified", step.target_kind())))
+            }
+            Err(e) => {
+                // Possibly partially applied: the record stays active so the rollback examines it.
+                self.journal.update_status(
+                    id,
+                    ChangeStatus::RevertFailed,
+                    Some(format!("Apply failed: {}", e.message)),
+                )?;
+                Err(e)
+            }
+        }
+    }
+
+    /// Reverts the session, newest step first.
+    pub fn stop(&self, session: Uuid) -> Result<Vec<RevertOutcome>> {
+        RecoveryCoordinator::new(self.journal, &self.handlers).revert(|r| r.correlation_id == Some(session), false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::leak::{LeakGuardInput, plan};
+    use bitbybit_journal::JsonLinesJournal;
+    use bitbybit_recovery::LiveState;
+    use std::collections::HashSet;
+    use std::sync::Mutex;
+    use time::macros::datetime;
+
+    const NOW: OffsetDateTime = datetime!(2026-11-11 10:00 UTC);
+
+    /// Fake platform: records the order of applies and reverts (unit tests only; touches nothing).
+    #[derive(Default)]
+    struct Fake {
+        log: Mutex<Vec<String>>,
+        fail_on: Option<&'static str>,
+        unverified: Option<&'static str>,
+        drifted: Option<&'static str>,
+    }
+
+    impl SharingBackend for Fake {
+        fn prepare(&self, step: &StepAction) -> Result<StepStates> {
+            Ok(StepStates {
+                previous: Some(format!("{{\"before\":\"{}\"}}", step.target_kind())),
+                applied: Some(serde_json::to_string(step)?),
+            })
+        }
+        fn apply(&self, step: &StepAction) -> Result<()> {
+            if self.fail_on == Some(step.target_kind()) {
+                return Err(Error::platform("simulated failure", 5));
+            }
+            self.log.lock().unwrap().push(format!("apply {}", step.target_kind()));
+            Ok(())
+        }
+        fn verify(&self, step: &StepAction) -> Result<bool> {
+            Ok(self.unverified != Some(step.target_kind()))
+        }
+    }
+
+    struct Handler<'a>(&'static str, &'a Fake);
+    impl RevertHandler for Handler<'_> {
+        fn target_kind(&self) -> &str {
+            self.0
+        }
+        fn compare(&self, _: &ChangeRecord) -> Result<LiveState> {
+            Ok(if self.1.drifted == Some(self.0) { LiveState::Drifted } else { LiveState::MatchesApplied })
+        }
+        fn revert(&self, record: &ChangeRecord) -> Result<()> {
+            self.1.log.lock().unwrap().push(format!("revert {}", record.target_kind));
+            Ok(())
+        }
+    }
+
+    const KINDS: [&str; 9] = [
+        "sharing.hotspot",
+        "sharing.lanAddress",
+        "sharing.leakGuard",
+        "sharing.firewallRules",
+        "sharing.dhcp",
+        "sharing.dns",
+        "sharing.forwarding",
+        "sharing.nat",
+        "sharing.ics",
+    ];
+
+    fn input(mode: SharingMode) -> PlanInput {
+        let lan = IpPrefix::parse("192.168.137.0/24", true).unwrap();
+        PlanInput {
+            mode,
+            use_hotspot: true,
+            upstream_luid: 1,
+            downstream_luid: 2,
+            lan,
+            gateway: Ipv4Addr::new(192, 168, 137, 1),
+            pool: PoolConfig::for_lan(lan, 3600),
+            dns_upstreams: vec!["10.8.0.1:53".parse().unwrap()],
+            firewall_rules: crate::firewall::sharing_rules("hotspot", lan),
+            leak_filters: Some(plan(&LeakGuardInput {
+                downstream_index: 2,
+                vpn_index: 3,
+                vpn_luid: 3,
+                guard_dns_forwarder: true,
+            })),
+        }
+    }
+
+    fn with<T>(fake: Fake, body: impl FnOnce(&SharingSessions<'_>, &JsonLinesJournal, &Fake) -> T) -> T {
+        let dir = tempfile::tempdir().unwrap();
+        let journal = JsonLinesJournal::new(dir.path().join("changes.jsonl"));
+        let handlers: Vec<Handler<'_>> = KINDS.iter().map(|k| Handler(k, &fake)).collect();
+        let refs: Vec<&dyn RevertHandler> = handlers.iter().map(|h| h as &dyn RevertHandler).collect();
+        let sessions = SharingSessions::new(&journal, &fake, &refs);
+        body(&sessions, &journal, &fake)
+    }
+
+    fn log(fake: &Fake) -> Vec<String> {
+        fake.log.lock().unwrap().clone()
+    }
+
+    #[test]
+    fn leak_guard_precedes_forwarding_and_nat() {
+        let steps = build_plan(&input(SharingMode::WinNat));
+        let at = |k: &str| steps.iter().position(|s| s.target_kind() == k).unwrap();
+        assert!(at("sharing.leakGuard") < at("sharing.forwarding") && at("sharing.forwarding") < at("sharing.nat"));
+        assert!(matches!(steps.last(), Some(StepAction::CreateNat { name, .. }) if name == "bitBybit-share"));
+        let ics = build_plan(&input(SharingMode::Ics));
+        assert_eq!(
+            ics.iter().map(StepAction::target_kind).collect::<Vec<_>>(),
+            ["sharing.hotspot", "sharing.leakGuard", "sharing.ics"]
+        );
+    }
+
+    #[test]
+    fn start_journals_every_step_and_stop_reverts_in_reverse() {
+        with(Fake::default(), |sessions, journal, fake| {
+            let steps = build_plan(&input(SharingMode::WinNat));
+            let session = sessions.start(&steps, NOW).unwrap();
+            let records = journal.all().unwrap();
+            assert_eq!(records.len(), steps.len());
+            assert!(
+                records
+                    .iter()
+                    .all(|r| r.correlation_id == Some(session) && r.revert_on_recovery && r.previous_state.is_some())
+            );
+            fake.log.lock().unwrap().clear();
+            let outcomes = sessions.stop(session).unwrap();
+            assert!(outcomes.iter().all(|o| o.new_status == ChangeStatus::Reverted));
+            let expected: Vec<String> = steps.iter().rev().map(|s| format!("revert {}", s.target_kind())).collect();
+            assert_eq!(log(fake), expected);
+            assert!(journal.active().unwrap().is_empty());
+        });
+    }
+
+    #[test]
+    fn a_failed_step_rolls_back_what_was_applied() {
+        with(Fake { fail_on: Some("sharing.forwarding"), ..Fake::default() }, |sessions, journal, fake| {
+            let steps = build_plan(&input(SharingMode::WinNat));
+            let failure = sessions.start(&steps, NOW).unwrap_err();
+            assert_eq!(steps[failure.failed_step].target_kind(), "sharing.forwarding");
+            let l = log(fake);
+            let first_revert = l.iter().position(|e| e.starts_with("revert")).unwrap();
+            assert_eq!(l[first_revert], "revert sharing.forwarding", "the partially applied step is examined first");
+            assert_eq!(l.last().map(String::as_str), Some("revert sharing.hotspot"));
+            assert!(!l.contains(&"apply sharing.nat".to_string()));
+            assert!(journal.active().unwrap().is_empty());
+        });
+    }
+
+    #[test]
+    fn unverified_leak_guard_stops_before_traffic_is_forwarded() {
+        with(Fake { unverified: Some("sharing.leakGuard"), ..Fake::default() }, |sessions, _, fake| {
+            let failure = sessions.start(&build_plan(&input(SharingMode::WinNat)), NOW).unwrap_err();
+            assert_eq!(failure.error.code, ErrorCode::VerificationFailed);
+            assert!(!log(fake).iter().any(|e| e == "apply sharing.forwarding" || e == "apply sharing.nat"));
+        });
+    }
+
+    #[test]
+    fn drifted_objects_are_left_alone_and_recovery_after_restart_reverts_dead_sessions() {
+        with(Fake { drifted: Some("sharing.nat"), ..Fake::default() }, |sessions, journal, fake| {
+            sessions.start(&build_plan(&input(SharingMode::WinNat)), NOW).unwrap();
+            let outcomes =
+                RecoveryCoordinator::new(journal, &sessions.handlers).recover_after_restart(&HashSet::new()).unwrap();
+            assert_eq!(
+                outcomes.iter().find(|o| o.record.target_kind == "sharing.nat").map(|o| o.new_status),
+                Some(ChangeStatus::DriftDetected)
+            );
+            assert!(!log(fake).contains(&"revert sharing.nat".to_string()));
+            assert!(log(fake).contains(&"revert sharing.hotspot".to_string()));
+        });
+    }
+}

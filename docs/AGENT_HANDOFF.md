@@ -7,7 +7,7 @@ Rewrite bitBybit in Rust + Slint (master prompt of 2026-11-11). C# under `src/` 
 stays until `docs/RUST_MIGRATION_MATRIX.md` is complete (Phase N).
 
 ## Current phase
-A–D done; F1 (platform-neutral domain logic) done; next G1 (`bitbybit-network`).
+A–D, F1 and G1 (platform-neutral logic) done; next K1+H1 (`bitbybit-updates`, `bitbybit-ipc`).
 
 ## Done
 * Phase A: `docs/RUST_REWRITE_AUDIT.md`, `docs/RUST_MIGRATION_MATRIX.md` (99 rows, ids stable).
@@ -20,7 +20,13 @@ A–D done; F1 (platform-neutral domain logic) done; next G1 (`bitbybit-network`
   (problem codes, DeviceActionGuard, CleanupAdvisor; 10), `bitbybit-drivers` (INF, pnputil args, deny policy,
   setupapi parser, test mode; 24), `bitbybit-display` (EDID, mode change with 15 s auto-revert; 9),
   `bitbybit-audio` (Realtek/DisplayPort analyzer + reports; DisplayPort profile fingerprint/matcher/reconciler/store;
-  journaled default/enable changes with drift-aware revert handlers; 45). Workspace: 148 tests.
+  journaled default/enable changes with drift-aware revert handlers; 45).
+* `bitbybit-network` (55 tests): strict prefixes/scopes, interface/route/RAS models, driver-signature classifier
+  and VPN catalog (from C#), NCSI connectivity, default-route ownership + full/split tunnel + IPv6 bypass, sharing
+  topology validator, DHCPv4 server engine, fail-closed DNS forwarder, WFP leak-guard plan + `Protected` assessment
+  (only with filters read back), owned firewall rules diff, clients merge, bridge/repeater detection, probe
+  validation, sharing session orchestrator (journaled steps, leak guard before forwarding/NAT, reverse rollback).
+* Recovery fix: same-timestamp records now revert newest first. Workspace: 203 tests.
 * CI: `.github/workflows/rust.yml` (Linux fmt/clippy/test + Windows type-check; Windows clippy/test/release build).
   `preview.yml` (C#) now runs only when C# paths change, so Rust pushes do not republish the C# app.
 
@@ -42,11 +48,11 @@ cargo check --workspace --target x86_64-pc-windows-msvc
 ```
 
 ## Next concrete task
-`bitbybit-network` (G1), porting `src/BitByBit.Core/{Network,Sharing,Hotspot,Dhcp,Dns,Vpn,LeakProtection,Firewall,Clients}`
-with their tests: IPv4 prefixes, adapter classifier, VPN/route analysis, topology validator, DHCP server engine,
-DNS forwarder, leak-guard WFP filter plan (fail closed), firewall rule model (group `bitBybit` only), clients merge,
-sharing session orchestrator. Then `bitbybit-updates` + `bitbybit-ipc` (task K1+H1), then `platform-windows`.
-Matrix states are updated with the small Python snippet pattern used in the commits (regex on the State column).
+`bitbybit-updates` (port `src/BitByBit.Core/Updates`: SemVersion, GitHub release parser, manifest + ECDSA P-256
+verifier with the embedded key from `UpdateKeys`, planner; port their tests) and `bitbybit-ipc` (port
+`src/BitByBit.Core/Ipc`: framing, strict JSON, envelopes, operation registry/allowlist, auth tiers, two-phase
+confirmation tokens, replay protection, audit, events, client; port `tests/BitByBit.Core.Tests/Ipc`). Then
+`bitbybit-platform-windows` (windows-rs) implementing the network/audio/devices ports.
 
 ## Known problems
 * The session worker restarts often: commit and push after every crate.

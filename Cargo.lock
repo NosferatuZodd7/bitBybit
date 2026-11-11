@@ -125,10 +125,14 @@ version = "0.7.0"
 dependencies = [
  "bitbybit-core",
  "bitbybit-evidence",
+ "bitbybit-journal",
  "bitbybit-localization",
+ "bitbybit-recovery",
  "bitbybit-security",
+ "log",
  "serde",
  "serde_json",
+ "tempfile",
  "time",
  "uuid",
 ]

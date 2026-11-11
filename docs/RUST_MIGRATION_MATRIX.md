@@ -87,7 +87,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | NET-15 | Clients (leases + neighbours + hotspot) | new | `bitbybit-network::clients`, `platform-windows::net::neighbors` | Logic | merge tests | IP, MAC, state, interface |
 | NET-16 | Bridge / repeater detection | new | `bitbybit-network::capability` | Logic | unit | detection only |
 | NET-17 | Diagnostics tools (ping, trace, DNS, gateway) | `INetworkDiagnostics.cs` (types) | `bitbybit-network::diag`, `platform-windows::net::diag` | Logic | validation tests | bounded, cancellable |
-| NET-18 | Sharing session orchestration | new | `bitbybit-network::session` | Todo | fakes: rollback, stop, recovery | every step journaled, reverse-order stop |
+| NET-18 | Sharing session orchestration | new | `bitbybit-network::session` | Logic | fakes: rollback, stop, recovery | every step journaled, reverse-order stop |
 
 ## IPC, service, updates, distribution
 
