@@ -325,6 +325,11 @@ fn process_facts(pid: u32) -> io::Result<ProcessFacts> {
     Ok(ProcessFacts { image, sid, elevated, integrity, session })
 }
 
+/// Whether this process runs elevated (false when the token cannot be read).
+pub fn current_process_is_elevated() -> bool {
+    process_facts(std::process::id()).is_ok_and(|f| f.elevated)
+}
+
 /// Who is connected (from the pipe's client PID). Never fails: problems yield an unresolved identity.
 pub fn client_identity(stream: &PipeStream) -> ClientIdentity {
     let mut pid = 0u32;

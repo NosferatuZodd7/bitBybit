@@ -141,9 +141,29 @@ pub fn parse_hardware_ids(text: &str, max: usize) -> Vec<String> {
     ids
 }
 
+/// INF files are UTF-16 LE (with BOM), UTF-8 or ANSI; ANSI bytes outside ASCII are decoded lossily.
+pub fn decode_text(bytes: &[u8]) -> String {
+    match bytes {
+        [0xFF, 0xFE, rest @ ..] => String::from_utf16_lossy(
+            &rest.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect::<Vec<_>>(),
+        ),
+        [0xEF, 0xBB, 0xBF, rest @ ..] => String::from_utf8_lossy(rest).into_owned(),
+        _ => String::from_utf8_lossy(bytes).into_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decodes_utf16_utf8_and_ansi_inf_text() {
+        let utf16: Vec<u8> =
+            [0xFF, 0xFE].into_iter().chain("[Version]".encode_utf16().flat_map(u16::to_le_bytes)).collect();
+        assert_eq!(decode_text(&utf16), "[Version]");
+        assert_eq!(decode_text(b"\xEF\xBB\xBF[Version]"), "[Version]");
+        assert!(decode_text(b"Provider=Fabricante \xe9").starts_with("Provider=Fabricante "));
+    }
     use time::macros::datetime;
 
     const INF: &str = r#"; Copyright (c) Example Corp. ; not a section

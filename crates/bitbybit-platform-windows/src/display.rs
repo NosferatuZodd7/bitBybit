@@ -11,8 +11,6 @@ use windows::Win32::Devices::Display::{
     DisplayConfigGetDeviceInfo, GetDisplayConfigBufferSizes, QDC_ONLY_ACTIVE_PATHS, QueryDisplayConfig,
 };
 use windows::Win32::Foundation::{ERROR_INSUFFICIENT_BUFFER, ERROR_SUCCESS, LUID};
-use windows::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_BINARY, RegGetValueW};
-use windows::core::HSTRING;
 
 fn wide(chars: &[u16]) -> String {
     let end = chars.iter().position(|c| *c == 0).unwrap_or(chars.len());
@@ -60,33 +58,7 @@ fn source_name(adapter: LUID, id: u32) -> Option<String> {
 
 /// `Enum\<instance>\Device Parameters\EDID`.
 fn read_edid(instance_id: &str) -> Option<Vec<u8>> {
-    let key = HSTRING::from(format!(r"SYSTEM\CurrentControlSet\Enum\{instance_id}\Device Parameters"));
-    let name = HSTRING::from("EDID");
-    let mut len = 0u32;
-    // SAFETY: size query, then a buffer of that size; REG_BINARY only.
-    unsafe {
-        if RegGetValueW(HKEY_LOCAL_MACHINE, &key, &name, RRF_RT_REG_BINARY, None, None, Some(&mut len)) != ERROR_SUCCESS
-            || len == 0
-        {
-            return None;
-        }
-        let mut buf = vec![0u8; len as usize];
-        if RegGetValueW(
-            HKEY_LOCAL_MACHINE,
-            &key,
-            &name,
-            RRF_RT_REG_BINARY,
-            None,
-            Some(buf.as_mut_ptr().cast()),
-            Some(&mut len),
-        ) != ERROR_SUCCESS
-        {
-            log::warn!("EDID not readable for {instance_id}");
-            return None;
-        }
-        buf.truncate(len as usize);
-        Some(buf)
-    }
+    crate::reg::binary(&format!(r"SYSTEM\CurrentControlSet\Enum\{instance_id}\Device Parameters"), "EDID")
 }
 
 fn query() -> Result<(Vec<DISPLAYCONFIG_PATH_INFO>, Vec<DISPLAYCONFIG_MODE_INFO>)> {

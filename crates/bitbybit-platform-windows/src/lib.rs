@@ -9,6 +9,8 @@ mod com;
 #[cfg(windows)]
 pub mod devices;
 #[cfg(windows)]
+pub mod diagnostics;
+#[cfg(windows)]
 pub mod display;
 #[cfg(windows)]
 pub mod http;
@@ -16,3 +18,5 @@ pub mod http;
 pub mod net;
 #[cfg(windows)]
 pub mod pipe;
+#[cfg(windows)]
+mod reg;

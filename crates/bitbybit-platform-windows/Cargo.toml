@@ -10,6 +10,7 @@ publish.workspace = true
 bitbybit-audio.workspace = true
 bitbybit-core.workspace = true
 bitbybit-display.workspace = true
+bitbybit-drivers.workspace = true
 bitbybit-domain.workspace = true
 bitbybit-ipc.workspace = true
 bitbybit-journal.workspace = true
@@ -49,6 +50,8 @@ features = [
     "Win32_System_Ole",
     "Win32_System_Pipes",
     "Win32_System_Registry",
+    "Win32_System_Services",
+    "Win32_System_SystemInformation",
     "Win32_System_Threading",
     "Win32_System_Variant",
     "Win32_UI_Shell_PropertiesSystem",

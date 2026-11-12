@@ -79,31 +79,40 @@ pub fn parse(
             }
         }
     };
-    for line in reader.lines() {
-        let Ok(line) = line else { break };
-        if let Some(h) = HEADER.captures(&line).filter(|_| !line.contains("Section start")) {
+    // Byte lines decoded lossily: the log is ANSI on many systems and one localized name must not end the read.
+    let mut reader = reader;
+    let mut bytes = Vec::new();
+    loop {
+        bytes.clear();
+        match reader.read_until(b'\n', &mut bytes) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
+        let line = String::from_utf8_lossy(&bytes);
+        let line = line.trim_end_matches(['\r', '\n']);
+        if let Some(h) = HEADER.captures(line).filter(|_| !line.contains("Section start")) {
             flush(open.take(), &mut results);
             open = Some(Open { header: h["h"].trim().to_owned(), ..Open::default() });
             continue;
         }
         let Some(section) = open.as_mut() else { continue };
-        if let Some(s) = START.captures(&line) {
+        if let Some(s) = START.captures(line) {
             section.start = parse_timestamp(&s["t"], offset);
             continue;
         }
-        if let Some(e) = EXIT.captures(&line) {
+        if let Some(e) = EXIT.captures(line) {
             section.exit = Some(e["s"].trim().to_owned());
             flush(open.take(), &mut results);
             continue;
         }
         if section.body.len() < 64 * 1024 {
-            section.body.push_str(&line);
+            section.body.push_str(line);
             section.body.push('\n');
         }
         if section.command.is_none() {
-            section.command = COMMAND.captures(&line).map(|c| c["c"].trim().to_owned());
+            section.command = COMMAND.captures(line).map(|c| c["c"].trim().to_owned());
         }
-        for inf in INF.find_iter(&line) {
+        for inf in INF.find_iter(line) {
             if section.infs.len() < 16 {
                 section.infs.push(inf.as_str().trim().to_owned());
             }
@@ -209,6 +218,18 @@ mod tests {
         assert!(!sections.iter().any(|s| s.header.contains("VID_046D")));
         let last = sections.last().unwrap();
         assert!(last.exit_status.is_none() && last.header.contains("VEN_10EC"));
+    }
+
+    #[test]
+    fn an_ansi_line_does_not_end_the_read() {
+        let mut log = b">>>  [Device Install (Hardware initiated) - HDAUDIO\\FUNC_01&VEN_10EC&DEV_0897]\r\n".to_vec();
+        log.extend_from_slice(b"     dvi: Device Description: Altifalantes \xe9\xe7\r\n"); // cp1252 bytes
+        log.extend_from_slice(b"<<<  [Exit status: SUCCESS]\r\n");
+        log.extend_from_slice(b">>>  [Device Install (Hardware initiated) - HDAUDIO\\FUNC_01&VEN_10EC&DEV_0256]\r\n");
+        log.extend_from_slice(b"<<<  [Exit status: SUCCESS]\r\n");
+        let sections = parse(&log[..], is_audio_case_relevant, None, 10);
+        assert_eq!(sections.len(), 2);
+        assert_eq!(sections[1].exit_status.as_deref(), Some("SUCCESS"));
     }
 
     #[test]

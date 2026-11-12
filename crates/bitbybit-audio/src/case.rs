@@ -454,7 +454,7 @@ fn analyze_gpu_audio(
         let mut evidence = vec![EvidenceItem::observation(SRC, r"No present device with a NVIDIA/AMD/Intel HD Audio display function hardware id (HDAUDIO\FUNC_01&VEN_10DE/1002/8086).").at(snapshot.collected_at)];
         evidence.extend(snapshot.gpus.iter().map(|g| {
             EvidenceItem::fact(
-                "WMI:Win32_VideoController",
+                "SetupAPI:DisplayClass",
                 format!(
                     "GPU: {} (driver {})",
                     g.name.as_deref().unwrap_or(""),

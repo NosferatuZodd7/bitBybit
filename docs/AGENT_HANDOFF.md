@@ -55,6 +55,11 @@ A–D, F1, G1, K1, H1 done; E/F2/G2 and H2 in progress (platform-windows + servi
   retries) and the monitor EDID from `Enum\<instance>\Device Parameters`; pure helpers in `bitbybit-display::ccd`.
   Read in the app and `bitbybit-cli displays`, not in the service (CCD belongs to the user's desktop session).
   Integration test `display_inventory.rs` only checks consistency (a CI runner may have no active path).
+* `bitbybit-cli diagnose [--format json|text|both] [--out <file-or-dir>] [--no-mask-mac]` (CLI-01): snapshot from
+  `platform-windows::diagnostics::collect` (registry system facts, SetupAPI devices + GPUs, Core Audio, CCD/EDID,
+  SCM services, setupapi.dev.log, install policy, Driver Store INFs) → `case::analyze` → the ported report writer.
+  Network adapters, Windows Update history and PnP events are not collected yet and are listed as issues.
+  `setupapi` parser now decodes ANSI lines lossily (a localized name used to end the read).
 * Fixes found on the Windows runner: signed fixtures need `.gitattributes` binary (CRLF), log pruning must never
   delete the active file. Workspace: 253 tests (Linux) + Windows integration tests.
 * CI: `.github/workflows/rust.yml` (Linux fmt/clippy/test + Windows type-check; Windows clippy/test/release build).
@@ -79,8 +84,9 @@ cargo check --workspace --target x86_64-pc-windows-msvc
 
 ## Next concrete task
 1. Check the latest `rust` run: `display_inventory`, `firewall_rules` (opt-in step), `update_check`, the smoke step
-   (now also `bitbybit-cli displays`) and the app screenshot (base64 JPEG between `BITBYBIT-SCREENSHOT-BEGIN/END`).
-2. Platform: GPU list (DSP-02), driver store reader, Windows Update search; then the sharing mutators (WFP, WinNAT,
+   (now also `bitbybit-cli displays` and `diagnose`, whose report text is printed) and the app screenshot (base64 JPEG between `BITBYBIT-SCREENSHOT-BEGIN/END`).
+2. Platform: diagnose gaps (network adapters from the IP Helper inventory, Windows Update history via the
+   Update Agent COM API, Kernel-PnP events via EvtQuery); then the sharing mutators (WFP, WinNAT,
    ICS, hotspot) behind `bitbybit_network::session::SharingBackend` with revert handlers.
 3. Service: register the mutating operations with plans, and their revert handlers in `recover_at_start`.
 4. UI: remaining pages (diagnosis, drivers, cleanup, updates, sharing, settings, dashboard), themes, headless smoke.

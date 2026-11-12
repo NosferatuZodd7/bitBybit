@@ -27,6 +27,24 @@ pub struct SystemSummary {
     pub boot_time: Option<OffsetDateTime>,
 }
 
+impl SystemSummary {
+    /// `ProductName` still says "Windows 10" on Windows 11; build 22000 and later is Windows 11.
+    pub fn caption(product_name: &str, build: Option<u32>) -> String {
+        match product_name.strip_prefix("Windows 10") {
+            Some(rest) if build.is_some_and(|b| b >= 22_000) => format!("Windows 11{rest}"),
+            _ => product_name.to_owned(),
+        }
+    }
+
+    /// `BIOSReleaseDate` (`MM/DD/YYYY`) → `YYYY-MM-DD`; other shapes are kept as they are.
+    pub fn bios_date(value: &str) -> String {
+        match value.trim().split('/').collect::<Vec<_>>()[..] {
+            [m, d, y] if m.len() == 2 && d.len() == 2 && y.len() == 4 => format!("{y}-{m}-{d}"),
+            _ => value.trim().to_owned(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct DriverSummary {
@@ -194,6 +212,31 @@ pub struct GpuSummary {
     pub current_mode: Option<String>,
 }
 
+/// Setup class of display adapters.
+pub const DISPLAY_CLASS_GUID: &str = "{4d36e968-e325-11ce-bfc1-08002be10318}";
+
+impl GpuSummary {
+    /// Present display-class devices from the device inventory (SetupAPI), in the shape WMI's
+    /// `Win32_VideoController` gave the C# app. `current_mode` is not known here (it comes from the displays).
+    pub fn from_devices(devices: &[DeviceSummary]) -> Vec<Self> {
+        devices
+            .iter()
+            .filter(|d| {
+                d.is_present == Some(true)
+                    && d.class_guid.as_deref().is_some_and(|g| g.eq_ignore_ascii_case(DISPLAY_CLASS_GUID))
+            })
+            .map(|d| Self {
+                name: d.name.clone(),
+                driver_version: d.driver.as_ref().and_then(|x| x.version.clone()),
+                driver_date: d.driver.as_ref().and_then(|x| x.date),
+                pnp_device_id: Some(d.instance_id.clone()),
+                status: Some(if d.problem_code.is_some() { "Error" } else { "OK" }.to_owned()),
+                current_mode: None,
+            })
+            .collect()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct NetworkAdapterSummary {
@@ -223,6 +266,36 @@ pub struct ServiceSummary {
     pub display_name: Option<String>,
     pub status: Option<String>,
     pub start_type: Option<String>,
+}
+
+impl ServiceSummary {
+    /// `SERVICE_STATUS.dwCurrentState` with .NET `ServiceControllerStatus` names (what the analyzer compares).
+    pub fn status_name(state: u32) -> String {
+        match state {
+            1 => "Stopped",
+            2 => "StartPending",
+            3 => "StopPending",
+            4 => "Running",
+            5 => "ContinuePending",
+            6 => "PausePending",
+            7 => "Paused",
+            _ => return format!("Unknown ({state})"),
+        }
+        .to_owned()
+    }
+
+    /// `dwStartType` with .NET `ServiceStartMode` names (delayed auto-start is still "Automatic").
+    pub fn start_type_name(start: u32) -> String {
+        match start {
+            0 => "Boot",
+            1 => "System",
+            2 => "Automatic",
+            3 => "Manual",
+            4 => "Disabled",
+            _ => return format!("Unknown ({start})"),
+        }
+        .to_owned()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -402,5 +475,39 @@ mod tests {
         let again: Snapshot =
             serde_json::from_str(&serde_json::to_string(&Snapshot::empty("0.7.0", s.collected_at)).unwrap()).unwrap();
         assert_eq!(again.schema_version, 2);
+    }
+
+    #[test]
+    fn gpus_are_the_present_display_class_devices() {
+        let gpu = DeviceSummary {
+            instance_id: r"PCI\VEN_10DE&DEV_2484\4&1".into(),
+            name: Some("NVIDIA GeForce RTX 3070".into()),
+            class_guid: Some(DISPLAY_CLASS_GUID.to_uppercase()),
+            is_present: Some(true),
+            driver: Some(DriverSummary { version: Some("32.0.15.6094".into()), ..DriverSummary::default() }),
+            ..DeviceSummary::default()
+        };
+        let absent = DeviceSummary { is_present: Some(false), ..gpu.clone() };
+        let broken = DeviceSummary { problem_code: Some(43), ..gpu.clone() };
+        let other = DeviceSummary { class_guid: Some("{4d36e96c-e325-11ce-bfc1-08002be10318}".into()), ..gpu.clone() };
+        let gpus = GpuSummary::from_devices(&[gpu, absent, broken, other]);
+        assert_eq!(gpus.len(), 2);
+        assert_eq!(gpus[0].driver_version.as_deref(), Some("32.0.15.6094"));
+        assert_eq!((gpus[0].status.as_deref(), gpus[1].status.as_deref()), (Some("OK"), Some("Error")));
+    }
+
+    #[test]
+    fn caption_and_bios_date_from_the_registry() {
+        assert_eq!(SystemSummary::caption("Windows 10 Pro", Some(22631)), "Windows 11 Pro");
+        assert_eq!(SystemSummary::caption("Windows 10 Pro", Some(19045)), "Windows 10 Pro");
+        assert_eq!(SystemSummary::bios_date("10/23/2023"), "2023-10-23");
+        assert_eq!(SystemSummary::bios_date("2023-10-23"), "2023-10-23");
+    }
+
+    #[test]
+    fn service_names_match_dotnet() {
+        assert_eq!(ServiceSummary::status_name(4), "Running");
+        assert_eq!(ServiceSummary::start_type_name(2), "Automatic");
+        assert_eq!(ServiceSummary::status_name(9), "Unknown (9)");
     }
 }

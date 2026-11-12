@@ -172,6 +172,31 @@ pub struct AudioEndpoint {
 }
 
 impl AudioEndpoint {
+    /// The shape the diagnostic snapshot (and the C# reports) use.
+    pub fn to_summary(&self) -> bitbybit_domain::snapshot::AudioEndpointSummary {
+        use bitbybit_domain::snapshot::{EndpointFlow, EndpointState};
+        bitbybit_domain::snapshot::AudioEndpointSummary {
+            id: self.id.clone(),
+            name: self.friendly_name.clone(),
+            adapter_name: self.interface_friendly_name.clone(),
+            description: self.device_description.clone(),
+            flow: match self.flow {
+                AudioDataFlow::Render => EndpointFlow::Render,
+                AudioDataFlow::Capture => EndpointFlow::Capture,
+            },
+            state: match self.state {
+                EndpointStatus::Active => EndpointState::ACTIVE,
+                EndpointStatus::Disabled => EndpointState::DISABLED,
+                EndpointStatus::NotPresent => EndpointState::NOT_PRESENT,
+                EndpointStatus::Unplugged => EndpointState::UNPLUGGED,
+            },
+            form_factor: self.form_factor.map(|f| f as u32),
+            is_default_console: self.default_roles.console,
+            is_default_multimedia: self.default_roles.multimedia,
+            is_default_communications: self.default_roles.communications,
+        }
+    }
+
     pub fn display_name(&self) -> String {
         self.friendly_name
             .clone()
@@ -971,5 +996,12 @@ mod tests {
         assert_eq!(normalize_name(Some("  2- DELL   P2720DC ")), Some("DELL P2720DC".into()));
         assert_eq!(normalize_name(Some("Speakers (2- Realtek(R) Audio)")), Some("SPEAKERS (REALTEK(R) AUDIO)".into()));
         assert_eq!(normalize_name(Some("  ")), None);
+    }
+
+    #[test]
+    fn summary_keeps_state_form_factor_and_roles() {
+        let s = dp("{0.0.0.1}", EndpointStatus::Unplugged, true).to_summary();
+        assert!(s.state.contains(bitbybit_domain::snapshot::EndpointState::UNPLUGGED));
+        assert!(s.is_digital_display_audio() && s.is_default_console && s.is_default_multimedia);
     }
 }

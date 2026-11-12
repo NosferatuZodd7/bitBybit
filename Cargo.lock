@@ -556,10 +556,12 @@ dependencies = [
  "bitbybit-audio",
  "bitbybit-core",
  "bitbybit-domain",
+ "bitbybit-localization",
  "bitbybit-network",
  "bitbybit-platform-windows",
  "bitbybit-security",
  "serde_json",
+ "tempfile",
  "time",
 ]
 
@@ -692,6 +694,7 @@ dependencies = [
  "bitbybit-core",
  "bitbybit-display",
  "bitbybit-domain",
+ "bitbybit-drivers",
  "bitbybit-ipc",
  "bitbybit-journal",
  "bitbybit-network",
