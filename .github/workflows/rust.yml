@@ -65,6 +65,10 @@ jobs:
             $env:BITBYBIT_SERVICE_SMOKE = '1'
             cargo test -p bitbybit-service --test smoke --locked -- --nocapture
             if ($LASTEXITCODE -ne 0) { throw "broker smoke test failed" }
+            cargo build -p bitbybit-cli --locked
+            $cli = (& target\debug\bitbybit-cli.exe network) -join "`n"
+            if ($LASTEXITCODE -ne 0 -or $cli -notmatch '"interfaces"') { throw "bitbybit-cli network failed" }
+            Write-Output ("bitbybit-cli network: {0} characters of JSON" -f $cli.Length)
             # The app itself against the console broker (not LocalSystem, hence the explicit developer opt-in).
             cargo build -p bitbybit-app --locked
             $env:BITBYBIT_DEV_BROKER = '1'
@@ -75,6 +79,14 @@ jobs:
             $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
             [System.Drawing.Graphics]::FromImage($bitmap).CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
             $bitmap.Save((Join-Path (Get-Location) 'app-windows.png'))
+            # Small JPEG copy in the log too (readable through the logs API when artifacts are not reachable).
+            $thumb = New-Object System.Drawing.Bitmap $bitmap, 960, ([int]($bounds.Height * 960 / $bounds.Width))
+            $memory = New-Object System.IO.MemoryStream
+            $thumb.Save($memory, [System.Drawing.Imaging.ImageFormat]::Jpeg)
+            $b64 = [Convert]::ToBase64String($memory.ToArray())
+            Write-Output 'BITBYBIT-SCREENSHOT-BEGIN'
+            for ($i = 0; $i -lt $b64.Length; $i += 4000) { Write-Output ('B64:' + $b64.Substring($i, [Math]::Min(4000, $b64.Length - $i))) }
+            Write-Output 'BITBYBIT-SCREENSHOT-END'
             if ($app.HasExited) { throw "bitBybit.exe exited early with code $($app.ExitCode)" }
             Stop-Process -Id $app.Id -Force
           } finally {
