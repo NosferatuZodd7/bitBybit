@@ -11,10 +11,8 @@ use bitbybit_ipc::dispatch::{Dispatcher, DispatcherOptions};
 use bitbybit_ipc::events::EventHub;
 use bitbybit_ipc::operation::{BrokerOperation, CallContext, Category, Descriptor, RegistryBuilder, RiskTier};
 use bitbybit_journal::Journal;
-use bitbybit_network::classify::{Classification, classify};
-use bitbybit_network::connectivity::{ConnectivityLevel, global};
 use bitbybit_network::model::NetworkSnapshot;
-use bitbybit_network::routes::{DefaultRoute, VpnRouting, analyze};
+pub use bitbybit_network::overview::NetworkOverview;
 use bitbybit_recovery::{RecoveryCoordinator, RevertHandler, RevertOutcome};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -47,18 +45,6 @@ pub trait NetworkInventory: Send + Sync {
 #[serde(deny_unknown_fields)]
 pub struct NoParameters {}
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NetworkOverview {
-    pub snapshot: NetworkSnapshot,
-    pub classifications: Vec<Classification>,
-    pub connectivity: ConnectivityLevel,
-    pub ipv4_default: Option<DefaultRoute>,
-    pub ipv6_default: Option<DefaultRoute>,
-    pub vpns: Vec<VpnRouting>,
-    pub ipv6_bypass: Option<u64>,
-}
-
 /// `network.overview`: interfaces, classification, connectivity and route ownership. Changes nothing.
 pub struct NetworkOverviewOperation<I> {
     descriptor: Descriptor,
@@ -90,19 +76,7 @@ impl<I: NetworkInventory> BrokerOperation for NetworkOverviewOperation<I> {
         Ok(())
     }
     fn execute(&self, _: &NoParameters, _: &CallContext) -> Result<NetworkOverview> {
-        let snapshot = self.inventory.collect()?;
-        let classifications: Vec<Classification> =
-            snapshot.interfaces.iter().map(|i| classify(i, snapshot.ras_connection(i))).collect();
-        let routes = analyze(&snapshot, &classifications);
-        Ok(NetworkOverview {
-            connectivity: global(&snapshot),
-            classifications,
-            ipv4_default: routes.ipv4_default,
-            ipv6_default: routes.ipv6_default,
-            vpns: routes.vpns,
-            ipv6_bypass: routes.ipv6_bypass,
-            snapshot,
-        })
+        Ok(NetworkOverview::of(self.inventory.collect()?))
     }
 }
 

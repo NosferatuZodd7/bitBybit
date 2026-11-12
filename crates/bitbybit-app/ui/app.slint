@@ -1,0 +1,151 @@
+// bitBybit main window. Every visible text comes from the pt-PT catalog through Tr.t(key); data comes from the
+// broker. No text is written here except catalog keys.
+
+import { Button, ScrollView, VerticalBox, HorizontalBox, Palette } from "std-widgets.slint";
+
+export global Tr {
+    pure callback t(string) -> string;
+}
+
+export struct InterfaceRow {
+    name: string,
+    kind: string,
+    status: string,
+    addresses: string,
+    vpn: bool,
+    up: bool,
+}
+
+component NavItem inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked;
+    height: 40px;
+    border-radius: 6px;
+    background: root.selected ? Palette.accent-background : (touch.has-hover ? Palette.alternate-background : transparent);
+    accessible-role: tab;
+    accessible-label: root.label;
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+    Text {
+        x: 12px;
+        text: root.label;
+        vertical-alignment: center;
+        color: root.selected ? Palette.accent-foreground : Palette.foreground;
+        font-size: 14px;
+    }
+}
+
+component Banner inherits Rectangle {
+    // 0 = working, 1 = ok, 2 = problem
+    in property <int> kind;
+    in property <string> message;
+    height: msg.preferred-height + 16px;
+    border-radius: 6px;
+    background: root.kind == 2 ? #fde7e9 : (root.kind == 1 ? #dff6dd : Palette.alternate-background);
+    msg := Text {
+        x: 12px;
+        width: parent.width - 24px;
+        text: root.message;
+        wrap: word-wrap;
+        vertical-alignment: center;
+        // Dark text on the light status colours keeps contrast in both themes.
+        color: root.kind == 0 ? Palette.foreground : #1b1b1b;
+    }
+}
+
+component InterfaceCard inherits Rectangle {
+    in property <InterfaceRow> info;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Palette.border;
+    background: Palette.control-background;
+    height: layout.preferred-height;
+    layout := VerticalLayout {
+        padding: 12px;
+        spacing: 4px;
+        HorizontalLayout {
+            spacing: 8px;
+            Text { text: root.info.name; font-size: 15px; font-weight: 600; overflow: elide; }
+            if root.info.vpn: Rectangle {
+                width: vpn-label.preferred-width + 12px;
+                border-radius: 4px;
+                background: Palette.accent-background;
+                vpn-label := Text { text: "VPN"; color: Palette.accent-foreground; font-size: 11px; vertical-alignment: center; horizontal-alignment: center; }
+            }
+            Rectangle { }
+            Text { text: root.info.status; color: root.info.up ? Palette.foreground : #8a8a8a; }
+        }
+        Text { text: root.info.kind; color: #707070; font-size: 12px; }
+        Text { text: root.info.addresses; font-size: 12px; wrap: word-wrap; }
+    }
+}
+
+export component AppWindow inherits Window {
+    in property <string> version;
+    in property <string> about-version;
+    in property <int> broker-state;
+    in property <string> broker-message;
+    in property <string> route-summary;
+    in property <string> hidden-summary;
+    in property <[InterfaceRow]> interfaces;
+    in-out property <int> page: 0;
+    callback refresh();
+
+    title: "bitBybit " + root.version;
+    preferred-width: 1100px;
+    preferred-height: 720px;
+    min-width: 640px;
+    min-height: 420px;
+    background: Palette.background;
+
+    HorizontalLayout {
+        Rectangle {
+            width: 220px;
+            background: Palette.alternate-background;
+            VerticalLayout {
+                padding: 12px;
+                spacing: 4px;
+                Text { text: "bitBybit"; font-size: 20px; font-weight: 700; height: 40px; vertical-alignment: center; }
+                NavItem { label: Tr.t("app.tab.network"); selected: root.page == 0; clicked => { root.page = 0; } }
+                NavItem { label: Tr.t("app.about.title"); selected: root.page == 1; clicked => { root.page = 1; } }
+                Rectangle { }
+            }
+        }
+        VerticalBox {
+            padding: 20px;
+            spacing: 12px;
+            Banner { kind: root.broker-state; message: root.broker-message; }
+            if root.page == 0: VerticalLayout {
+                spacing: 10px;
+                HorizontalLayout {
+                    spacing: 12px;
+                    VerticalLayout {
+                        Text { text: Tr.t("app.page.network.title"); font-size: 22px; font-weight: 600; }
+                        Text { text: Tr.t("app.network.intro"); wrap: word-wrap; color: #707070; }
+                    }
+                    VerticalLayout {
+                        alignment: start;
+                        Button { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
+                    }
+                }
+                Text { text: root.route-summary; wrap: word-wrap; font-size: 14px; }
+                ScrollView {
+                    VerticalLayout {
+                        spacing: 8px;
+                        for row in root.interfaces: InterfaceCard { info: row; }
+                        Text { text: root.hidden-summary; color: #707070; font-size: 12px; }
+                    }
+                }
+            }
+            if root.page == 1: VerticalLayout {
+                spacing: 8px;
+                Text { text: Tr.t("app.about.title"); font-size: 22px; font-weight: 600; }
+                Text { text: root.about-version; wrap: word-wrap; }
+                Text { text: Tr.t("app.about.privacy"); wrap: word-wrap; }
+                Rectangle { }
+            }
+        }
+    }
+}

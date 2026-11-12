@@ -405,5 +405,18 @@
   "app.cleanup.group.WindowsComponent": "Componentes da Microsoft",
   "app.cleanup.groupHint.WindowsComponent": "Podem fazer parte de funcionalidades do Windows. Não recomendado remover.",
   "app.cleanup.group.AbsentDevice": "Dispositivos que já não estão ligados",
-  "app.cleanup.groupHint.AbsentDevice": "O Windows lembra-se deles. Remover só limpa a lista; no máximo 10 de cada vez."
+  "app.cleanup.groupHint.AbsentDevice": "O Windows lembra-se deles. Remover só limpa a lista; no máximo 10 de cada vez.",
+  "app.broker.connecting": "A ligar ao serviço bitBybit…",
+  "app.broker.connected": "Ligado ao serviço bitBybit {0}",
+  "app.broker.unavailable": "O serviço bitBybit não está disponível: {0}",
+  "app.broker.notGenuine": "O canal do serviço não pertence ao serviço bitBybit (não corre como Sistema Local). Por segurança, o bitBybit não o usa.",
+  "app.broker.onlyWindows": "O serviço bitBybit só existe no Windows.",
+  "app.network.route.v4": "O tráfego IPv4 para a Internet sai por «{0}».",
+  "app.network.route.none": "Não há rota predefinida IPv4: sem acesso à Internet por IPv4.",
+  "app.network.ipv6Bypass": "Atenção: o IPv4 passa pela VPN mas o IPv6 sai por «{0}», fora do túnel.",
+  "app.network.hidden": "{0} interfaces técnicas ocultas (loopback, WAN Miniport, túneis IPv6).",
+  "app.network.noAddress": "Sem endereço",
+  "app.about.title": "Sobre",
+  "app.about.version": "Versão {0} · reescrita em Rust (pré-visualização)",
+  "app.about.privacy": "Sem telemetria. Atualizações apenas a partir das versões assinadas deste repositório."
 }

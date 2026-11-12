@@ -11,6 +11,7 @@ pub mod dns;
 pub mod firewall;
 pub mod leak;
 pub mod model;
+pub mod overview;
 pub mod prefix;
 pub mod routes;
 pub mod session;

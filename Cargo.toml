@@ -28,6 +28,8 @@ bitbybit-updates = { path = "crates/bitbybit-updates" }
 bitbybit-ipc = { path = "crates/bitbybit-ipc" }
 bitbybit-platform-windows = { path = "crates/bitbybit-platform-windows" }
 bitbybit-service = { path = "crates/bitbybit-service" }
+slint = "1.18.1"
+slint-build = "1.18.1"
 
 
 serde = { version = "1.0.229", features = ["derive"] }
