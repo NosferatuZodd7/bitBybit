@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 bitbybit-core.workspace = true
+bitbybit-domain.workspace = true
 bitbybit-ipc.workspace = true
 bitbybit-journal.workspace = true
 bitbybit-network.workspace = true

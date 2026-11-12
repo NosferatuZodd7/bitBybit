@@ -31,6 +31,13 @@ mod broker {
     /// Connections served at once; more are closed immediately.
     const MAX_CONNECTIONS: usize = 16;
 
+    struct SetupApi;
+    impl bitbybit_service::DeviceInventory for SetupApi {
+        fn collect(&self) -> bitbybit_core::Result<Vec<bitbybit_domain::snapshot::DeviceSummary>> {
+            bitbybit_platform_windows::devices::collect()
+        }
+    }
+
     struct IpHelper;
     impl NetworkInventory for IpHelper {
         fn collect(&self) -> bitbybit_core::Result<bitbybit_network::model::NetworkSnapshot> {
@@ -66,7 +73,7 @@ mod broker {
             log::warn!("Developer mode is enabled for {d}");
         }
         let (dispatcher, _events) =
-            match build_dispatcher(bitbybit_core::version(), &image_refs, developer.as_deref(), IpHelper) {
+            match build_dispatcher(bitbybit_core::version(), &image_refs, developer.as_deref(), IpHelper, SetupApi) {
                 Ok(d) => d,
                 Err(e) => {
                     log::error!("Broker configuration is invalid: {e}");

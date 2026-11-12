@@ -24,5 +24,8 @@ fn ping_and_network_overview_through_the_running_broker() {
         client.invoke("network.overview", &Empty {}, None, Duration::from_secs(30)).expect("overview");
     let interfaces = overview["snapshot"]["interfaces"].as_array().map_or(0, Vec::len);
     assert!(interfaces > 0, "the broker read the runner's interfaces");
+    let devices: serde_json::Value =
+        client.invoke("devices.inventory", &Empty {}, None, Duration::from_secs(60)).expect("devices");
+    assert!(devices["devices"].as_array().map_or(0, Vec::len) > 10, "the broker read the runner's devices");
     println!("broker {} – {interfaces} interfaces, connectivity {}", ping.broker_version, overview["connectivity"]);
 }

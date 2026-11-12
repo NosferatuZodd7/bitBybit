@@ -708,6 +708,7 @@ name = "bitbybit-service"
 version = "0.7.0"
 dependencies = [
  "bitbybit-core",
+ "bitbybit-domain",
  "bitbybit-ipc",
  "bitbybit-journal",
  "bitbybit-network",

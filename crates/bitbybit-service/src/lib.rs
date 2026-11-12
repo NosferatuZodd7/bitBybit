@@ -4,6 +4,7 @@
 //! two-phase confirmation and the change journal.
 
 use bitbybit_core::Result;
+use bitbybit_domain::snapshot::DeviceSummary;
 use bitbybit_ipc::auth::AuthorizationPolicy;
 use bitbybit_ipc::builtin::{Ping, PollEvents};
 use bitbybit_ipc::confirm::TokenService;
@@ -34,6 +35,52 @@ pub fn developer_directory(config_file: &Path) -> Option<String> {
     let config: DeveloperModeConfig =
         serde_json::from_str(&text).map_err(|e| log::warn!("Ignoring malformed developer mode config: {e}")).ok()?;
     config.enabled.then_some(config.directory).flatten()
+}
+
+/// Read-only device inventory source (Windows: SetupAPI/CfgMgr32).
+pub trait DeviceInventory: Send + Sync {
+    fn collect(&self) -> Result<Vec<DeviceSummary>>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceList {
+    pub devices: Vec<DeviceSummary>,
+}
+
+/// `devices.inventory`: every device, present or not, with driver facts. Changes nothing.
+pub struct DeviceInventoryOperation<I> {
+    descriptor: Descriptor,
+    inventory: I,
+}
+
+impl<I: DeviceInventory> DeviceInventoryOperation<I> {
+    pub fn new(inventory: I) -> Self {
+        Self {
+            descriptor: Descriptor {
+                name: "devices.inventory",
+                tier: RiskTier::ReadOnly,
+                category: Category::NONE,
+                requires_confirmation: false,
+                timeout: None,
+            },
+            inventory,
+        }
+    }
+}
+
+impl<I: DeviceInventory> BrokerOperation for DeviceInventoryOperation<I> {
+    type Request = NoParameters;
+    type Response = DeviceList;
+    fn descriptor(&self) -> &Descriptor {
+        &self.descriptor
+    }
+    fn validate(&self, _: &NoParameters) -> Result<()> {
+        Ok(())
+    }
+    fn execute(&self, _: &NoParameters, _: &CallContext) -> Result<DeviceList> {
+        Ok(DeviceList { devices: self.inventory.collect()? })
+    }
 }
 
 /// Read-only network state source (Windows: IP Helper).
@@ -86,6 +133,7 @@ pub fn build_dispatcher(
     allowed_images: &[&str],
     developer_dir: Option<&str>,
     inventory: impl NetworkInventory + 'static,
+    devices: impl DeviceInventory + 'static,
 ) -> std::result::Result<(Dispatcher, Arc<EventHub>), String> {
     let policy = AuthorizationPolicy::new(allowed_images, developer_dir)?;
     let events = Arc::new(EventHub::new(1024));
@@ -95,6 +143,7 @@ pub fn build_dispatcher(
         .register(ping)?
         .register(PollEvents::new(events.clone()))?
         .register(NetworkOverviewOperation::new(inventory))?
+        .register(DeviceInventoryOperation::new(devices))?
         .freeze();
     let _ = names.set(registry.names());
     let tokens = TokenService::new().map_err(|e| format!("no OS random source: {e}"))?;
@@ -121,6 +170,16 @@ mod tests {
     const APP: &str = r"C:\Program Files\bitBybit\bitBybit.exe";
 
     struct Fixed;
+    struct NoDevices;
+    impl DeviceInventory for NoDevices {
+        fn collect(&self) -> Result<Vec<DeviceSummary>> {
+            Ok(vec![DeviceSummary {
+                instance_id: r"PCI\VEN_10EC&DEV_8168\01".into(),
+                is_present: Some(true),
+                ..DeviceSummary::default()
+            }])
+        }
+    }
     impl NetworkInventory for Fixed {
         fn collect(&self) -> Result<NetworkSnapshot> {
             Ok(NetworkSnapshot {
@@ -149,8 +208,23 @@ mod tests {
 
     #[test]
     fn allowlist_contains_exactly_the_registered_operations() {
-        let (d, _) = build_dispatcher("0.7.0", &[APP], None, Fixed).unwrap();
-        assert_eq!(d.registry().names(), ["broker.events.poll", "broker.ping", "network.overview"]);
+        let (d, _) = build_dispatcher("0.7.0", &[APP], None, Fixed, NoDevices).unwrap();
+        assert_eq!(
+            d.registry().names(),
+            ["broker.events.poll", "broker.ping", "devices.inventory", "network.overview"]
+        );
+        let devices = d.dispatch(
+            &BrokerRequest {
+                protocol_version: 1,
+                request_id: uuid::Uuid::new_v4(),
+                operation: "devices.inventory".into(),
+                parameters: serde_json::json!({}),
+                confirmation_token: None,
+            },
+            &client(APP),
+            Arc::new(AtomicBool::new(false)),
+        );
+        assert_eq!(devices.result.unwrap()["devices"][0]["isPresent"], true);
         let call = |op: &str, image: &str| {
             let r = BrokerRequest {
                 protocol_version: 1,
@@ -179,7 +253,7 @@ mod tests {
         assert_eq!(developer_directory(&f), None, "malformed means off");
         std::fs::write(&f, r#"{"enabled":true,"directory":"C:\\src\\bitBybit"}"#).unwrap();
         assert_eq!(developer_directory(&f).as_deref(), Some(r"C:\src\bitBybit"));
-        assert!(build_dispatcher("0.7.0", &[APP], Some(r"C:\"), Fixed).is_err(), "a drive root is refused");
+        assert!(build_dispatcher("0.7.0", &[APP], Some(r"C:\"), Fixed, NoDevices).is_err(), "a drive root is refused");
     }
 
     struct Handler;
