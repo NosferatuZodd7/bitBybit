@@ -12,9 +12,7 @@ use windows::Win32::Media::Audio::{
     eCommunications, eConsole, eMultimedia, eRender,
 };
 use windows::Win32::System::Com::StructuredStorage::{PROPVARIANT, PropVariantClear};
-use windows::Win32::System::Com::{
-    CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoTaskMemFree, STGM_READ,
-};
+use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, CoTaskMemFree, STGM_READ};
 use windows::Win32::System::Variant::{VT_CLSID, VT_LPWSTR, VT_UI4};
 use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
 use windows::core::{GUID, HSTRING, PCWSTR};
@@ -83,13 +81,8 @@ fn platform(context: &str, e: &windows::core::Error) -> Error {
     Error::platform(format!("{context}: {}", e.message()), e.code().0)
 }
 
-fn init_com() {
-    // SAFETY: per-thread COM init; S_FALSE / RPC_E_CHANGED_MODE leave a usable apartment, so the result is ignored.
-    let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
-}
-
 fn enumerator() -> Result<IMMDeviceEnumerator> {
-    init_com();
+    crate::com::init();
     // SAFETY: documented in-process COM class.
     unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) }.map_err(|e| platform("MMDeviceEnumerator", &e))
 }
@@ -155,7 +148,7 @@ pub struct CoreAudio;
 
 impl CoreAudio {
     fn policy() -> Result<IPolicyConfig> {
-        init_com();
+        crate::com::init();
         // SAFETY: undocumented in-process COM class; failure is reported, never assumed.
         unsafe { CoCreateInstance(&POLICY_CONFIG_CLIENT, None, CLSCTX_ALL) }
             .map_err(|e| platform("IPolicyConfig (undocumented) unavailable", &e))

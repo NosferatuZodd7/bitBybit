@@ -281,8 +281,11 @@ pub fn collect() -> Result<NetworkSnapshot> {
     let mut extras = adapters()?;
     let (v4, v6) = (ip_settings(AF_INET)?, ip_settings(AF_INET6)?);
     let mut drivers = super::drivers::read();
+    let mut nlm = super::nlm::read();
     for i in &mut interfaces {
-        i.driver = i.interface_guid.as_deref().and_then(|g| drivers.remove(&super::drivers::normalize_guid(g)));
+        let guid = i.interface_guid.as_deref().map(super::drivers::normalize_guid);
+        i.driver = guid.as_ref().and_then(|g| drivers.remove(g));
+        i.profile = guid.as_ref().and_then(|g| nlm.adapters.remove(g));
         if let Some(e) = extras.remove(&i.luid) {
             i.unicast_addresses = e.unicast;
             i.gateways = e.gateways;
@@ -298,7 +301,7 @@ pub fn collect() -> Result<NetworkSnapshot> {
         interfaces,
         routes: routes()?,
         ras_connections: vec![],
-        os_connectivity: None,
+        os_connectivity: nlm.machine,
         limitations: vec![],
     })
 }

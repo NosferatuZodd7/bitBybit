@@ -5,6 +5,8 @@
 #[cfg(windows)]
 pub mod audio;
 #[cfg(windows)]
+mod com;
+#[cfg(windows)]
 pub mod net;
 #[cfg(windows)]
 pub mod pipe;
