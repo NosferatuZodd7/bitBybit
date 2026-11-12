@@ -16,6 +16,35 @@ export struct InterfaceRow {
     up: bool,
 }
 
+export struct DeviceRow {
+    name: string,
+    class: string,
+    status: string,
+    driver: string,
+    problem: bool,
+}
+
+component DeviceCard inherits Rectangle {
+    in property <DeviceRow> info;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: root.info.problem ? #c42b1c : Palette.border;
+    background: Palette.control-background;
+    height: layout.preferred-height;
+    layout := VerticalLayout {
+        padding: 10px;
+        spacing: 2px;
+        HorizontalLayout {
+            spacing: 8px;
+            Text { text: root.info.name; font-size: 14px; font-weight: 600; overflow: elide; }
+            Rectangle { }
+            Text { text: root.info.class; color: #707070; font-size: 12px; }
+        }
+        Text { text: root.info.status; wrap: word-wrap; color: root.info.problem ? #c42b1c : Palette.foreground; font-size: 12px; }
+        Text { text: root.info.driver; color: #707070; font-size: 12px; wrap: word-wrap; }
+    }
+}
+
 component NavItem inherits Rectangle {
     in property <string> label;
     in property <bool> selected;
@@ -90,6 +119,8 @@ export component AppWindow inherits Window {
     in property <string> route-summary;
     in property <string> hidden-summary;
     in property <[InterfaceRow]> interfaces;
+    in property <[DeviceRow]> devices;
+    in property <string> devices-summary;
     in-out property <int> page: 0;
     callback refresh();
 
@@ -109,7 +140,8 @@ export component AppWindow inherits Window {
                 spacing: 4px;
                 Text { text: "bitBybit"; font-size: 20px; font-weight: 700; height: 40px; vertical-alignment: center; }
                 NavItem { label: Tr.t("app.tab.network"); selected: root.page == 0; clicked => { root.page = 0; } }
-                NavItem { label: Tr.t("app.about.title"); selected: root.page == 1; clicked => { root.page = 1; } }
+                NavItem { label: Tr.t("app.page.devices.title"); selected: root.page == 1; clicked => { root.page = 1; } }
+                NavItem { label: Tr.t("app.about.title"); selected: root.page == 2; clicked => { root.page = 2; } }
                 Rectangle { }
             }
         }
@@ -140,6 +172,26 @@ export component AppWindow inherits Window {
                 }
             }
             if root.page == 1: VerticalLayout {
+                spacing: 10px;
+                HorizontalLayout {
+                    spacing: 12px;
+                    VerticalLayout {
+                        Text { text: Tr.t("app.page.devices.title"); font-size: 22px; font-weight: 600; }
+                        Text { text: root.devices-summary; color: #707070; wrap: word-wrap; }
+                    }
+                    VerticalLayout {
+                        alignment: start;
+                        Button { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
+                    }
+                }
+                ScrollView {
+                    VerticalLayout {
+                        spacing: 6px;
+                        for device in root.devices: DeviceCard { info: device; }
+                    }
+                }
+            }
+            if root.page == 2: VerticalLayout {
                 spacing: 8px;
                 Text { text: Tr.t("app.about.title"); font-size: 22px; font-weight: 600; }
                 Text { text: root.about-version; wrap: word-wrap; }

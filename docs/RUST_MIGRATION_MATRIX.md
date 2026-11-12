@@ -31,7 +31,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | DEV-02 | Problem codes as text | `Core/Devices/DeviceProblemCodes.cs` | `bitbybit-devices::problem` | Logic | table | all CM_PROB codes mapped |
 | DEV-03 | DeviceActionGuard | `Core/Devices/DeviceActionGuard.cs` | `bitbybit-devices::guard` | Logic | ported 6 tests | same verdicts |
 | DEV-04 | Restart / enable / disable / uninstall / rescan, journaled | `Platform/Devices`, `Operations/DeviceOperations.cs` | `platform-windows::devices`, `bitbybit-service::ops::devices` | Todo | opt-in system test | guard enforced in broker; revert handlers |
-| DEV-05 | Device details and actions UI | `App/DeviceWindow`, `DeviceDetailViewModel` | `ui/pages/devices.slint`, `bitbybit-app` | Todo | view-model tests, render | every action wired or disabled with reason |
+| DEV-05 | Device details and actions UI | `App/DeviceWindow`, `DeviceDetailViewModel` | `ui/pages/devices.slint`, `bitbybit-app` | WIP | view-model tests, render | every action wired or disabled with reason |
 | DRV-01 | Installed driver per device | `WindowsDriverSelection.ReadInstalled` | `platform-windows::drivers` | Todo | Windows read-only | DEVPKEY driver facts |
 | DRV-02 | Driver Store list (INF parser) | `Core/Drivers/InfVersionParser.cs`, collector | `bitbybit-drivers::inf`, `platform-windows::drivers` | Logic | ported parser tests | packages with provider/class/version/hwids |
 | DRV-03 | Compatible drivers + install chosen | `WindowsDriverSelection` | `platform-windows::drivers` | Todo | enumeration on CI | install journaled and verified |

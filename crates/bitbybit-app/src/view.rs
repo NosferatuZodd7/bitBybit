@@ -2,6 +2,7 @@
 //! the catalog (pt-PT) with the English fallback in code.
 
 use bitbybit_core::text;
+use bitbybit_domain::snapshot::DeviceSummary;
 use bitbybit_localization::TextCatalog;
 use bitbybit_network::classify::InterfaceKind;
 use bitbybit_network::connectivity::evaluate;
@@ -88,6 +89,50 @@ pub fn hidden_text(count: usize, catalog: &TextCatalog) -> String {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceRow {
+    pub name: String,
+    pub class: String,
+    pub status: String,
+    pub driver: String,
+    pub problem: bool,
+}
+
+/// Present devices (problems first, then by class and name) and a one-line summary.
+pub fn device_rows(devices: &[DeviceSummary], catalog: &TextCatalog) -> (Vec<DeviceRow>, String) {
+    let present: Vec<&DeviceSummary> = devices.iter().filter(|d| d.is_present == Some(true)).collect();
+    let mut rows: Vec<DeviceRow> = present
+        .iter()
+        .map(|d| DeviceRow {
+            name: d.name.clone().unwrap_or_else(|| d.instance_id.clone()),
+            class: d.class_name.clone().unwrap_or_default(),
+            status: bitbybit_devices::problem::describe(d.problem_code)
+                .map_or_else(|| catalog.resolve(&text!("app.devices.ok", "Working properly")), |t| catalog.resolve(&t)),
+            driver: d.driver.as_ref().map_or_else(
+                || catalog.resolve(&text!("app.devices.noDriver", "No driver information")),
+                |x| {
+                    [x.provider.clone(), x.version.clone(), x.inf_name.clone()]
+                        .into_iter()
+                        .flatten()
+                        .collect::<Vec<_>>()
+                        .join(" · ")
+                },
+            ),
+            problem: d.problem_code.is_some(),
+        })
+        .collect();
+    rows.sort_by_key(|r| (!r.problem, r.class.to_lowercase(), r.name.to_lowercase()));
+    let problems = rows.iter().filter(|r| r.problem).count();
+    let summary = catalog.resolve(&text!(
+        "app.devices.summary",
+        "{0} connected devices ({1} with a problem) · {2} absent · Plug and Play",
+        present.len().to_string(),
+        problems.to_string(),
+        (devices.len() - present.len()).to_string()
+    ));
+    (rows, summary)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,6 +197,42 @@ mod tests {
     }
 
     #[test]
+    fn devices_with_problems_come_first_and_absent_ones_are_counted() {
+        use bitbybit_domain::snapshot::DriverSummary;
+        let catalog = TextCatalog::default_catalog();
+        let d = |name: &str, class: &str, present, problem| DeviceSummary {
+            instance_id: format!("X\\{name}"),
+            name: Some(name.into()),
+            class_name: Some(class.into()),
+            is_present: Some(present),
+            problem_code: problem,
+            driver: Some(DriverSummary {
+                provider: Some("Realtek".into()),
+                version: Some("6.0.9".into()),
+                inf_name: Some("oem12.inf".into()),
+                ..DriverSummary::default()
+            }),
+            ..DeviceSummary::default()
+        };
+        let (rows, summary) = device_rows(
+            &[
+                d("Speakers", "MEDIA", true, None),
+                d("Old USB", "USB", false, None),
+                d("Realtek Audio", "MEDIA", true, Some(28)),
+            ],
+            catalog,
+        );
+        assert_eq!(rows.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(), ["Realtek Audio", "Speakers"]);
+        assert!(
+            rows[0].problem && rows[0].status != catalog.resolve(&text!("app.devices.ok", "")),
+            "problem 28 is explained"
+        );
+        assert_eq!(rows[1].status, "A funcionar corretamente");
+        assert_eq!(rows[1].driver, "Realtek · 6.0.9 · oem12.inf");
+        assert_eq!(summary, "2 dispositivos ligados (1 com problema) · 1 ausentes · Plug and Play");
+    }
+
+    #[test]
     fn every_new_ui_key_is_in_the_catalog() {
         let catalog = TextCatalog::default_catalog();
         for key in [
@@ -168,6 +249,10 @@ mod tests {
             "app.page.network.title",
             "app.page.network.subtitle",
             "app.network.intro",
+            "app.devices.summary",
+            "app.devices.ok",
+            "app.devices.noDriver",
+            "app.page.devices.title",
         ] {
             assert!(catalog.template(key).is_some(), "{key}");
         }

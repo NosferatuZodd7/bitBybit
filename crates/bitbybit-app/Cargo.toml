@@ -13,11 +13,14 @@ path = "src/main.rs"
 
 [dependencies]
 bitbybit-core.workspace = true
+bitbybit-devices.workspace = true
+bitbybit-domain.workspace = true
 bitbybit-localization.workspace = true
 bitbybit-network.workspace = true
 slint.workspace = true
 
 [target.'cfg(windows)'.dependencies]
+serde.workspace = true
 bitbybit-ipc.workspace = true
 bitbybit-platform-windows.workspace = true
 

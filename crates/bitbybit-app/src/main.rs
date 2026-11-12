@@ -8,11 +8,12 @@ mod ui {
     slint::include_modules!();
 }
 
-use ui::{AppWindow, InterfaceRow, Tr};
+use ui::{AppWindow, DeviceRow, InterfaceRow, Tr};
 
 mod view;
 
 use bitbybit_core::{LocalizedText, text, version};
+use bitbybit_domain::snapshot::DeviceSummary;
 use bitbybit_localization::TextCatalog;
 use bitbybit_network::overview::NetworkOverview;
 use slint::{ComponentHandle, ModelRc, VecModel};
@@ -44,11 +45,11 @@ fn load(weak: slint::Weak<AppWindow>) {
         );
     }
     std::thread::spawn(move || {
-        let result = broker::overview();
+        let result = broker::load();
         let _ = slint::invoke_from_event_loop(move || {
             let Some(ui) = weak.upgrade() else { return };
             match result {
-                Ok((broker_version, overview)) => apply(&ui, &broker_version, &overview, catalog),
+                Ok(data) => apply(&ui, &data, catalog),
                 Err(problem) => {
                     ui.set_broker_state(2);
                     ui.set_broker_message(catalog.resolve(&problem).into());
@@ -58,13 +59,38 @@ fn load(weak: slint::Weak<AppWindow>) {
     });
 }
 
-fn apply(ui: &AppWindow, broker_version: &str, overview: &NetworkOverview, catalog: &TextCatalog) {
+/// What one refresh reads from the broker.
+struct Loaded {
+    broker_version: String,
+    network: NetworkOverview,
+    devices: Vec<DeviceSummary>,
+}
+
+fn apply(ui: &AppWindow, data: &Loaded, catalog: &TextCatalog) {
+    let overview = &data.network;
     ui.set_broker_state(1);
     ui.set_broker_message(
         catalog
-            .resolve(&text!("app.broker.connected", "Connected to the bitBybit service {0}", broker_version.to_owned()))
+            .resolve(&text!(
+                "app.broker.connected",
+                "Connected to the bitBybit service {0}",
+                data.broker_version.clone()
+            ))
             .into(),
     );
+    let (devices, summary) = view::device_rows(&data.devices, catalog);
+    let devices: Vec<DeviceRow> = devices
+        .into_iter()
+        .map(|d| DeviceRow {
+            name: d.name.into(),
+            class: d.class.into(),
+            status: d.status.into(),
+            driver: d.driver.into(),
+            problem: d.problem,
+        })
+        .collect();
+    ui.set_devices(ModelRc::from(Rc::new(VecModel::from(devices))));
+    ui.set_devices_summary(summary.into());
     let (rows, hidden) = view::interface_rows(overview, catalog);
     let rows: Vec<InterfaceRow> = rows
         .into_iter()
@@ -99,7 +125,12 @@ mod broker {
         )
     }
 
-    pub fn overview() -> Result<(String, NetworkOverview), LocalizedText> {
+    #[derive(serde::Deserialize)]
+    struct DeviceList {
+        devices: Vec<DeviceSummary>,
+    }
+
+    pub fn load() -> Result<Loaded, LocalizedText> {
         let stream = connect(PIPE_NAME, Duration::from_secs(5)).map_err(|e| {
             text!("app.broker.unavailable", "The bitBybit service is not available: {0}", e.to_string())
         })?;
@@ -114,9 +145,11 @@ mod broker {
         let client = BrokerClient::new(stream.clone(), stream);
         let ping: PingResponse =
             client.invoke("broker.ping", &Empty {}, None, Duration::from_secs(10)).map_err(|e| problem(&e))?;
-        let overview: NetworkOverview =
+        let network: NetworkOverview =
             client.invoke("network.overview", &Empty {}, None, Duration::from_secs(30)).map_err(|e| problem(&e))?;
-        Ok((ping.broker_version, overview))
+        let list: DeviceList =
+            client.invoke("devices.inventory", &Empty {}, None, Duration::from_secs(60)).map_err(|e| problem(&e))?;
+        Ok(Loaded { broker_version: ping.broker_version, network, devices: list.devices })
     }
 }
 
@@ -124,7 +157,7 @@ mod broker {
 mod broker {
     use super::*;
 
-    pub fn overview() -> Result<(String, NetworkOverview), LocalizedText> {
+    pub fn load() -> Result<Loaded, LocalizedText> {
         Err(text!("app.broker.onlyWindows", "The bitBybit service exists only on Windows."))
     }
 }

@@ -513,10 +513,13 @@ name = "bitbybit-app"
 version = "0.7.0"
 dependencies = [
  "bitbybit-core",
+ "bitbybit-devices",
+ "bitbybit-domain",
  "bitbybit-ipc",
  "bitbybit-localization",
  "bitbybit-network",
  "bitbybit-platform-windows",
+ "serde",
  "slint",
  "slint-build",
  "time",
