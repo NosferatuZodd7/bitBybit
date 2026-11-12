@@ -41,6 +41,13 @@ A–D, F1, G1, K1, H1 done; E/F2/G2 and H2 in progress (platform-windows + servi
 * `bitbybit-service`: lib (allowlist ping/events.poll/network.overview, developer-mode config, recovery limited to
   known kinds; 3 tests) + bin (SCM `bitBybitService` or `--console`). CI starts the console broker and runs
   `tests/smoke.rs` over the real pipe (developer mode for target\debug, CI only).
+* Platform readers added since: network adapter driver facts (registry class key), NLM connectivity/profiles, RAS
+  connections, SetupAPI/CfgMgr32 device inventory; broker op `devices.inventory`.
+* `bitbybit-app` (`bitBybit.exe`, Slint, pt-PT): pages Rede, Dispositivos (broker), Áudio (Core Audio in the user's
+  session; Predefinir journaled+verified), Alterações (both journals; user audio changes revertible, drift-aware),
+  Sobre. All texts via `Tr.t(key)`. Client requires the pipe server to be LocalSystem unless
+  `BITBYBIT_DEV_BROKER=1`. Linux run: `xvfb-run` + `SLINT_BACKEND=winit-software` (needs `libxkbcommon-x11-0`).
+  CI Windows job starts the app against the console broker and uploads `app-windows-screenshot`.
 * Fixes found on the Windows runner: signed fixtures need `.gitattributes` binary (CRLF), log pruning must never
   delete the active file. Workspace: 253 tests (Linux) + Windows integration tests.
 * CI: `.github/workflows/rust.yml` (Linux fmt/clippy/test + Windows type-check; Windows clippy/test/release build).
