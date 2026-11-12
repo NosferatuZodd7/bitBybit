@@ -87,8 +87,9 @@ cargo check --workspace --target x86_64-pc-windows-msvc
 ```
 
 ## Next concrete task
-1. Check the latest `rust` run: `display_inventory`, `firewall_rules` (opt-in step), `update_check`, the smoke step
-   (now also `bitbybit-cli displays` and `diagnose`, whose report text is printed) and the app screenshot (base64 JPEG between `BITBYBIT-SCREENSHOT-BEGIN/END`).
+1. Run 29 (c23e586) was fully green on Windows: display/diagnostics/firewall (opt-in)/update tests, `displays` and
+   `diagnose` (issues=0: WU history and Kernel-PnP events read). The smoke step now captures pages 0, 6 (analysis
+   run via `BITBYBIT_UI_PAGE=6`) and 5 as base64 JPEGs between `BITBYBIT-SCREENSHOT-BEGIN page=N` / `END`.
 2. Platform: the sharing mutators (WFP, WinNAT,
    ICS, hotspot) behind `bitbybit_network::session::SharingBackend` with revert handlers.
 3. Service: register the mutating operations with plans, and their revert handlers in `recover_at_start`.

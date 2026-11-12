@@ -62,7 +62,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | CASE-04 | Reports (text pt-PT, JSON, redacted) | `QuickReportWriter.cs` | `bitbybit-audio::report` | Logic | redaction | no serials/tokens/user names |
 | CASE-05 | Run proposed actions | `MainViewModel.RunActionAsync` | app + service ops | Todo | integration | confirmation + journal |
 | CASE-06 | Guided fix | `Core/Diagnostics/FixPlanner.cs`, `MainViewModel.Fix.cs` | `bitbybit-domain::fix`, app | Logic | ported 7 tests | never runs without confirmation |
-| DSP-01 | Monitors, EDID, topology (read) | `DisplayQuick.cs`, `EdidQuickParser.cs` | `bitbybit-display::edid`, `platform-windows::display` | WIP | ported 7 tests | audio capability from CEA-861 |
+| DSP-01 | Monitors, EDID, topology (read) | `DisplayQuick.cs`, `EdidQuickParser.cs` | `bitbybit-display::edid`, `platform-windows::display` | CI | ported 7 tests | audio capability from CEA-861 |
 | DSP-02 | GPU list | `QuickCollector.CollectGpus` | `platform-windows::display` | WIP | CI | adapters with driver |
 | DSP-03 | Mode / topology change with validation and auto-revert | new | `bitbybit-display::change`, `platform-windows::display` | Logic | state machine tests | unconfirmed change reverts |
 
@@ -140,7 +140,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | UI-16 | History and system pages, app log | history/system/log pages | `ui/pages/diagnosis.slint` tabs | Todo | render | |
 | UI-17 | Background mode (tray) for the audio profile | `App.xaml.cs` | service watchdog (SVC-06) | Todo | — | replaced by the service |
 | UI-18 | Headless smoke test with contrast check | `UiSmoke.cs` | `bitbybit-app::smoke` | Todo | CI + Linux | every page rendered |
-| CLI-01 | `diagnose` report | `CliEntryPoint.cs` | `bitbybit-cli` | WIP | arg tests, CI run | text + JSON |
+| CLI-01 | `diagnose` report | `CliEntryPoint.cs` | `bitbybit-cli` | CI | arg tests, CI run | text + JSON |
 | CLI-02 | Extended CLI (network, devices, journal, service, capabilities) | new | `bitbybit-cli` | WIP | arg tests | read-only by default |
 
 ## Completion

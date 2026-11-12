@@ -83,23 +83,28 @@ jobs:
             # The app itself against the console broker (not LocalSystem, hence the explicit developer opt-in).
             cargo build -p bitbybit-app --locked
             $env:BITBYBIT_DEV_BROKER = '1'
-            $app = Start-Process -FilePath target\debug\bitBybit.exe -PassThru
-            Start-Sleep -Seconds 12
             Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-            $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-            $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
-            [System.Drawing.Graphics]::FromImage($bitmap).CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
-            $bitmap.Save((Join-Path (Get-Location) 'app-windows.png'))
-            # Small JPEG copy in the log too (readable through the logs API when artifacts are not reachable).
-            $thumb = New-Object System.Drawing.Bitmap $bitmap, 960, ([int]($bounds.Height * 960 / $bounds.Width))
-            $memory = New-Object System.IO.MemoryStream
-            $thumb.Save($memory, [System.Drawing.Imaging.ImageFormat]::Jpeg)
-            $b64 = [Convert]::ToBase64String($memory.ToArray())
-            Write-Output 'BITBYBIT-SCREENSHOT-BEGIN'
-            for ($i = 0; $i -lt $b64.Length; $i += 4000) { Write-Output ('B64:' + $b64.Substring($i, [Math]::Min(4000, $b64.Length - $i))) }
-            Write-Output 'BITBYBIT-SCREENSHOT-END'
-            if ($app.HasExited) { throw "bitBybit.exe exited early with code $($app.ExitCode)" }
-            Stop-Process -Id $app.Id -Force
+            # Network (0), case analysis (6, runs its read-only analysis) and displays (5).
+            foreach ($page in @('0', '6', '5')) {
+              $env:BITBYBIT_UI_PAGE = $page
+              $app = Start-Process -FilePath target\debug\bitBybit.exe -PassThru
+              Start-Sleep -Seconds $(if ($page -eq '6') { 40 } else { 12 })
+              $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+              $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+              [System.Drawing.Graphics]::FromImage($bitmap).CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+              $bitmap.Save((Join-Path (Get-Location) "app-windows-page$page.png"))
+              # Small JPEG copy in the log too (readable through the logs API when artifacts are not reachable).
+              $thumb = New-Object System.Drawing.Bitmap $bitmap, 960, ([int]($bounds.Height * 960 / $bounds.Width))
+              $memory = New-Object System.IO.MemoryStream
+              $thumb.Save($memory, [System.Drawing.Imaging.ImageFormat]::Jpeg)
+              $b64 = [Convert]::ToBase64String($memory.ToArray())
+              Write-Output "BITBYBIT-SCREENSHOT-BEGIN page=$page"
+              for ($i = 0; $i -lt $b64.Length; $i += 4000) { Write-Output ('B64:' + $b64.Substring($i, [Math]::Min(4000, $b64.Length - $i))) }
+              Write-Output 'BITBYBIT-SCREENSHOT-END'
+              if ($app.HasExited) { throw "bitBybit.exe exited early with code $($app.ExitCode)" }
+              Stop-Process -Id $app.Id -Force
+              Start-Sleep -Seconds 2
+            }
           } finally {
             Stop-Process -Id $broker.Id -Force
             Get-Content (Join-Path $env:ProgramData 'bitBybit\logs\*') -ErrorAction SilentlyContinue | Select-Object -Last 40
@@ -109,5 +114,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-windows-screenshot
-          path: app-windows.png
+          path: app-windows-page*.png
           if-no-files-found: ignore

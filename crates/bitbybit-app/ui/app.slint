@@ -255,6 +255,7 @@ export component AppWindow inherits Window {
     in property <string> audio-message;
     in property <[DisplayRow]> displays;
     in property <string> displays-summary;
+    in property <bool> displays-failed;
     in property <[FindingRow]> findings;
     in property <string> diagnosis-summary;
     in property <bool> diagnosis-running;
@@ -420,7 +421,7 @@ export component AppWindow inherits Window {
                         Button { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
                     }
                 }
-                if root.displays.length == 0: Text { text: Tr.t("app.displays.empty"); color: #707070; }
+                if root.displays.length == 0 && !root.displays-failed: Text { text: Tr.t("app.displays.empty"); color: #707070; }
                 ScrollView {
                     VerticalLayout {
                         spacing: 6px;

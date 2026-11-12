@@ -48,6 +48,13 @@ fn main() -> Result<(), slint::PlatformError> {
     let weak = ui.as_weak();
     ui.on_revert(move |id| revert(weak.clone(), id.to_string()));
     load(ui.as_weak());
+    // Test hook for the CI screenshots: open on a given page; the case page also runs its (read-only) analysis.
+    if let Some(page) = std::env::var("BITBYBIT_UI_PAGE").ok().and_then(|p| p.parse::<i32>().ok()) {
+        ui.set_page(page);
+        if page == 6 {
+            diagnose(ui.as_weak());
+        }
+    }
     ui.run()
 }
 
@@ -167,8 +174,12 @@ fn apply_displays(ui: &AppWindow, displays: Result<Vec<MonitorSummary>, Localize
                 .collect();
             ui.set_displays(ModelRc::from(Rc::new(VecModel::from(rows))));
             ui.set_displays_summary(summary.into());
+            ui.set_displays_failed(false);
         }
-        Err(problem) => ui.set_displays_summary(catalog.resolve(&problem).into()),
+        Err(problem) => {
+            ui.set_displays_failed(true);
+            ui.set_displays_summary(catalog.resolve(&problem).into());
+        }
     }
 }
 
