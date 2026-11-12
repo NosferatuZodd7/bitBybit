@@ -300,7 +300,7 @@ pub fn collect() -> Result<NetworkSnapshot> {
         captured_at: now,
         interfaces,
         routes: routes()?,
-        ras_connections: vec![],
+        ras_connections: super::ras::read(),
         os_connectivity: nlm.machine,
         limitations: vec![],
     })
