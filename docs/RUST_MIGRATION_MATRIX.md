@@ -62,7 +62,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | CASE-04 | Reports (text pt-PT, JSON, redacted) | `QuickReportWriter.cs` | `bitbybit-audio::report` | Logic | redaction | no serials/tokens/user names |
 | CASE-05 | Run proposed actions | `MainViewModel.RunActionAsync` | app + service ops | Todo | integration | confirmation + journal |
 | CASE-06 | Guided fix | `Core/Diagnostics/FixPlanner.cs`, `MainViewModel.Fix.cs` | `bitbybit-domain::fix`, app | Logic | ported 7 tests | never runs without confirmation |
-| DSP-01 | Monitors, EDID, topology (read) | `DisplayQuick.cs`, `EdidQuickParser.cs` | `bitbybit-display::edid`, `platform-windows::display` | Logic | ported 7 tests | audio capability from CEA-861 |
+| DSP-01 | Monitors, EDID, topology (read) | `DisplayQuick.cs`, `EdidQuickParser.cs` | `bitbybit-display::edid`, `platform-windows::display` | WIP | ported 7 tests | audio capability from CEA-861 |
 | DSP-02 | GPU list | `QuickCollector.CollectGpus` | `platform-windows::display` | Todo | CI | adapters with driver |
 | DSP-03 | Mode / topology change with validation and auto-revert | new | `bitbybit-display::change`, `platform-windows::display` | Logic | state machine tests | unconfirmed change reverts |
 
@@ -129,7 +129,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | UI-05 | Drivers: store, backups, compatible, test | store/backups pages | `ui/pages/drivers.slint` | Todo | render | |
 | UI-06 | Cleanup page (multi-select, impact) | cleanup page | `ui/pages/cleanup.slint` | Todo | render | |
 | UI-07 | Audio page | audio page | `ui/pages/audio.slint` | WIP | render | default, enable, volume |
-| UI-08 | Displays page | displays page | `ui/pages/displays.slint` | Todo | render | |
+| UI-08 | Displays page | displays page | `ui/pages/displays.slint` | WIP | render | |
 | UI-09 | Network pages (adapters, hotspot, sharing, NAT, VPN, leak, DHCP, DNS, firewall, clients, topology) | network page (read-only) | `ui/pages/network*.slint` | WIP | render | real data only |
 | UI-10 | Updates page (drivers from Windows Update + app update) | updates page, settings | `ui/pages/updates.slint` | Todo | render | select some/all |
 | UI-11 | Journal page (changes, revert) | changes page | `ui/pages/journal.slint` | WIP | render | revert button only when active |

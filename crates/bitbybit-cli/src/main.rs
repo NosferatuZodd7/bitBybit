@@ -8,12 +8,13 @@ use bitbybit_network::overview::NetworkOverview;
 use bitbybit_security::redact::{mask_mac, redact_instance_id};
 use serde_json::{Value, json};
 
-const USAGE: &str = "usage: bitbybit-cli <network|devices|audio|journal|version> [--raw]";
+const USAGE: &str = "usage: bitbybit-cli <network|devices|displays|audio|journal|version> [--raw]";
 
 #[derive(Debug, PartialEq, Eq)]
 enum Command {
     Network,
     Devices,
+    Displays,
     Audio,
     Journal,
     Version,
@@ -27,6 +28,7 @@ fn parse(args: &[String]) -> Result<(Command, bool), String> {
         [c] => match c.as_str() {
             "network" => Command::Network,
             "devices" => Command::Devices,
+            "displays" => Command::Displays,
             "audio" => Command::Audio,
             "journal" => Command::Journal,
             "version" => Command::Version,
@@ -75,6 +77,8 @@ fn run(command: Command, raw: bool) -> Result<Value, String> {
             let d = platform::devices()?;
             to_json(serde_json::to_value(if raw { d } else { redact_devices(d) }))
         }
+        // PnP-generated DISPLAY ids and EDID facts carry no serial (the EDID serial is not extracted).
+        Command::Displays => to_json(serde_json::to_value(platform::displays()?)),
         Command::Audio => to_json(serde_json::to_value(platform::audio()?)),
     }
 }
@@ -83,9 +87,13 @@ fn run(command: Command, raw: bool) -> Result<Value, String> {
 mod platform {
     use bitbybit_audio::changes::AudioDevices;
     use bitbybit_audio::profile::AudioEndpoint;
-    use bitbybit_domain::snapshot::DeviceSummary;
+    use bitbybit_domain::snapshot::{DeviceSummary, MonitorSummary};
     use bitbybit_network::model::NetworkSnapshot;
     use bitbybit_platform_windows as win;
+
+    pub fn displays() -> Result<Vec<MonitorSummary>, String> {
+        win::display::collect().map_err(|e| e.to_string())
+    }
 
     pub fn network() -> Result<NetworkSnapshot, String> {
         win::net::inventory::collect().map_err(|e| e.to_string())
@@ -101,7 +109,7 @@ mod platform {
 #[cfg(not(windows))]
 mod platform {
     use bitbybit_audio::profile::AudioEndpoint;
-    use bitbybit_domain::snapshot::DeviceSummary;
+    use bitbybit_domain::snapshot::{DeviceSummary, MonitorSummary};
     use bitbybit_network::model::NetworkSnapshot;
 
     const ONLY: &str = "this command reads Windows state and runs only on Windows";
@@ -109,6 +117,9 @@ mod platform {
         Err(ONLY.into())
     }
     pub fn devices() -> Result<Vec<DeviceSummary>, String> {
+        Err(ONLY.into())
+    }
+    pub fn displays() -> Result<Vec<MonitorSummary>, String> {
         Err(ONLY.into())
     }
     pub fn audio() -> Result<Vec<AudioEndpoint>, String> {

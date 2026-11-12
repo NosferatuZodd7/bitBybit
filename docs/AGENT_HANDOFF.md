@@ -48,6 +48,13 @@ A–D, F1, G1, K1, H1 done; E/F2/G2 and H2 in progress (platform-windows + servi
   Sobre. All texts via `Tr.t(key)`. Client requires the pipe server to be LocalSystem unless
   `BITBYBIT_DEV_BROKER=1`. Linux run: `xvfb-run` + `SLINT_BACKEND=winit-software` (needs `libxkbcommon-x11-0`).
   CI Windows job starts the app against the console broker and uploads `app-windows-screenshot`.
+* Owned firewall rules (`platform-windows::net::firewall`, `HNetCfg.FwPolicy2`): read/add/remove/verify by the
+  `bitBybit` group only, revert handler `sharing.firewallRules`; system-changing test opt-in
+  (`BITBYBIT_ALLOW_SYSTEM_CHANGES=1`, CI step). Signed update check over WinHTTP (`bitbybit-updates::check`).
+* Displays (DSP-01, UI-08): `platform-windows::display` reads active CCD paths (`QueryDisplayConfig`, bounded
+  retries) and the monitor EDID from `Enum\<instance>\Device Parameters`; pure helpers in `bitbybit-display::ccd`.
+  Read in the app and `bitbybit-cli displays`, not in the service (CCD belongs to the user's desktop session).
+  Integration test `display_inventory.rs` only checks consistency (a CI runner may have no active path).
 * Fixes found on the Windows runner: signed fixtures need `.gitattributes` binary (CRLF), log pruning must never
   delete the active file. Workspace: 253 tests (Linux) + Windows integration tests.
 * CI: `.github/workflows/rust.yml` (Linux fmt/clippy/test + Windows type-check; Windows clippy/test/release build).
@@ -71,13 +78,12 @@ cargo check --workspace --target x86_64-pc-windows-msvc
 ```
 
 ## Next concrete task
-1. Check the latest `rust` run: the console-broker smoke step must be green (it is the first full app→pipe→
-   dispatcher→IP Helper run). If it fails, read the broker log printed by the step.
-2. Platform: driver facts for network adapters (SetupAPI by `InterfaceGuid`), NLM connectivity, RAS; then devices and
-   drivers inventory (SetupAPI/CfgMgr32) for `bitbybit_domain::snapshot`; then the sharing mutators (WFP, WinNAT, ICS,
-   firewall, hotspot) behind `bitbybit_network::session::SharingBackend` with revert handlers.
-3. Service: register those operations (mutating ones with plans) and revert handlers in `recover_at_start`.
-4. UI (Slint, pt-PT) talking to the broker through `bitbybit_ipc::client::BrokerClient` over `platform::pipe::connect`.
+1. Check the latest `rust` run: `display_inventory`, `firewall_rules` (opt-in step), `update_check`, the smoke step
+   (now also `bitbybit-cli displays`) and the app screenshot (base64 JPEG between `BITBYBIT-SCREENSHOT-BEGIN/END`).
+2. Platform: GPU list (DSP-02), driver store reader, Windows Update search; then the sharing mutators (WFP, WinNAT,
+   ICS, hotspot) behind `bitbybit_network::session::SharingBackend` with revert handlers.
+3. Service: register the mutating operations with plans, and their revert handlers in `recover_at_start`.
+4. UI: remaining pages (diagnosis, drivers, cleanup, updates, sharing, settings, dashboard), themes, headless smoke.
 
 ## Known problems
 * The session worker restarts often: commit and push after every crate.

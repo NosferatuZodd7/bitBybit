@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 bitbybit-audio.workspace = true
 bitbybit-core.workspace = true
+bitbybit-display.workspace = true
 bitbybit-domain.workspace = true
 bitbybit-ipc.workspace = true
 bitbybit-journal.workspace = true
@@ -27,6 +28,8 @@ windows-core = "0.62"
 version = "0.62"
 features = [
     "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Devices_Display",
+    "Win32_Graphics_Gdi",
     "Win32_Devices_Properties",
     "Win32_Foundation",
     "Win32_Media_Audio",

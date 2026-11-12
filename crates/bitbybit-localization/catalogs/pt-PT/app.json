@@ -424,5 +424,14 @@
   "app.devices.noDriver": "Sem informação de controlador",
   "app.audio.defaultSetVerified": "Dispositivo predefinido alterado e verificado, e registado no diário de alterações. As aplicações que já estavam a reproduzir som podem continuar no dispositivo anterior até serem reiniciadas.",
   "app.audio.changeFailed": "Não foi possível alterar o dispositivo de áudio: {0}",
-  "app.audio.unavailable": "O áudio do Windows não está disponível: {0}"
+  "app.audio.unavailable": "O áudio do Windows não está disponível: {0}",
+  "app.displays.unnamed": "Ecrã sem nome",
+  "app.displays.mode": "{0} × {1} · {2} Hz",
+  "app.displays.edid.missing": "EDID não legível",
+  "app.displays.edid.audio": "EDID {0}: anuncia áudio ({1})",
+  "app.displays.edid.noAudio": "EDID {0}: não anuncia áudio",
+  "app.displays.belowNative": "Abaixo do modo nativo do monitor ({0} × {1})",
+  "app.displays.summary": "{0} ecrãs ativos · configuração de ecrãs (CCD) e EDID",
+  "app.displays.unavailable": "Não foi possível ler os ecrãs: {0}",
+  "app.displays.empty": "Nenhum ecrã ativo nesta sessão."
 }

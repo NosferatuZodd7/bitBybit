@@ -73,6 +73,9 @@ jobs:
             $cli = (& target\debug\bitbybit-cli.exe network) -join "`n"
             if ($LASTEXITCODE -ne 0 -or $cli -notmatch '"interfaces"') { throw "bitbybit-cli network failed" }
             Write-Output ("bitbybit-cli network: {0} characters of JSON" -f $cli.Length)
+            $displays = (& target\debug\bitbybit-cli.exe displays) -join "`n"
+            if ($LASTEXITCODE -ne 0) { throw "bitbybit-cli displays failed" }
+            Write-Output "bitbybit-cli displays: $displays"
             # The app itself against the console broker (not LocalSystem, hence the explicit developer opt-in).
             cargo build -p bitbybit-app --locked
             $env:BITBYBIT_DEV_BROKER = '1'

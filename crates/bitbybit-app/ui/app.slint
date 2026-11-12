@@ -79,6 +79,36 @@ component AudioCard inherits Rectangle {
     }
 }
 
+export struct DisplayRow {
+    name: string,
+    connection: string,
+    mode: string,
+    edid: string,
+    warning: string,
+}
+
+component DisplayCard inherits Rectangle {
+    in property <DisplayRow> info;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: root.info.warning != "" ? #c42b1c : Palette.border;
+    background: Palette.control-background;
+    height: layout.preferred-height;
+    layout := VerticalLayout {
+        padding: 10px;
+        spacing: 2px;
+        HorizontalLayout {
+            spacing: 8px;
+            Text { text: root.info.name; font-size: 14px; font-weight: 600; overflow: elide; }
+            Rectangle { }
+            Text { text: root.info.mode; font-size: 12px; }
+        }
+        Text { text: root.info.connection; color: #707070; font-size: 12px; }
+        Text { text: root.info.edid; font-size: 12px; wrap: word-wrap; }
+        if root.info.warning != "": Text { text: root.info.warning; color: #c42b1c; font-size: 12px; wrap: word-wrap; }
+    }
+}
+
 export struct ChangeRow {
     id: string,
     when: string,
@@ -193,6 +223,8 @@ export component AppWindow inherits Window {
     in property <[AudioRow]> audio;
     in property <string> audio-subtitle;
     in property <string> audio-message;
+    in property <[DisplayRow]> displays;
+    in property <string> displays-summary;
     in property <[ChangeRow]> changes;
     in property <string> changes-message;
     callback revert(string);
@@ -218,6 +250,7 @@ export component AppWindow inherits Window {
                 NavItem { label: Tr.t("app.tab.network"); selected: root.page == 0; clicked => { root.page = 0; } }
                 NavItem { label: Tr.t("app.page.devices.title"); selected: root.page == 1; clicked => { root.page = 1; } }
                 NavItem { label: Tr.t("app.page.audio.title"); selected: root.page == 2; clicked => { root.page = 2; } }
+                NavItem { label: Tr.t("app.page.displays.title"); selected: root.page == 5; clicked => { root.page = 5; } }
                 NavItem { label: Tr.t("app.tab.changes"); selected: root.page == 3; clicked => { root.page = 3; } }
                 NavItem { label: Tr.t("app.about.title"); selected: root.page == 4; clicked => { root.page = 4; } }
                 Rectangle { }
@@ -316,6 +349,27 @@ export component AppWindow inherits Window {
                             info: change;
                             revert(id) => { root.revert(id); }
                         }
+                    }
+                }
+            }
+            if root.page == 5: VerticalLayout {
+                spacing: 10px;
+                HorizontalLayout {
+                    spacing: 12px;
+                    VerticalLayout {
+                        Text { text: Tr.t("app.page.displays.title"); font-size: 22px; font-weight: 600; }
+                        Text { text: root.displays-summary; color: #707070; wrap: word-wrap; }
+                    }
+                    VerticalLayout {
+                        alignment: start;
+                        Button { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
+                    }
+                }
+                if root.displays.length == 0: Text { text: Tr.t("app.displays.empty"); color: #707070; }
+                ScrollView {
+                    VerticalLayout {
+                        spacing: 6px;
+                        for display in root.displays: DisplayCard { info: display; }
                     }
                 }
             }

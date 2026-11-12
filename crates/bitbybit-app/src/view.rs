@@ -4,7 +4,7 @@
 use bitbybit_audio::profile::{AudioDataFlow, AudioEndpoint, AudioRoles, EndpointStatus};
 use bitbybit_audio::report::ReportedChange;
 use bitbybit_core::text;
-use bitbybit_domain::snapshot::DeviceSummary;
+use bitbybit_domain::snapshot::{DeviceSummary, MonitorSummary};
 use bitbybit_journal::ChangeStatus;
 use bitbybit_localization::TextCatalog;
 use bitbybit_network::classify::InterfaceKind;
@@ -249,6 +249,80 @@ pub fn change_rows(changes: &[ReportedChange], catalog: &TextCatalog) -> Vec<Cha
         .collect()
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DisplayRow {
+    pub name: String,
+    pub connection: String,
+    pub mode: String,
+    pub edid: String,
+    pub warning: String,
+}
+
+/// Decimal comma for the pt-PT catalog (the only shipped locale).
+fn decimal(value: f64) -> String {
+    value.to_string().replace('.', ",")
+}
+
+/// One row per active display path and the page subtitle.
+pub fn display_rows(monitors: &[MonitorSummary], catalog: &TextCatalog) -> (Vec<DisplayRow>, String) {
+    let rows = monitors
+        .iter()
+        .map(|m| {
+            let name = m
+                .friendly_name
+                .clone()
+                .or_else(|| m.edid_monitor_name.clone())
+                .unwrap_or_else(|| catalog.resolve(&text!("app.displays.unnamed", "Display without a name")));
+            let connection = [m.output_technology_name.clone(), m.source_name.clone()]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .join(" · ");
+            let mode = match (m.width, m.height) {
+                (Some(w), Some(h)) => catalog.resolve(&text!(
+                    "app.displays.mode",
+                    "{0} × {1} · {2} Hz",
+                    w.to_string(),
+                    h.to_string(),
+                    m.refresh_hz.map_or_else(|| "?".to_owned(), decimal)
+                )),
+                _ => String::new(),
+            };
+            let edid = match (m.edid_length, m.edid_announces_audio) {
+                (None, _) => catalog.resolve(&text!("app.displays.edid.missing", "EDID not readable")),
+                (Some(_), Some(true)) => catalog.resolve(&text!(
+                    "app.displays.edid.audio",
+                    "EDID {0}: announces audio ({1})",
+                    m.edid_manufacturer.clone().unwrap_or_default(),
+                    m.edid_audio_formats.clone().unwrap_or_default()
+                )),
+                (Some(_), _) => catalog.resolve(&text!(
+                    "app.displays.edid.noAudio",
+                    "EDID {0}: does not announce audio",
+                    m.edid_manufacturer.clone().unwrap_or_default()
+                )),
+            };
+            let warning = if m.is_below_native_mode() {
+                catalog.resolve(&text!(
+                    "app.displays.belowNative",
+                    "Below the monitor's native mode ({0} × {1})",
+                    m.edid_native_width.unwrap_or_default().to_string(),
+                    m.edid_native_height.unwrap_or_default().to_string()
+                ))
+            } else {
+                String::new()
+            };
+            DisplayRow { name, connection, mode, edid, warning }
+        })
+        .collect();
+    let summary = catalog.resolve(&text!(
+        "app.displays.summary",
+        "{0} active displays · display configuration (CCD) and EDID",
+        monitors.len().to_string()
+    ));
+    (rows, summary)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -442,5 +516,33 @@ mod tests {
         ] {
             assert!(catalog.template(key).is_some(), "{key}");
         }
+    }
+
+    #[test]
+    fn display_rows_show_mode_edid_audio_and_native_mode_warning() {
+        let catalog = TextCatalog::default_catalog();
+        let monitor = MonitorSummary {
+            friendly_name: Some("DELL U2724D".into()),
+            output_technology_name: Some("DisplayPort".into()),
+            source_name: Some(r"\\.\DISPLAY1".into()),
+            is_active: true,
+            width: Some(1920),
+            height: Some(1080),
+            refresh_hz: Some(59.94),
+            edid_length: Some(256),
+            edid_manufacturer: Some("DEL".into()),
+            edid_announces_audio: Some(true),
+            edid_audio_formats: Some("LPCM".into()),
+            edid_native_width: Some(2560),
+            edid_native_height: Some(1440),
+            ..MonitorSummary::default()
+        };
+        let (rows, summary) = display_rows(&[monitor, MonitorSummary::default()], catalog);
+        assert_eq!(rows[0].connection, r"DisplayPort · \\.\DISPLAY1");
+        assert!(rows[0].mode.contains("1920") && rows[0].mode.contains("59,94"), "{}", rows[0].mode);
+        assert!(rows[0].edid.contains("DEL") && rows[0].edid.contains("LPCM"), "{}", rows[0].edid);
+        assert!(rows[0].warning.contains("2560"), "{}", rows[0].warning);
+        assert!(rows[1].mode.is_empty() && rows[1].warning.is_empty() && !rows[1].edid.is_empty());
+        assert!(summary.contains('2'));
     }
 }
