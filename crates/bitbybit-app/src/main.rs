@@ -8,7 +8,7 @@ mod ui {
     slint::include_modules!();
 }
 
-use ui::{AppWindow, AudioRow, DeviceRow, InterfaceRow, Tr};
+use ui::{AppWindow, AudioRow, ChangeRow, DeviceRow, InterfaceRow, Tr};
 
 mod view;
 
@@ -34,6 +34,8 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.on_refresh(move || load(weak.clone()));
     let weak = ui.as_weak();
     ui.on_make_default(move |id| make_default(weak.clone(), id.to_string()));
+    let weak = ui.as_weak();
+    ui.on_revert(move |id| revert(weak.clone(), id.to_string()));
     load(ui.as_weak());
     ui.run()
 }
@@ -50,9 +52,11 @@ fn load(weak: slint::Weak<AppWindow>) {
     std::thread::spawn(move || {
         let result = broker::load();
         let audio = audio::endpoints();
+        let changes = bitbybit_audio::report::ReportedChange::load(&bitbybit_core::paths::AppPaths::from_environment());
         let _ = slint::invoke_from_event_loop(move || {
             let Some(ui) = weak.upgrade() else { return };
             apply_audio(&ui, audio, catalog);
+            apply_changes(&ui, &changes, catalog);
             match result {
                 Ok(data) => apply(&ui, &data, catalog),
                 Err(problem) => {
@@ -84,6 +88,38 @@ fn apply_audio(ui: &AppWindow, audio: Result<Vec<AudioEndpoint>, LocalizedText>,
         }
         Err(problem) => ui.set_audio_subtitle(catalog.resolve(&problem).into()),
     }
+}
+
+fn apply_changes(ui: &AppWindow, changes: &[bitbybit_audio::report::ReportedChange], catalog: &TextCatalog) {
+    let rows: Vec<ChangeRow> = view::change_rows(changes, catalog)
+        .into_iter()
+        .map(|c| ChangeRow {
+            id: c.id.into(),
+            when: c.when.into(),
+            kind: c.kind.into(),
+            description: c.description.into(),
+            status: c.status.into(),
+            scope: c.scope.into(),
+            can_revert: c.can_revert,
+        })
+        .collect();
+    ui.set_changes(ModelRc::from(Rc::new(VecModel::from(rows))));
+}
+
+/// Reverts one user-scope change through the drift-aware coordinator, then reloads everything.
+fn revert(weak: slint::Weak<AppWindow>, id: String) {
+    std::thread::spawn(move || {
+        let catalog = TextCatalog::default_catalog();
+        let message =
+            audio::revert(&id).map_or_else(|p| catalog.resolve(&p), |status| view::status_text(status, catalog));
+        let reload = weak.clone();
+        let _ = slint::invoke_from_event_loop(move || {
+            if let Some(ui) = weak.upgrade() {
+                ui.set_changes_message(message.into());
+            }
+        });
+        load(reload);
+    });
 }
 
 /// Journals, applies and verifies the change in the user's session, then reloads the list.
@@ -225,6 +261,21 @@ mod audio {
             .map_err(|e| text!("app.audio.unavailable", "Windows audio is not available: {0}", e.message))
     }
 
+    /// Outcome status of the revert (Reverted, DriftDetected, TargetGone, RevertFailed).
+    pub fn revert(id: &str) -> Result<bitbybit_journal::ChangeStatus, LocalizedText> {
+        use bitbybit_audio::changes::{DefaultEndpointRevert, EndpointEnabledRevert};
+        let journal = JsonLinesJournal::new(AppPaths::from_environment().user_journal_file());
+        let (a, b) = (DefaultEndpointRevert(&CoreAudio), EndpointEnabledRevert(&CoreAudio));
+        let failed = |why: String| text!("app.audio.changeFailed", "The audio device could not be changed: {0}", why);
+        let outcomes = bitbybit_recovery::RecoveryCoordinator::new(&journal, &[&a, &b])
+            .revert(|r| r.id.to_string() == id, false)
+            .map_err(|e| failed(e.message))?;
+        outcomes
+            .first()
+            .map(|o| o.new_status)
+            .ok_or_else(|| text!("app.changes.notActive", "This change is no longer active."))
+    }
+
     pub fn make_default(id: &str) -> Result<(), LocalizedText> {
         let journal = JsonLinesJournal::new(AppPaths::from_environment().user_journal_file());
         let failed = |why: String| text!("app.audio.changeFailed", "The audio device could not be changed: {0}", why);
@@ -246,6 +297,10 @@ mod audio {
 
     pub fn endpoints() -> Result<Vec<AudioEndpoint>, LocalizedText> {
         Err(text!("app.audio.unavailable", "Windows audio is not available: {0}", "Linux".to_owned()))
+    }
+
+    pub fn revert(_id: &str) -> Result<bitbybit_journal::ChangeStatus, LocalizedText> {
+        Err(text!("app.changes.notActive", "This change is no longer active."))
     }
 
     pub fn make_default(_id: &str) -> Result<(), LocalizedText> {

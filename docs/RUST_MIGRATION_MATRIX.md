@@ -132,7 +132,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | UI-08 | Displays page | displays page | `ui/pages/displays.slint` | Todo | render | |
 | UI-09 | Network pages (adapters, hotspot, sharing, NAT, VPN, leak, DHCP, DNS, firewall, clients, topology) | network page (read-only) | `ui/pages/network*.slint` | WIP | render | real data only |
 | UI-10 | Updates page (drivers from Windows Update + app update) | updates page, settings | `ui/pages/updates.slint` | Todo | render | select some/all |
-| UI-11 | Journal page (changes, revert) | changes page | `ui/pages/journal.slint` | Todo | render | revert button only when active |
+| UI-11 | Journal page (changes, revert) | changes page | `ui/pages/journal.slint` | WIP | render | revert button only when active |
 | UI-12 | Recovery page | new | `ui/pages/recovery.slint` | Todo | render | interrupted operations |
 | UI-13 | Operation queue | new | `ui/pages/queue.slint`, `bitbybit-domain::operations` | Todo | queue tests | state, progress, risk, result |
 | UI-14 | Dashboard | new | `ui/pages/dashboard.slint` | Todo | render | real sources only |

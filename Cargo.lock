@@ -521,6 +521,7 @@ dependencies = [
  "bitbybit-localization",
  "bitbybit-network",
  "bitbybit-platform-windows",
+ "bitbybit-recovery",
  "serde",
  "slint",
  "slint-build",

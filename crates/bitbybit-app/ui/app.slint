@@ -79,6 +79,41 @@ component AudioCard inherits Rectangle {
     }
 }
 
+export struct ChangeRow {
+    id: string,
+    when: string,
+    kind: string,
+    description: string,
+    status: string,
+    scope: string,
+    can-revert: bool,
+}
+
+component ChangeCard inherits Rectangle {
+    in property <ChangeRow> info;
+    callback revert(string);
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Palette.border;
+    background: Palette.control-background;
+    height: layout.preferred-height;
+    layout := HorizontalLayout {
+        padding: 10px;
+        spacing: 12px;
+        VerticalLayout {
+            spacing: 2px;
+            Text { text: root.info.kind; font-size: 14px; font-weight: 600; }
+            Text { text: root.info.description; wrap: word-wrap; font-size: 12px; }
+            Text { text: root.info.when + " · " + root.info.scope + " · " + root.info.status; color: #707070; font-size: 12px; }
+        }
+        Rectangle { }
+        if root.info.can-revert: VerticalLayout {
+            alignment: center;
+            Button { text: Tr.t("app.changes.revert"); clicked => { root.revert(root.info.id); } }
+        }
+    }
+}
+
 component NavItem inherits Rectangle {
     in property <string> label;
     in property <bool> selected;
@@ -158,6 +193,9 @@ export component AppWindow inherits Window {
     in property <[AudioRow]> audio;
     in property <string> audio-subtitle;
     in property <string> audio-message;
+    in property <[ChangeRow]> changes;
+    in property <string> changes-message;
+    callback revert(string);
     callback make-default(string);
     in-out property <int> page: 0;
     callback refresh();
@@ -180,7 +218,8 @@ export component AppWindow inherits Window {
                 NavItem { label: Tr.t("app.tab.network"); selected: root.page == 0; clicked => { root.page = 0; } }
                 NavItem { label: Tr.t("app.page.devices.title"); selected: root.page == 1; clicked => { root.page = 1; } }
                 NavItem { label: Tr.t("app.page.audio.title"); selected: root.page == 2; clicked => { root.page = 2; } }
-                NavItem { label: Tr.t("app.about.title"); selected: root.page == 3; clicked => { root.page = 3; } }
+                NavItem { label: Tr.t("app.tab.changes"); selected: root.page == 3; clicked => { root.page = 3; } }
+                NavItem { label: Tr.t("app.about.title"); selected: root.page == 4; clicked => { root.page = 4; } }
                 Rectangle { }
             }
         }
@@ -256,6 +295,31 @@ export component AppWindow inherits Window {
                 }
             }
             if root.page == 3: VerticalLayout {
+                spacing: 10px;
+                HorizontalLayout {
+                    spacing: 12px;
+                    VerticalLayout {
+                        Text { text: Tr.t("app.tab.changes"); font-size: 22px; font-weight: 600; }
+                        Text { text: Tr.t("app.changes.intro"); color: #707070; wrap: word-wrap; }
+                    }
+                    VerticalLayout {
+                        alignment: start;
+                        Button { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
+                    }
+                }
+                if root.changes-message != "": Text { text: root.changes-message; wrap: word-wrap; font-size: 13px; }
+                if root.changes.length == 0: Text { text: Tr.t("app.changes.empty"); color: #707070; }
+                ScrollView {
+                    VerticalLayout {
+                        spacing: 6px;
+                        for change in root.changes: ChangeCard {
+                            info: change;
+                            revert(id) => { root.revert(id); }
+                        }
+                    }
+                }
+            }
+            if root.page == 4: VerticalLayout {
                 spacing: 8px;
                 Text { text: Tr.t("app.about.title"); font-size: 22px; font-weight: 600; }
                 Text { text: root.about-version; wrap: word-wrap; }

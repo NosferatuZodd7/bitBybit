@@ -2,8 +2,10 @@
 //! the catalog (pt-PT) with the English fallback in code.
 
 use bitbybit_audio::profile::{AudioDataFlow, AudioEndpoint, AudioRoles, EndpointStatus};
+use bitbybit_audio::report::ReportedChange;
 use bitbybit_core::text;
 use bitbybit_domain::snapshot::DeviceSummary;
+use bitbybit_journal::ChangeStatus;
 use bitbybit_localization::TextCatalog;
 use bitbybit_network::classify::InterfaceKind;
 use bitbybit_network::connectivity::evaluate;
@@ -187,6 +189,66 @@ pub fn audio_rows(endpoints: &[AudioEndpoint], catalog: &TextCatalog) -> (Vec<Au
     (rows, subtitle)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangeRow {
+    pub id: String,
+    pub when: String,
+    pub kind: String,
+    pub description: String,
+    pub status: String,
+    pub scope: String,
+    pub can_revert: bool,
+}
+
+/// Change kinds the app can revert in the user's session (machine-wide ones go through the service).
+pub const USER_REVERTIBLE_KINDS: [&str; 2] =
+    [bitbybit_audio::changes::DEFAULT_ENDPOINT_KIND, bitbybit_audio::changes::ENDPOINT_ENABLED_KIND];
+
+pub fn status_text(status: ChangeStatus, catalog: &TextCatalog) -> String {
+    catalog.resolve(&match status {
+        ChangeStatus::Applied => text!("app.changes.status.applied", "Applied"),
+        ChangeStatus::Reverted => text!("app.changes.status.reverted", "Reverted"),
+        ChangeStatus::RevertFailed => text!("app.changes.status.revertFailed", "Failed (needs attention)"),
+        ChangeStatus::TargetGone => text!("app.changes.status.gone", "The object no longer exists"),
+        ChangeStatus::DriftDetected => text!("app.changes.status.drift", "Changed externally (not reverted)"),
+        ChangeStatus::Superseded => text!("app.changes.status.superseded", "Superseded"),
+    })
+}
+
+/// Newest first.
+pub fn change_rows(changes: &[ReportedChange], catalog: &TextCatalog) -> Vec<ChangeRow> {
+    let mut sorted: Vec<&ReportedChange> = changes.iter().collect();
+    sorted.sort_by_key(|c| std::cmp::Reverse(c.record.created_at));
+    sorted
+        .into_iter()
+        .map(|c| {
+            let r = &c.record;
+            let kind = match r.target_kind.as_str() {
+                bitbybit_audio::changes::DEFAULT_ENDPOINT_KIND => {
+                    catalog.resolve(&text!("app.changes.kind.audioDefault", "Default audio device"))
+                }
+                bitbybit_audio::changes::ENDPOINT_ENABLED_KIND => {
+                    catalog.resolve(&text!("app.changes.kind.audioEnabled", "Enable/disable audio device"))
+                }
+                other => other.to_owned(),
+            };
+            ChangeRow {
+                id: r.id.to_string(),
+                when: bitbybit_audio::case::format_date(Some(r.created_at)),
+                kind,
+                description: r.description.clone(),
+                status: status_text(r.status, catalog),
+                scope: catalog.resolve(&if c.user_scope {
+                    text!("app.changes.scope.user", "User")
+                } else {
+                    text!("app.changes.scope.machine", "Computer")
+                }),
+                can_revert: r.is_active() && c.user_scope && USER_REVERTIBLE_KINDS.contains(&r.target_kind.as_str()),
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,6 +378,44 @@ mod tests {
             ("Predefinido · Comunicações", "Desligado", "Gravação")
         );
         assert!(subtitle.starts_with("4 dispositivos"));
+    }
+
+    #[test]
+    fn changes_newest_first_and_only_active_user_audio_changes_are_revertible() {
+        use bitbybit_journal::{ChangeCategory, ChangeRecord};
+        let catalog = TextCatalog::default_catalog();
+        let at = |m: i64| time::OffsetDateTime::UNIX_EPOCH + time::Duration::minutes(m);
+        let mut reverted = ChangeRecord::new(
+            ChangeCategory::Audio,
+            bitbybit_audio::changes::DEFAULT_ENDPOINT_KIND,
+            "Render/DefaultDevice",
+            "older",
+            at(1),
+        );
+        reverted.status = ChangeStatus::Reverted;
+        let active = ChangeRecord::new(
+            ChangeCategory::Audio,
+            bitbybit_audio::changes::DEFAULT_ENDPOINT_KIND,
+            "Render/DefaultDevice",
+            "newer",
+            at(2),
+        );
+        let machine = ChangeRecord::new(ChangeCategory::Network, "sharing.nat", "bitBybit-share", "nat", at(3));
+        let rows = change_rows(
+            &[
+                ReportedChange { record: reverted, user_scope: true },
+                ReportedChange { record: active, user_scope: true },
+                ReportedChange { record: machine, user_scope: false },
+            ],
+            catalog,
+        );
+        assert_eq!(rows.iter().map(|r| r.description.as_str()).collect::<Vec<_>>(), ["nat", "newer", "older"]);
+        assert_eq!(rows.iter().map(|r| r.can_revert).collect::<Vec<_>>(), [false, true, false]);
+        assert_eq!(
+            (rows[1].kind.as_str(), rows[1].status.as_str(), rows[0].scope.as_str()),
+            ("Dispositivo de áudio predefinido", "Aplicada", "Computador")
+        );
+        assert_eq!(rows[2].status, "Revertida");
     }
 
     #[test]
