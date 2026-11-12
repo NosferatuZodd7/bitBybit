@@ -30,8 +30,22 @@ use slint::{ComponentHandle, ModelRc, VecModel};
 use std::rc::Rc;
 
 fn main() -> Result<(), slint::PlatformError> {
+    let paths = bitbybit_core::paths::AppPaths::from_environment();
+    // Same redacting, size-capped rolling log as the service; failures here must not stop the app.
+    let _ = bitbybit_security::logging::FileLogger::new(paths.user_logs(), "app", log::LevelFilter::Info).install();
+    log::info!("bitBybit app {} starting", version());
     let catalog = TextCatalog::default_catalog();
     let ui = AppWindow::new()?;
+    ui.set_logs_text(
+        catalog
+            .resolve(&text!(
+                "app.about.logs",
+                "Logs (passwords and keys are removed): app in {0}, service in {1}.",
+                paths.user_logs().display().to_string(),
+                paths.machine_logs().display().to_string()
+            ))
+            .into(),
+    );
     ui.global::<Tr>().on_t(move |key| catalog.get(&key, &[]).into());
     ui.set_version(version().into());
     ui.set_about_version(

@@ -19,6 +19,7 @@ bitbybit-domain.workspace = true
 bitbybit-drivers.workspace = true
 bitbybit-journal.workspace = true
 bitbybit-localization.workspace = true
+bitbybit-security.workspace = true
 bitbybit-network.workspace = true
 bitbybit-updates.workspace = true
 bitbybit-ipc.workspace = true

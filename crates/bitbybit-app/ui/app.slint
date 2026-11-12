@@ -274,6 +274,7 @@ component FieldRow inherits HorizontalLayout {
 export component AppWindow inherits Window {
     in property <string> version;
     in property <string> about-version;
+    in property <string> logs-text;
     in property <int> broker-state;
     in property <string> broker-message;
     in property <string> route-summary;
@@ -841,6 +842,7 @@ export component AppWindow inherits Window {
                         Body { text: root.about-version; font-size: Theme.font-emphasis; font-weight: 600; }
                         Secondary { text: Tr.t("app.settings.aboutText"); }
                         Secondary { text: Tr.t("app.about.privacy"); }
+                        Secondary { text: root.logs-text; }
                         HorizontalLayout {
                             spacing: Theme.space-s;
                             alignment: start;

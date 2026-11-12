@@ -524,6 +524,7 @@ dependencies = [
  "bitbybit-network",
  "bitbybit-platform-windows",
  "bitbybit-recovery",
+ "bitbybit-security",
  "bitbybit-service",
  "bitbybit-updates",
  "log",
