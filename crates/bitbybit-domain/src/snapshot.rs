@@ -308,6 +308,51 @@ pub struct WindowsUpdateEntry {
     pub operation: Option<String>,
 }
 
+impl WindowsUpdateEntry {
+    /// Titles that can be a driver update (the C# collector's filter).
+    const DRIVER_TITLE_HINTS: [&str; 11] = [
+        "Realtek",
+        "NVIDIA",
+        "Intel",
+        "AMD",
+        "Advanced Micro Devices",
+        " - Display",
+        " - MEDIA",
+        " - Extension",
+        " - SoftwareComponent",
+        "Audio",
+        "Driver",
+    ];
+
+    /// One `IUpdateHistoryEntry` (OLE `DATE` in UTC, `OperationResultCode`, `UpdateOperation`); `None` when the
+    /// title cannot be a driver.
+    pub fn from_history(title: String, ole_date: f64, result_code: i32, operation: i32) -> Option<Self> {
+        let lower = title.to_lowercase();
+        if !Self::DRIVER_TITLE_HINTS.iter().any(|h| lower.contains(&h.to_lowercase())) {
+            return None;
+        }
+        // DATE: days since 1899-12-30 00:00, the fraction is the time of day.
+        let epoch = time::macros::datetime!(1899-12-30 0:00 UTC);
+        let date = (ole_date.is_finite() && ole_date > 0.0)
+            .then(|| epoch + time::Duration::seconds_f64((ole_date * 86_400.0).round()));
+        let result = match result_code {
+            0 => "NotStarted".to_owned(),
+            1 => "InProgress".to_owned(),
+            2 => "Succeeded".to_owned(),
+            3 => "SucceededWithErrors".to_owned(),
+            4 => "Failed".to_owned(),
+            5 => "Aborted".to_owned(),
+            other => other.to_string(),
+        };
+        let operation = match operation {
+            1 => "Installation",
+            2 => "Uninstallation",
+            _ => "Other",
+        };
+        Some(Self { date, title, result: Some(result), operation: Some(operation.to_owned()) })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct SetupApiSectionSummary {
@@ -509,5 +554,21 @@ mod tests {
         assert_eq!(ServiceSummary::status_name(4), "Running");
         assert_eq!(ServiceSummary::start_type_name(2), "Automatic");
         assert_eq!(ServiceSummary::status_name(9), "Unknown (9)");
+    }
+
+    #[test]
+    fn windows_update_history_keeps_driver_titles_with_utc_dates() {
+        let e =
+            WindowsUpdateEntry::from_history("Realtek Semiconductor Corp. - MEDIA - 6.0.9600.1".into(), 46_000.5, 2, 1)
+                .unwrap();
+        assert_eq!(e.date, Some(time::macros::datetime!(2025-12-09 12:00 UTC)));
+        assert_eq!((e.result.as_deref(), e.operation.as_deref()), (Some("Succeeded"), Some("Installation")));
+        assert!(
+            WindowsUpdateEntry::from_history("2026-10 Cumulative Update for Windows 11".into(), 1.0, 2, 1).is_none()
+        );
+        assert_eq!(
+            WindowsUpdateEntry::from_history("Intel driver".into(), 0.0, 9, 3).unwrap().result.as_deref(),
+            Some("9")
+        );
     }
 }

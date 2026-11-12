@@ -6,11 +6,12 @@ use crate::reg;
 use bitbybit_audio::changes::AudioDevices;
 use bitbybit_domain::snapshot::{
     CollectionIssue, DenyDeviceIdEntry, DeviceInstallRestrictionsState, GpuSummary, ServiceSummary,
-    SetupApiSectionSummary, Snapshot, StorePackageSummary, SystemSummary,
+    SetupApiSectionSummary, Snapshot, StorePackageSummary, SystemSummary, WindowsUpdateEntry,
 };
 use bitbybit_drivers::{inf, names::is_published_inf_name, setupapi};
 use std::path::{Path, PathBuf};
 use time::OffsetDateTime;
+use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance};
 use windows::Win32::System::Services::{
     CloseServiceHandle, OpenSCManagerW, OpenServiceW, QUERY_SERVICE_CONFIGW, QueryServiceConfigW, QueryServiceStatus,
     SC_HANDLE, SC_MANAGER_CONNECT, SERVICE_QUERY_CONFIG, SERVICE_QUERY_STATUS, SERVICE_STATUS,
@@ -19,6 +20,7 @@ use windows::Win32::System::SystemInformation::{
     GetNativeSystemInfo, GetTickCount64, GetWindowsDirectoryW, PROCESSOR_ARCHITECTURE_AMD64,
     PROCESSOR_ARCHITECTURE_ARM64, SYSTEM_INFO,
 };
+use windows::Win32::System::UpdateAgent::{IUpdateSession, UpdateSession};
 use windows::core::{HSTRING, PCWSTR};
 
 const INTERESTING_SERVICES: [&str; 7] =
@@ -223,6 +225,39 @@ fn driver_store(windows: &Path) -> std::result::Result<Vec<StorePackageSummary>,
     Ok(packages)
 }
 
+/// Driver-looking entries of the Windows Update history (newest first, as the agent returns them), read through
+/// the Update Agent COM API. Read-only: only the searcher's history is queried.
+fn windows_update_history() -> std::result::Result<Vec<WindowsUpdateEntry>, String> {
+    crate::com::init();
+    let failed = |api: &str, e: windows::core::Error| format!("{api}: {}", e.message());
+    // SAFETY: COM calls on interfaces created here; every result is checked.
+    unsafe {
+        let session: IUpdateSession =
+            CoCreateInstance(&UpdateSession, None, CLSCTX_ALL).map_err(|e| failed("UpdateSession", e))?;
+        let searcher = session.CreateUpdateSearcher().map_err(|e| failed("CreateUpdateSearcher", e))?;
+        let total = searcher.GetTotalHistoryCount().map_err(|e| failed("GetTotalHistoryCount", e))?;
+        let count = total.clamp(0, 2000);
+        if count == 0 {
+            return Ok(vec![]);
+        }
+        let history = searcher.QueryHistory(0, count).map_err(|e| failed("QueryHistory", e))?;
+        let n = history.Count().map_err(|e| failed("Count", e))?;
+        let mut out = Vec::new();
+        for i in 0..n {
+            let Ok(entry) = history.get_Item(i) else { continue };
+            let title = entry.Title().map(|t| t.to_string()).unwrap_or_default();
+            let date = entry.Date().unwrap_or(0.0);
+            let result = entry.ResultCode().map(|r| r.0).unwrap_or(-1);
+            let operation = entry.Operation().map(|o| o.0).unwrap_or(0);
+            out.extend(WindowsUpdateEntry::from_history(title, date, result, operation));
+            if out.len() >= 400 {
+                break;
+            }
+        }
+        Ok(out)
+    }
+}
+
 /// Device installation restrictions (read-only; standard users can read `SOFTWARE\Policies`).
 fn install_policy() -> DeviceInstallRestrictionsState {
     if !reg::exists(RESTRICTIONS) {
@@ -277,8 +312,10 @@ pub fn collect(app_version: &str) -> Snapshot {
         }
         Err(e) => s.issues.push(issue("network", e.to_string())),
     }
-    for area in ["windowsUpdate", "pnpEvents"] {
-        s.issues.push(issue(area, NOT_YET));
+    match windows_update_history() {
+        Ok(history) => s.windows_update_history = history,
+        Err(e) => s.issues.push(issue("windowsUpdate", e)),
     }
+    s.issues.push(issue("pnpEvents", NOT_YET));
     s
 }
