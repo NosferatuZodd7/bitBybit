@@ -141,7 +141,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | UI-17 | Background mode (tray) for the audio profile | `App.xaml.cs` | service watchdog (SVC-06) | Todo | — | replaced by the service |
 | UI-18 | Headless smoke test with contrast check | `UiSmoke.cs` | `bitbybit-app::smoke` | Todo | CI + Linux | every page rendered |
 | CLI-01 | `diagnose` report | `CliEntryPoint.cs` | `bitbybit-cli` | Todo | arg tests, CI run | text + JSON |
-| CLI-02 | Extended CLI (network, devices, journal, service, capabilities) | new | `bitbybit-cli` | Todo | arg tests | read-only by default |
+| CLI-02 | Extended CLI (network, devices, journal, service, capabilities) | new | `bitbybit-cli` | WIP | arg tests | read-only by default |
 
 ## Completion
 

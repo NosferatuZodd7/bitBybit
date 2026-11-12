@@ -28,6 +28,7 @@ bitbybit-updates = { path = "crates/bitbybit-updates" }
 bitbybit-ipc = { path = "crates/bitbybit-ipc" }
 bitbybit-platform-windows = { path = "crates/bitbybit-platform-windows" }
 bitbybit-service = { path = "crates/bitbybit-service" }
+bitbybit-cli = { path = "crates/bitbybit-cli" }
 slint = "1.18.1"
 slint-build = "1.18.1"
 

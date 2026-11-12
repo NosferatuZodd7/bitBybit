@@ -550,6 +550,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "bitbybit-cli"
+version = "0.7.0"
+dependencies = [
+ "bitbybit-audio",
+ "bitbybit-core",
+ "bitbybit-domain",
+ "bitbybit-network",
+ "bitbybit-platform-windows",
+ "bitbybit-security",
+ "serde_json",
+ "time",
+]
+
+[[package]]
 name = "bitbybit-core"
 version = "0.7.0"
 dependencies = [
