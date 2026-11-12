@@ -125,18 +125,18 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | UI-01 | Shell, navigation, status, toasts, banners | `MainWindow.xaml`, `MainViewModel.Shell.cs` | `ui/app.slint`, `ui/components` | WIP | headless render | all pages reachable |
 | UI-02 | Themes (light, dark, glass, custom accent) | `Theme.xaml`, `ThemeManager.cs`, `ThemePalette.cs` | `ui/theme.slint`, `bitbybit-app::theme` | Todo | palette tests, contrast check | readable in every theme |
 | UI-03 | Diagnosis page (findings, evidence, actions) | case page | `ui/pages/diagnosis.slint` | Todo | render | evidence kinds visually distinct |
-| UI-04 | Devices page + details | devices page, device window | `ui/pages/devices.slint` | Todo | render | search, categories, actions |
+| UI-04 | Devices page + details | devices page, device window | `ui/pages/devices.slint` | WIP | render | search, categories, actions |
 | UI-05 | Drivers: store, backups, compatible, test | store/backups pages | `ui/pages/drivers.slint` | Todo | render | |
 | UI-06 | Cleanup page (multi-select, impact) | cleanup page | `ui/pages/cleanup.slint` | Todo | render | |
-| UI-07 | Audio page | audio page | `ui/pages/audio.slint` | Todo | render | default, enable, volume |
+| UI-07 | Audio page | audio page | `ui/pages/audio.slint` | WIP | render | default, enable, volume |
 | UI-08 | Displays page | displays page | `ui/pages/displays.slint` | Todo | render | |
-| UI-09 | Network pages (adapters, hotspot, sharing, NAT, VPN, leak, DHCP, DNS, firewall, clients, topology) | network page (read-only) | `ui/pages/network*.slint` | Todo | render | real data only |
+| UI-09 | Network pages (adapters, hotspot, sharing, NAT, VPN, leak, DHCP, DNS, firewall, clients, topology) | network page (read-only) | `ui/pages/network*.slint` | WIP | render | real data only |
 | UI-10 | Updates page (drivers from Windows Update + app update) | updates page, settings | `ui/pages/updates.slint` | Todo | render | select some/all |
 | UI-11 | Journal page (changes, revert) | changes page | `ui/pages/journal.slint` | Todo | render | revert button only when active |
 | UI-12 | Recovery page | new | `ui/pages/recovery.slint` | Todo | render | interrupted operations |
 | UI-13 | Operation queue | new | `ui/pages/queue.slint`, `bitbybit-domain::operations` | Todo | queue tests | state, progress, risk, result |
 | UI-14 | Dashboard | new | `ui/pages/dashboard.slint` | Todo | render | real sources only |
-| UI-15 | Settings and About | `SettingsWindow.xaml` | `ui/pages/settings.slint`, `about.slint` | Todo | render | channel, theme, licences |
+| UI-15 | Settings and About | `SettingsWindow.xaml` | `ui/pages/settings.slint`, `about.slint` | WIP | render | channel, theme, licences |
 | UI-16 | History and system pages, app log | history/system/log pages | `ui/pages/diagnosis.slint` tabs | Todo | render | |
 | UI-17 | Background mode (tray) for the audio profile | `App.xaml.cs` | service watchdog (SVC-06) | Todo | — | replaced by the service |
 | UI-18 | Headless smoke test with contrast check | `UiSmoke.cs` | `bitbybit-app::smoke` | Todo | CI + Linux | every page rendered |

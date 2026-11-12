@@ -8,10 +8,11 @@ mod ui {
     slint::include_modules!();
 }
 
-use ui::{AppWindow, DeviceRow, InterfaceRow, Tr};
+use ui::{AppWindow, AudioRow, DeviceRow, InterfaceRow, Tr};
 
 mod view;
 
+use bitbybit_audio::profile::AudioEndpoint;
 use bitbybit_core::{LocalizedText, text, version};
 use bitbybit_domain::snapshot::DeviceSummary;
 use bitbybit_localization::TextCatalog;
@@ -31,6 +32,8 @@ fn main() -> Result<(), slint::PlatformError> {
     );
     let weak = ui.as_weak();
     ui.on_refresh(move || load(weak.clone()));
+    let weak = ui.as_weak();
+    ui.on_make_default(move |id| make_default(weak.clone(), id.to_string()));
     load(ui.as_weak());
     ui.run()
 }
@@ -46,8 +49,10 @@ fn load(weak: slint::Weak<AppWindow>) {
     }
     std::thread::spawn(move || {
         let result = broker::load();
+        let audio = audio::endpoints();
         let _ = slint::invoke_from_event_loop(move || {
             let Some(ui) = weak.upgrade() else { return };
+            apply_audio(&ui, audio, catalog);
             match result {
                 Ok(data) => apply(&ui, &data, catalog),
                 Err(problem) => {
@@ -55,6 +60,48 @@ fn load(weak: slint::Weak<AppWindow>) {
                     ui.set_broker_message(catalog.resolve(&problem).into());
                 }
             }
+        });
+    });
+}
+
+fn apply_audio(ui: &AppWindow, audio: Result<Vec<AudioEndpoint>, LocalizedText>, catalog: &TextCatalog) {
+    match audio {
+        Ok(endpoints) => {
+            let (rows, subtitle) = view::audio_rows(&endpoints, catalog);
+            let rows: Vec<AudioRow> = rows
+                .into_iter()
+                .map(|r| AudioRow {
+                    id: r.id.into(),
+                    name: r.name.into(),
+                    flow: r.flow.into(),
+                    state: r.state.into(),
+                    defaults: r.defaults.into(),
+                    can_make_default: r.can_make_default,
+                })
+                .collect();
+            ui.set_audio(ModelRc::from(Rc::new(VecModel::from(rows))));
+            ui.set_audio_subtitle(subtitle.into());
+        }
+        Err(problem) => ui.set_audio_subtitle(catalog.resolve(&problem).into()),
+    }
+}
+
+/// Journals, applies and verifies the change in the user's session, then reloads the list.
+fn make_default(weak: slint::Weak<AppWindow>, id: String) {
+    std::thread::spawn(move || {
+        let catalog = TextCatalog::default_catalog();
+        let message = match audio::make_default(&id) {
+            Ok(()) => text!(
+                "app.audio.defaultSetVerified",
+                "Default device changed, verified and recorded in the change journal."
+            ),
+            Err(problem) => problem,
+        };
+        let endpoints = audio::endpoints();
+        let _ = slint::invoke_from_event_loop(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            ui.set_audio_message(catalog.resolve(&message).into());
+            apply_audio(&ui, endpoints, catalog);
         });
     });
 }
@@ -159,5 +206,49 @@ mod broker {
 
     pub fn load() -> Result<Loaded, LocalizedText> {
         Err(text!("app.broker.onlyWindows", "The bitBybit service exists only on Windows."))
+    }
+}
+
+/// Audio lives in the user's session (default devices are per user): read and changed here, not by the service.
+#[cfg(windows)]
+mod audio {
+    use super::*;
+    use bitbybit_audio::changes::{AudioDevices, JournaledAudioChanges};
+    use bitbybit_audio::profile::AudioRoles;
+    use bitbybit_core::paths::AppPaths;
+    use bitbybit_journal::JsonLinesJournal;
+    use bitbybit_platform_windows::audio::CoreAudio;
+
+    pub fn endpoints() -> Result<Vec<AudioEndpoint>, LocalizedText> {
+        CoreAudio
+            .endpoints()
+            .map_err(|e| text!("app.audio.unavailable", "Windows audio is not available: {0}", e.message))
+    }
+
+    pub fn make_default(id: &str) -> Result<(), LocalizedText> {
+        let journal = JsonLinesJournal::new(AppPaths::from_environment().user_journal_file());
+        let failed = |why: String| text!("app.audio.changeFailed", "The audio device could not be changed: {0}", why);
+        match JournaledAudioChanges::new(&CoreAudio, &journal).set_default(
+            id,
+            AudioRoles::DEFAULT_DEVICE,
+            time::OffsetDateTime::now_utc(),
+        ) {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(failed("Windows did not report the new default device".into())),
+            Err(e) => Err(failed(e.message)),
+        }
+    }
+}
+
+#[cfg(not(windows))]
+mod audio {
+    use super::*;
+
+    pub fn endpoints() -> Result<Vec<AudioEndpoint>, LocalizedText> {
+        Err(text!("app.audio.unavailable", "Windows audio is not available: {0}", "Linux".to_owned()))
+    }
+
+    pub fn make_default(_id: &str) -> Result<(), LocalizedText> {
+        Err(text!("app.audio.changeFailed", "The audio device could not be changed: {0}", "Linux".to_owned()))
     }
 }

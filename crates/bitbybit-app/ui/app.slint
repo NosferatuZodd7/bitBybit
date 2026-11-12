@@ -45,6 +45,40 @@ component DeviceCard inherits Rectangle {
     }
 }
 
+export struct AudioRow {
+    id: string,
+    name: string,
+    flow: string,
+    state: string,
+    defaults: string,
+    can-make-default: bool,
+}
+
+component AudioCard inherits Rectangle {
+    in property <AudioRow> info;
+    callback make-default(string);
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Palette.border;
+    background: Palette.control-background;
+    height: layout.preferred-height;
+    layout := HorizontalLayout {
+        padding: 10px;
+        spacing: 12px;
+        VerticalLayout {
+            spacing: 2px;
+            Text { text: root.info.name; font-size: 14px; font-weight: 600; overflow: elide; }
+            Text { text: root.info.flow + " · " + root.info.state; color: #707070; font-size: 12px; }
+            if root.info.defaults != "": Text { text: root.info.defaults; color: Palette.accent-background; font-size: 12px; }
+        }
+        Rectangle { }
+        if root.info.can-make-default: VerticalLayout {
+            alignment: center;
+            Button { text: Tr.t("app.audio.makeDefault"); clicked => { root.make-default(root.info.id); } }
+        }
+    }
+}
+
 component NavItem inherits Rectangle {
     in property <string> label;
     in property <bool> selected;
@@ -121,6 +155,10 @@ export component AppWindow inherits Window {
     in property <[InterfaceRow]> interfaces;
     in property <[DeviceRow]> devices;
     in property <string> devices-summary;
+    in property <[AudioRow]> audio;
+    in property <string> audio-subtitle;
+    in property <string> audio-message;
+    callback make-default(string);
     in-out property <int> page: 0;
     callback refresh();
 
@@ -141,7 +179,8 @@ export component AppWindow inherits Window {
                 Text { text: "bitBybit"; font-size: 20px; font-weight: 700; height: 40px; vertical-alignment: center; }
                 NavItem { label: Tr.t("app.tab.network"); selected: root.page == 0; clicked => { root.page = 0; } }
                 NavItem { label: Tr.t("app.page.devices.title"); selected: root.page == 1; clicked => { root.page = 1; } }
-                NavItem { label: Tr.t("app.about.title"); selected: root.page == 2; clicked => { root.page = 2; } }
+                NavItem { label: Tr.t("app.page.audio.title"); selected: root.page == 2; clicked => { root.page = 2; } }
+                NavItem { label: Tr.t("app.about.title"); selected: root.page == 3; clicked => { root.page = 3; } }
                 Rectangle { }
             }
         }
@@ -192,6 +231,31 @@ export component AppWindow inherits Window {
                 }
             }
             if root.page == 2: VerticalLayout {
+                spacing: 10px;
+                HorizontalLayout {
+                    spacing: 12px;
+                    VerticalLayout {
+                        Text { text: Tr.t("app.page.audio.title"); font-size: 22px; font-weight: 600; }
+                        Text { text: root.audio-subtitle; color: #707070; wrap: word-wrap; }
+                    }
+                    VerticalLayout {
+                        alignment: start;
+                        Button { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
+                    }
+                }
+                Text { text: Tr.t("app.action.undocumented"); wrap: word-wrap; color: #707070; font-size: 12px; }
+                if root.audio-message != "": Text { text: root.audio-message; wrap: word-wrap; font-size: 13px; }
+                ScrollView {
+                    VerticalLayout {
+                        spacing: 6px;
+                        for endpoint in root.audio: AudioCard {
+                            info: endpoint;
+                            make-default(id) => { root.make-default(id); }
+                        }
+                    }
+                }
+            }
+            if root.page == 3: VerticalLayout {
                 spacing: 8px;
                 Text { text: Tr.t("app.about.title"); font-size: 22px; font-weight: 600; }
                 Text { text: root.about-version; wrap: word-wrap; }

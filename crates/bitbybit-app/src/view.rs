@@ -1,6 +1,7 @@
 //! Platform-neutral view-model: turns broker data into the texts the Slint UI shows. Every string comes from
 //! the catalog (pt-PT) with the English fallback in code.
 
+use bitbybit_audio::profile::{AudioDataFlow, AudioEndpoint, AudioRoles, EndpointStatus};
 use bitbybit_core::text;
 use bitbybit_domain::snapshot::DeviceSummary;
 use bitbybit_localization::TextCatalog;
@@ -133,6 +134,59 @@ pub fn device_rows(devices: &[DeviceSummary], catalog: &TextCatalog) -> (Vec<Dev
     (rows, summary)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AudioRow {
+    pub id: String,
+    pub name: String,
+    pub flow: String,
+    pub state: String,
+    pub defaults: String,
+    pub can_make_default: bool,
+}
+
+/// Render before capture, active first, then by name; and the page subtitle.
+pub fn audio_rows(endpoints: &[AudioEndpoint], catalog: &TextCatalog) -> (Vec<AudioRow>, String) {
+    let mut sorted: Vec<&AudioEndpoint> = endpoints.iter().collect();
+    sorted.sort_by_key(|e| {
+        (e.flow != AudioDataFlow::Render, e.state != EndpointStatus::Active, e.display_name().to_lowercase())
+    });
+    let rows = sorted
+        .into_iter()
+        .map(|e| {
+            let mut defaults = Vec::new();
+            if e.default_roles.console || e.default_roles.multimedia {
+                defaults.push(catalog.resolve(&text!("app.audio.default.console", "Default")));
+            }
+            if e.default_roles.communications {
+                defaults.push(catalog.resolve(&text!("app.audio.default.communications", "Communications")));
+            }
+            AudioRow {
+                id: e.id.clone(),
+                name: e.display_name(),
+                flow: catalog.resolve(&match e.flow {
+                    AudioDataFlow::Render => text!("app.audio.flow.render", "Playback"),
+                    AudioDataFlow::Capture => text!("app.audio.flow.capture", "Recording"),
+                }),
+                state: catalog.resolve(&match e.state {
+                    EndpointStatus::Active => text!("app.audio.state.active", "Active"),
+                    EndpointStatus::Disabled => text!("app.audio.state.disabled", "Disabled"),
+                    EndpointStatus::Unplugged => text!("app.audio.state.unplugged", "Unplugged"),
+                    EndpointStatus::NotPresent => text!("app.audio.state.notPresent", "Not present"),
+                }),
+                defaults: defaults.join(" · "),
+                can_make_default: e.state == EndpointStatus::Active
+                    && !AudioRoles::DEFAULT_DEVICE.covered_by(e.default_roles),
+            }
+        })
+        .collect();
+    let subtitle = catalog.resolve(&text!(
+        "app.page.audio.subtitle",
+        "{0} playback and recording devices, in every state · Core Audio",
+        endpoints.len().to_string()
+    ));
+    (rows, subtitle)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,6 +284,38 @@ mod tests {
         assert_eq!(rows[1].status, "A funcionar corretamente");
         assert_eq!(rows[1].driver, "Realtek · 6.0.9 · oem12.inf");
         assert_eq!(summary, "2 dispositivos ligados (1 com problema) · 1 ausentes · Plug and Play");
+    }
+
+    #[test]
+    fn audio_rows_offer_make_default_only_for_active_non_default_outputs() {
+        let catalog = TextCatalog::default_catalog();
+        let e = |id: &str, flow, state, default: bool| AudioEndpoint {
+            id: id.into(),
+            flow,
+            state,
+            friendly_name: Some(id.into()),
+            default_roles: if default { AudioRoles::ALL } else { AudioRoles::NONE },
+            ..AudioEndpoint::default()
+        };
+        let (rows, subtitle) = audio_rows(
+            &[
+                e("Microfone", AudioDataFlow::Capture, EndpointStatus::Active, true),
+                e("DELL P2720DC", AudioDataFlow::Render, EndpointStatus::Unplugged, false),
+                e("Altifalantes", AudioDataFlow::Render, EndpointStatus::Active, true),
+                e("Auscultadores", AudioDataFlow::Render, EndpointStatus::Active, false),
+            ],
+            catalog,
+        );
+        assert_eq!(
+            rows.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
+            ["Altifalantes", "Auscultadores", "DELL P2720DC", "Microfone"]
+        );
+        assert_eq!(rows.iter().map(|r| r.can_make_default).collect::<Vec<_>>(), [false, true, false, false]);
+        assert_eq!(
+            (rows[0].defaults.as_str(), rows[2].state.as_str(), rows[3].flow.as_str()),
+            ("Predefinido · Comunicações", "Desligado", "Gravação")
+        );
+        assert!(subtitle.starts_with("4 dispositivos"));
     }
 
     #[test]

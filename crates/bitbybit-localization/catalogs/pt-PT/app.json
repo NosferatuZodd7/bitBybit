@@ -421,5 +421,8 @@
   "app.about.privacy": "Sem telemetria. Atualizações apenas a partir das versões assinadas deste repositório.",
   "app.devices.summary": "{0} dispositivos ligados ({1} com problema) · {2} ausentes · Plug and Play",
   "app.devices.ok": "A funcionar corretamente",
-  "app.devices.noDriver": "Sem informação de controlador"
+  "app.devices.noDriver": "Sem informação de controlador",
+  "app.audio.defaultSetVerified": "Dispositivo predefinido alterado e verificado, e registado no diário de alterações. As aplicações que já estavam a reproduzir som podem continuar no dispositivo anterior até serem reiniciadas.",
+  "app.audio.changeFailed": "Não foi possível alterar o dispositivo de áudio: {0}",
+  "app.audio.unavailable": "O áudio do Windows não está disponível: {0}"
 }

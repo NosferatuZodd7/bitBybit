@@ -12,6 +12,7 @@ name = "bitBybit"
 path = "src/main.rs"
 
 [dependencies]
+bitbybit-audio.workspace = true
 bitbybit-core.workspace = true
 bitbybit-devices.workspace = true
 bitbybit-domain.workspace = true
@@ -20,6 +21,8 @@ bitbybit-network.workspace = true
 slint.workspace = true
 
 [target.'cfg(windows)'.dependencies]
+bitbybit-journal.workspace = true
+time.workspace = true
 serde.workspace = true
 bitbybit-ipc.workspace = true
 bitbybit-platform-windows.workspace = true

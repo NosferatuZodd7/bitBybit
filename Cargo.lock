@@ -512,10 +512,12 @@ checksum = "b71798fca2c1fe1086445a7258a4bc81e6e49dcd24c8d0dd9a1e57395b603f51"
 name = "bitbybit-app"
 version = "0.7.0"
 dependencies = [
+ "bitbybit-audio",
  "bitbybit-core",
  "bitbybit-devices",
  "bitbybit-domain",
  "bitbybit-ipc",
+ "bitbybit-journal",
  "bitbybit-localization",
  "bitbybit-network",
  "bitbybit-platform-windows",
