@@ -316,7 +316,7 @@ pub fn to_text(
     out
 }
 
-fn severity_label(s: FindingSeverity, r: &impl Fn(LocalizedText) -> String) -> String {
+pub fn severity_label(s: FindingSeverity, r: &impl Fn(LocalizedText) -> String) -> String {
     r(match s {
         FindingSeverity::Critical => text!("report.severity.critical", "CRITICAL"),
         FindingSeverity::Problem => text!("report.severity.problem", "PROBLEM"),

@@ -9,7 +9,7 @@ mod ui {
     slint::include_modules!();
 }
 
-use ui::{AppWindow, AudioRow, ChangeRow, DeviceRow, DisplayRow, InterfaceRow, Tr};
+use ui::{AppWindow, AudioRow, ChangeRow, DeviceRow, DisplayRow, FindingRow, InterfaceRow, Tr};
 
 mod view;
 
@@ -35,6 +35,16 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.on_refresh(move || load(weak.clone()));
     let weak = ui.as_weak();
     ui.on_make_default(move |id| make_default(weak.clone(), id.to_string()));
+    ui.set_diagnosis_summary(
+        catalog
+            .resolve(&text!(
+                "app.diagnosis.notYet",
+                "Not analysed yet. The analysis only reads the system; it changes nothing."
+            ))
+            .into(),
+    );
+    let weak = ui.as_weak();
+    ui.on_diagnose(move || diagnose(weak.clone()));
     let weak = ui.as_weak();
     ui.on_revert(move |id| revert(weak.clone(), id.to_string()));
     load(ui.as_weak());
@@ -91,6 +101,54 @@ fn apply_audio(ui: &AppWindow, audio: Result<Vec<AudioEndpoint>, LocalizedText>,
         }
         Err(problem) => ui.set_audio_subtitle(catalog.resolve(&problem).into()),
     }
+}
+
+/// Collects and analyses off the UI thread (read-only), then shows the findings.
+fn diagnose(weak: slint::Weak<AppWindow>) {
+    let catalog = TextCatalog::default_catalog();
+    if let Some(ui) = weak.upgrade() {
+        ui.set_diagnosis_running(true);
+        ui.set_diagnosis_summary(
+            catalog
+                .resolve(&text!("app.diagnosis.running", "Collecting devices, drivers, audio, displays and history…"))
+                .into(),
+        );
+    }
+    std::thread::spawn(move || {
+        let result = diagnosis::run();
+        let _ = slint::invoke_from_event_loop(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            ui.set_diagnosis_running(false);
+            match result {
+                Ok((report, issues)) => {
+                    let (rows, mut summary) = view::finding_rows(&report, catalog);
+                    if !issues.is_empty() {
+                        summary = catalog.resolve(&text!(
+                            "app.diagnosis.issues",
+                            "{0} · {1} areas could not be read: {2}",
+                            summary,
+                            issues.len().to_string(),
+                            issues.join(", ")
+                        ));
+                    }
+                    let rows: Vec<FindingRow> = rows
+                        .into_iter()
+                        .map(|f| FindingRow {
+                            level: f.level,
+                            severity: f.severity.into(),
+                            title: f.title.into(),
+                            detail: f.detail.into(),
+                            evidence: f.evidence.into(),
+                            actions: f.actions.into(),
+                        })
+                        .collect();
+                    ui.set_findings(ModelRc::from(Rc::new(VecModel::from(rows))));
+                    ui.set_diagnosis_summary(summary.into());
+                }
+                Err(problem) => ui.set_diagnosis_summary(catalog.resolve(&problem).into()),
+            }
+        });
+    });
 }
 
 fn apply_displays(ui: &AppWindow, displays: Result<Vec<MonitorSummary>, LocalizedText>, catalog: &TextCatalog) {
@@ -350,5 +408,27 @@ mod displays {
 
     pub fn collect() -> Result<Vec<MonitorSummary>, LocalizedText> {
         Err(text!("app.displays.unavailable", "The displays could not be read: {0}", "Linux".to_owned()))
+    }
+}
+
+/// The Realtek / DisplayPort case analysis, read-only, in the user's session (as the CLI's `diagnose`).
+#[cfg(windows)]
+mod diagnosis {
+    use super::*;
+
+    /// The redacted report and the areas that could not be read.
+    pub fn run() -> Result<(bitbybit_domain::diagnostics::DiagnosticReport, Vec<String>), LocalizedText> {
+        let snapshot = bitbybit_platform_windows::diagnostics::collect(version());
+        let report = bitbybit_audio::report::redact_report(&bitbybit_audio::case::analyze(&snapshot, None));
+        Ok((report, snapshot.issues.iter().map(|i| i.area.clone()).collect()))
+    }
+}
+
+#[cfg(not(windows))]
+mod diagnosis {
+    use super::*;
+
+    pub fn run() -> Result<(bitbybit_domain::diagnostics::DiagnosticReport, Vec<String>), LocalizedText> {
+        Err(text!("app.diagnosis.unavailable", "The analysis could not run: {0}", "Linux".to_owned()))
     }
 }

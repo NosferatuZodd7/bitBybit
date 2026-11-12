@@ -124,7 +124,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 |---|---|---|---|---|---|---|
 | UI-01 | Shell, navigation, status, toasts, banners | `MainWindow.xaml`, `MainViewModel.Shell.cs` | `ui/app.slint`, `ui/components` | WIP | headless render | all pages reachable |
 | UI-02 | Themes (light, dark, glass, custom accent) | `Theme.xaml`, `ThemeManager.cs`, `ThemePalette.cs` | `ui/theme.slint`, `bitbybit-app::theme` | Todo | palette tests, contrast check | readable in every theme |
-| UI-03 | Diagnosis page (findings, evidence, actions) | case page | `ui/pages/diagnosis.slint` | Todo | render | evidence kinds visually distinct |
+| UI-03 | Diagnosis page (findings, evidence, actions) | case page | `ui/pages/diagnosis.slint` | WIP | render | evidence kinds visually distinct |
 | UI-04 | Devices page + details | devices page, device window | `ui/pages/devices.slint` | WIP | render | search, categories, actions |
 | UI-05 | Drivers: store, backups, compatible, test | store/backups pages | `ui/pages/drivers.slint` | Todo | render | |
 | UI-06 | Cleanup page (multi-select, impact) | cleanup page | `ui/pages/cleanup.slint` | Todo | render | |

@@ -516,6 +516,7 @@ dependencies = [
  "bitbybit-core",
  "bitbybit-devices",
  "bitbybit-domain",
+ "bitbybit-evidence",
  "bitbybit-ipc",
  "bitbybit-journal",
  "bitbybit-localization",

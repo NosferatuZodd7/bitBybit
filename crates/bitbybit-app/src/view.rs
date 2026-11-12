@@ -4,6 +4,7 @@
 use bitbybit_audio::profile::{AudioDataFlow, AudioEndpoint, AudioRoles, EndpointStatus};
 use bitbybit_audio::report::ReportedChange;
 use bitbybit_core::text;
+use bitbybit_domain::diagnostics::{DiagnosticReport, FindingSeverity};
 use bitbybit_domain::snapshot::{DeviceSummary, MonitorSummary};
 use bitbybit_journal::ChangeStatus;
 use bitbybit_localization::TextCatalog;
@@ -323,6 +324,68 @@ pub fn display_rows(monitors: &[MonitorSummary], catalog: &TextCatalog) -> (Vec<
     (rows, summary)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FindingRow {
+    /// 0 info, 1 warning, 2 problem, 3 critical.
+    pub level: i32,
+    pub severity: String,
+    pub title: String,
+    pub detail: String,
+    /// One line per evidence item, its kind first (facts and hypotheses stay visibly apart).
+    pub evidence: String,
+    pub actions: String,
+}
+
+/// Most severe first; the order inside a severity is the analyzer's.
+pub fn finding_rows(report: &DiagnosticReport, catalog: &TextCatalog) -> (Vec<FindingRow>, String) {
+    use bitbybit_audio::report::{kind_label, risk_label, severity_label};
+    let r = |t: bitbybit_core::LocalizedText| catalog.resolve(&t);
+    let mut findings: Vec<_> = report.findings.iter().collect();
+    findings.sort_by_key(|f| std::cmp::Reverse(f.severity));
+    let rows = findings
+        .into_iter()
+        .map(|f| FindingRow {
+            level: match f.severity {
+                FindingSeverity::Info => 0,
+                FindingSeverity::Warning => 1,
+                FindingSeverity::Problem => 2,
+                FindingSeverity::Critical => 3,
+            },
+            severity: severity_label(f.severity, &r),
+            title: r(f.title.clone()),
+            detail: r(f.detail.clone()),
+            evidence: f
+                .evidence
+                .iter()
+                .map(|e| match &e.value {
+                    Some(v) => format!("{}: {} ({v})", kind_label(e.kind, &r), e.description),
+                    None => format!("{}: {}", kind_label(e.kind, &r), e.description),
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+            actions: f
+                .actions
+                .iter()
+                .map(|a| {
+                    format!(
+                        "{} {} · {}",
+                        r(text!("app.case.proposed", "Proposed action:")),
+                        r(a.title.clone()),
+                        risk_label(a.risk, &r)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        })
+        .collect();
+    let summary = r(text!(
+        "app.page.case.subtitle",
+        "{0} findings, facts and hypotheses kept apart · local analysis of this PC",
+        report.findings.len().to_string()
+    ));
+    (rows, summary)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -543,6 +606,35 @@ mod tests {
         assert!(rows[0].edid.contains("DEL") && rows[0].edid.contains("LPCM"), "{}", rows[0].edid);
         assert!(rows[0].warning.contains("2560"), "{}", rows[0].warning);
         assert!(rows[1].mode.is_empty() && rows[1].warning.is_empty() && !rows[1].edid.is_empty());
+        assert!(summary.contains('2'));
+    }
+
+    #[test]
+    fn findings_are_sorted_by_severity_and_label_every_evidence_kind() {
+        use bitbybit_domain::diagnostics::DiagnosticFinding;
+        use bitbybit_evidence::{Confidence, EvidenceItem};
+        let finding = |id: &str, severity| DiagnosticFinding {
+            finding_id: id.into(),
+            severity,
+            title: text!("x.title", "Title {0}", id.to_owned()),
+            detail: text!("x.detail", "Detail"),
+            evidence: vec![
+                EvidenceItem::fact("SetupAPI", "Realtek driver 6.0.9600.1"),
+                EvidenceItem::hypothesis("analyzer", "Windows Update replaced it", Confidence::Medium),
+            ],
+            actions: vec![],
+        };
+        let report = DiagnosticReport {
+            report_type: "case".into(),
+            created_at: time::OffsetDateTime::UNIX_EPOCH,
+            machine_summary: String::new(),
+            findings: vec![finding("a", FindingSeverity::Info), finding("b", FindingSeverity::Problem)],
+            raw_evidence: vec![],
+        };
+        let (rows, summary) = finding_rows(&report, TextCatalog::default_catalog());
+        assert_eq!((rows[0].level, rows[1].level), (2, 0));
+        assert!(rows[0].evidence.starts_with("Facto confirmado: Realtek"), "{}", rows[0].evidence);
+        assert!(rows[0].evidence.contains("Hipótese: Windows Update"));
         assert!(summary.contains('2'));
     }
 }

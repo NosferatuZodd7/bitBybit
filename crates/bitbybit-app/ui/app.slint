@@ -109,6 +109,36 @@ component DisplayCard inherits Rectangle {
     }
 }
 
+export struct FindingRow {
+    level: int,
+    severity: string,
+    title: string,
+    detail: string,
+    evidence: string,
+    actions: string,
+}
+
+component FindingCard inherits Rectangle {
+    in property <FindingRow> info;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: root.info.level >= 2 ? #c42b1c : (root.info.level == 1 ? #9d5d00 : Palette.border);
+    background: Palette.control-background;
+    height: layout.preferred-height;
+    layout := VerticalLayout {
+        padding: 10px;
+        spacing: 4px;
+        HorizontalLayout {
+            spacing: 8px;
+            Text { text: root.info.severity; font-size: 11px; font-weight: 700; color: root.info.level >= 2 ? #c42b1c : (root.info.level == 1 ? #9d5d00 : #707070); vertical-alignment: center; }
+            Text { text: root.info.title; font-size: 14px; font-weight: 600; wrap: word-wrap; }
+        }
+        Text { text: root.info.detail; font-size: 12px; wrap: word-wrap; }
+        if root.info.evidence != "": Text { text: root.info.evidence; font-size: 12px; color: #707070; wrap: word-wrap; }
+        if root.info.actions != "": Text { text: root.info.actions; font-size: 12px; color: Palette.accent-background; wrap: word-wrap; }
+    }
+}
+
 export struct ChangeRow {
     id: string,
     when: string,
@@ -225,6 +255,10 @@ export component AppWindow inherits Window {
     in property <string> audio-message;
     in property <[DisplayRow]> displays;
     in property <string> displays-summary;
+    in property <[FindingRow]> findings;
+    in property <string> diagnosis-summary;
+    in property <bool> diagnosis-running;
+    callback diagnose();
     in property <[ChangeRow]> changes;
     in property <string> changes-message;
     callback revert(string);
@@ -250,6 +284,7 @@ export component AppWindow inherits Window {
                 NavItem { label: Tr.t("app.tab.network"); selected: root.page == 0; clicked => { root.page = 0; } }
                 NavItem { label: Tr.t("app.page.devices.title"); selected: root.page == 1; clicked => { root.page = 1; } }
                 NavItem { label: Tr.t("app.page.audio.title"); selected: root.page == 2; clicked => { root.page = 2; } }
+                NavItem { label: Tr.t("app.page.case.title"); selected: root.page == 6; clicked => { root.page = 6; } }
                 NavItem { label: Tr.t("app.page.displays.title"); selected: root.page == 5; clicked => { root.page = 5; } }
                 NavItem { label: Tr.t("app.tab.changes"); selected: root.page == 3; clicked => { root.page = 3; } }
                 NavItem { label: Tr.t("app.about.title"); selected: root.page == 4; clicked => { root.page = 4; } }
@@ -349,6 +384,26 @@ export component AppWindow inherits Window {
                             info: change;
                             revert(id) => { root.revert(id); }
                         }
+                    }
+                }
+            }
+            if root.page == 6: VerticalLayout {
+                spacing: 10px;
+                HorizontalLayout {
+                    spacing: 12px;
+                    VerticalLayout {
+                        Text { text: Tr.t("app.page.case.title"); font-size: 22px; font-weight: 600; }
+                        Text { text: root.diagnosis-summary; color: #707070; wrap: word-wrap; }
+                    }
+                    VerticalLayout {
+                        alignment: start;
+                        Button { text: Tr.t("app.diagnosis.run"); enabled: !root.diagnosis-running; clicked => { root.diagnose(); } }
+                    }
+                }
+                ScrollView {
+                    VerticalLayout {
+                        spacing: 6px;
+                        for finding in root.findings: FindingCard { info: finding; }
                     }
                 }
             }

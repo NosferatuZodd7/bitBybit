@@ -61,6 +61,9 @@ A–D, F1, G1, K1, H1 done; E/F2/G2 and H2 in progress (platform-windows + servi
   `IUpdateSession`, Kernel-PnP events via `EvtQuery`) → `case::analyze` → the ported report writer. Every
   area that fails becomes a `CollectionIssue`; the rest is still reported.
   `setupapi` parser now decodes ANSI lines lossily (a localized name used to end the read).
+* App page "Caso Realtek / DisplayPort" (UI-03): "Analisar este PC" runs the same collector + analyzer in the
+  user's session (read-only) and lists the findings, most severe first, with every evidence line labelled by kind.
+  Proposed actions are shown, not executed yet (they need the broker operations).
 * Fixes found on the Windows runner: signed fixtures need `.gitattributes` binary (CRLF), log pruning must never
   delete the active file. Workspace: 253 tests (Linux) + Windows integration tests.
 * CI: `.github/workflows/rust.yml` (Linux fmt/clippy/test + Windows type-check; Windows clippy/test/release build).

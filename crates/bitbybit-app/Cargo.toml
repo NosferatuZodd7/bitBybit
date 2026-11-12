@@ -32,6 +32,7 @@ bitbybit-platform-windows.workspace = true
 slint-build.workspace = true
 
 [dev-dependencies]
+bitbybit-evidence.workspace = true
 time.workspace = true
 
 [lints]

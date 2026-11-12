@@ -433,5 +433,10 @@
   "app.displays.belowNative": "Abaixo do modo nativo do monitor ({0} × {1})",
   "app.displays.summary": "{0} ecrãs ativos · configuração de ecrãs (CCD) e EDID",
   "app.displays.unavailable": "Não foi possível ler os ecrãs: {0}",
-  "app.displays.empty": "Nenhum ecrã ativo nesta sessão."
+  "app.displays.empty": "Nenhum ecrã ativo nesta sessão.",
+  "app.diagnosis.run": "Analisar este PC",
+  "app.diagnosis.running": "A recolher dispositivos, controladores, áudio, ecrãs e históricos… pode demorar até um minuto",
+  "app.diagnosis.notYet": "Ainda não analisou. A análise só lê o estado do sistema; não altera nada.",
+  "app.diagnosis.unavailable": "Não foi possível analisar: {0}",
+  "app.diagnosis.issues": "{0} · {1} áreas não puderam ser lidas: {2}"
 }
