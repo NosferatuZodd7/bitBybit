@@ -65,8 +65,8 @@ impl FileLogger {
             }
             fs::create_dir_all(&self.directory)?;
             let file = OpenOptions::new().create(true).append(true).open(&path)?;
+            self.prune(&path);
             *state = Some((path, file));
-            self.prune();
         }
         if let Some((_, file)) = state.as_mut() {
             writeln!(file, "{line}")?;
@@ -74,7 +74,9 @@ impl FileLogger {
         Ok(())
     }
 
-    fn prune(&self) {
+    /// Keeps the newest `retained_files` logs. The active file is never a candidate: equal modification times
+    /// (fast rolling) would otherwise make it eligible and later lines would be lost.
+    fn prune(&self, active: &Path) {
         let prefix = format!("{}-", self.component);
         let Ok(entries) = fs::read_dir(&self.directory) else { return };
         let mut files: Vec<_> = entries
@@ -82,12 +84,12 @@ impl FileLogger {
             .filter(|e| {
                 let name = e.file_name();
                 let name = name.to_string_lossy();
-                name.starts_with(&prefix) && name.ends_with(".log")
+                name.starts_with(&prefix) && name.ends_with(".log") && e.path() != active
             })
             .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
             .collect();
         files.sort_by_key(|f| std::cmp::Reverse(f.0));
-        for (_, path) in files.into_iter().skip(self.retained_files) {
+        for (_, path) in files.into_iter().skip(self.retained_files.saturating_sub(1)) {
             let _ = fs::remove_file(path);
         }
     }

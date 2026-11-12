@@ -48,7 +48,7 @@ jobs:
             target
           key: windows-${{ hashFiles('Cargo.lock') }}
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - run: cargo test --workspace --locked
+      - run: cargo test --workspace --locked --no-fail-fast
       - run: cargo build --workspace --release --locked
       - name: Broker smoke test (console broker, developer mode for the test binaries)
         shell: pwsh
