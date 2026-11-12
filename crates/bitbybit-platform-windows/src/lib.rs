@@ -3,6 +3,8 @@
 //! real machine) runs them; readers never change system state.
 
 #[cfg(windows)]
+pub mod audio;
+#[cfg(windows)]
 pub mod net;
 #[cfg(windows)]
 pub mod pipe;

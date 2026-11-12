@@ -49,7 +49,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 
 | Id | Feature | C# origin | Rust module | State | Tests | Done when |
 |---|---|---|---|---|---|---|
-| AUD-01 | Endpoint inventory | `WindowsAudioEndpoints`, `CoreAudioQuick` | `platform-windows::audio` | Todo | Windows read-only | all states, defaults, formats |
+| AUD-01 | Endpoint inventory | `WindowsAudioEndpoints`, `CoreAudioQuick` | `platform-windows::audio` | WIP | Windows read-only | all states, defaults, formats |
 | AUD-02 | Set default endpoint (journaled) | `Core/Audio/AudioChangeJournaling.cs` | `bitbybit-audio::changes`, `platform-windows::audio` | Logic | ported 10 tests | verify + drift-aware revert; undocumented API labelled |
 | AUD-03 | Enable / disable endpoint | same | same | Logic | same | same |
 | AUD-04 | Volume and mute per device | `WindowsAudioEndpoints` (not in UI) | `platform-windows::audio`, UI | Todo | fake + Windows | exposed in UI |

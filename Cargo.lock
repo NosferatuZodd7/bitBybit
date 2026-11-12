@@ -175,6 +175,7 @@ dependencies = [
 name = "bitbybit-platform-windows"
 version = "0.7.0"
 dependencies = [
+ "bitbybit-audio",
  "bitbybit-core",
  "bitbybit-ipc",
  "bitbybit-network",
@@ -182,6 +183,7 @@ dependencies = [
  "serde_json",
  "time",
  "windows",
+ "windows-core",
 ]
 
 [[package]]

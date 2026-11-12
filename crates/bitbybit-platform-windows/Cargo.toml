@@ -7,25 +7,35 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+bitbybit-audio.workspace = true
 bitbybit-core.workspace = true
 bitbybit-ipc.workspace = true
 bitbybit-network.workspace = true
 log.workspace = true
 time.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+# Needed by the `interface` macro for the undocumented IPolicyConfig (same version `windows` uses).
+windows-core = "0.62"
+
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.62"
 features = [
     "Win32_Foundation",
+    "Win32_Media_Audio",
     "Win32_NetworkManagement_IpHelper",
     "Win32_NetworkManagement_Ndis",
     "Win32_Networking_WinSock",
     "Win32_Security",
     "Win32_Security_Authorization",
     "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
     "Win32_System_IO",
     "Win32_System_Pipes",
     "Win32_System_Threading",
+    "Win32_System_Variant",
+    "Win32_UI_Shell_PropertiesSystem",
 ]
 
 [dev-dependencies]
