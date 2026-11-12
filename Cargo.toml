@@ -32,6 +32,7 @@ bitbybit-service = { path = "crates/bitbybit-service" }
 bitbybit-cli = { path = "crates/bitbybit-cli" }
 slint = "1.18.1"
 slint-build = "1.18.1"
+embed-resource = "3.0.12"
 
 
 serde = { version = "1.0.229", features = ["derive"] }

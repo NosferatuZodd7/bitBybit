@@ -37,6 +37,7 @@ bitbybit-service.workspace = true
 
 [build-dependencies]
 slint-build.workspace = true
+embed-resource.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

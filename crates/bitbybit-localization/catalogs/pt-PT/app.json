@@ -193,6 +193,7 @@
   "app.devices.category.other": "Outros",
   "app.devices.chip.all": "Todos",
   "app.devices.chip.problems": "Com problemas",
+  "app.devices.unavailable": "A lista de dispositivos aparece quando o serviço bitBybit responder.",
   "app.devices.empty": "Nenhum dispositivo corresponde à pesquisa e aos filtros escolhidos.",
   "app.devices.problemsFirst": "Problemas primeiro",
   "app.devices.searchPlaceholder": "Procurar dispositivos…",

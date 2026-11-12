@@ -14,6 +14,8 @@ that responds to input but never gets in the way.
 | `crates/bitbybit-app/ui/app.slint` | Window, pages and the confirmation dialog, built only from the components |
 | `crates/bitbybit-app/src/theme.rs` | Tokens for dark, glass and light; custom = user colours on a base; WCAG contrast tests |
 | `crates/bitbybit-app/src/settings_page.rs` | Settings page: look, custom base + accent, update channel (user settings file) |
+| `crates/bitbybit-app/ui/assets/` | Original logo mark and app icon, Inter (OFL, `third-party/inter`), Lucide icons (ISC, `third-party/lucide`) |
+| `crates/bitbybit-app/src/demo.rs` | Debug builds only: `BITBYBIT_UI_DEMO=1` (or `=dialog`) fills pages with fake rows for layout checks |
 
 ## Tokens
 
@@ -31,7 +33,7 @@ that responds to input but never gets in the way.
 
 `Escuro` (default), `Vidro` (deeper blue backdrop, stronger glows and more translucent glass), `Claro`, and
 `Personalizado` (a base plus the user's accent; the other custom colours from the C# settings file are honoured too).
-The std widgets use the Cupertino style and follow the look's light/dark scheme.
+The std widgets (combo boxes, switches, sliders, text fields) use the Fluent style, native to Windows 10/11, and follow the look's light/dark scheme. Identity: the original logo mark, the wordmark set in Inter ("bit" in the text colour, "Bybit" in the accent) and the logo's cyan `#1FC6F2` as the accent of the dark looks.
 
 ## Rules kept by the redesign
 
@@ -44,9 +46,15 @@ The std widgets use the Cupertino style and follow the look's light/dark scheme.
 * Accessibility: every control has a role and label; contrast is checked by tests; text sizes are logical pixels so
   they scale with Windows DPI.
 
+## Checking the layout
+
+Render under Xvfb with the software renderer: `SLINT_BACKEND=winit-software BITBYBIT_UI_PAGE=<n> BITBYBIT_UI_DEMO=1
+target/debug/bitBybit` and capture the screen (`import -window root`). `LOCALAPPDATA=<dir>` with a
+`<dir>/bitBybit/settings.json` selects the look. The confirmation dialog keeps warnings and effects in a fixed box
+above the steps so they never scroll out of sight.
+
 ## Limitations
 
 * No real backdrop blur of the desktop behind the window (Slint has no Mica/Acrylic); the glass is drawn over the
   app's own backdrop.
-* Navigation glyphs use the Segoe MDL2 Assets font (Windows 10 and 11); elsewhere they fall back to boxes.
 * Rendering on Windows is compiled only until the Windows CI job runs the smoke test.

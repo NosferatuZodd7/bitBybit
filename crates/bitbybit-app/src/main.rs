@@ -12,6 +12,8 @@ mod ui {
 pub(crate) use load as reload;
 use ui::{AppWindow, AudioRow, ChangeRow, DeviceRow, DisplayRow, FindingRow, InterfaceRow, Tr};
 
+#[cfg(debug_assertions)]
+mod demo;
 mod devices_actions;
 mod drivers_page;
 mod ops;
@@ -148,6 +150,16 @@ fn main() -> Result<(), slint::PlatformError> {
         if page == 6 {
             diagnose(ui.as_weak());
         }
+    }
+    #[cfg(debug_assertions)]
+    if let Ok(mode) = std::env::var("BITBYBIT_UI_DEMO") {
+        let weak = ui.as_weak();
+        // After the first (failing) broker read has emptied the lists.
+        slint::Timer::single_shot(std::time::Duration::from_millis(1500), move || {
+            if let Some(ui) = weak.upgrade() {
+                demo::fill(&ui, mode == "dialog");
+            }
+        });
     }
     ui.run()
 }

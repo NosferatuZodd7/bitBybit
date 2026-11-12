@@ -39,7 +39,6 @@ impl Rgba {
         base.mix(Self(self.0, self.1, self.2, 255), f32::from(self.3) / 255.0)
     }
 
-    #[cfg(test)]
     fn luminance(self) -> f32 {
         let c = |v: u8| {
             let s = f32::from(v) / 255.0;
@@ -48,7 +47,6 @@ impl Rgba {
         0.2126 * c(self.0) + 0.7152 * c(self.1) + 0.0722 * c(self.2)
     }
 
-    #[cfg(test)]
     /// WCAG contrast ratio of two opaque colours.
     pub fn contrast(self, other: Self) -> f32 {
         let (a, b) = (self.luminance(), other.luminance());
@@ -102,84 +100,90 @@ fn c(hex: &str) -> Rgba {
     Rgba::hex(hex).unwrap_or(Rgba::BLACK)
 }
 
+/// Dark ink used as text on the bright brand cyan.
+const INK: &str = "#03121A";
+
+/// "Escuro": deep ink with the logo's cyan and royal blue as light sources.
 pub fn dark() -> Tokens {
-    let accent = c("#388AFF");
+    let accent = c("#1FC6F2");
     Tokens {
         dark: true,
-        bg_top: c("#0D1420"),
-        bg_bottom: c("#070B12"),
-        glow: [accent.alpha(0.16), c("#7A5CFF").alpha(0.08), c("#21BFF2").alpha(0.06)],
-        glass: Rgba::WHITE.alpha(0.06),
-        glass_strong: c("#141D2B").alpha(0.94),
-        surface: Rgba::WHITE.alpha(0.045),
-        surface_hover: Rgba::WHITE.alpha(0.08),
-        edge: Rgba::WHITE.alpha(0.09),
-        highlight: Rgba::WHITE.alpha(0.12),
-        shadow: Rgba::BLACK.alpha(0.45),
-        scrim: Rgba::BLACK.alpha(0.55),
-        text: c("#EBEDF3"),
-        text_secondary: c("#97A3B4"),
+        bg_top: c("#0B1A33"),
+        bg_bottom: c("#050A12"),
+        glow: [accent.alpha(0.20), c("#2F6BFF").alpha(0.22), c("#14E0C8").alpha(0.07)],
+        glass: c("#0E2140").alpha(0.66),
+        glass_strong: c("#0C1A31").alpha(0.97),
+        surface: c("#10223D").alpha(0.72),
+        surface_hover: c("#173058").alpha(0.86),
+        edge: c("#7FD8FF").alpha(0.16),
+        highlight: Rgba::WHITE.alpha(0.26),
+        shadow: Rgba::BLACK.alpha(0.55),
+        scrim: c("#02060D").alpha(0.74),
+        text: c("#EEF4FA"),
+        text_secondary: c("#9DB2C9"),
         accent,
-        accent_hover: c("#5EA0FF"),
-        accent_soft: accent.alpha(0.18),
-        on_accent: Rgba::WHITE,
-        ok: c("#22C55E"),
-        warn: c("#F59E0B"),
-        error: c("#EF4444"),
+        accent_hover: c("#62DBF8"),
+        accent_soft: accent.alpha(0.15),
+        on_accent: c(INK),
+        ok: c("#34D399"),
+        warn: c("#FBBF24"),
+        error: c("#F87171"),
     }
 }
 
+/// "Vidro": a brighter, more luminous backdrop and more translucent glass.
 pub fn glass() -> Tokens {
-    let accent = c("#3F8CF5"); // #4A95FF was 2.99:1 under white text
+    let accent = c("#3DD3F7");
     Tokens {
         dark: true,
-        bg_top: c("#14294A"),
-        bg_bottom: c("#081222"),
-        glow: [accent.alpha(0.42), c("#7A5CFF").alpha(0.30), c("#21BFF2").alpha(0.26)],
-        glass: Rgba::WHITE.alpha(0.11),
-        glass_strong: c("#1C2B44").alpha(0.88),
-        surface: Rgba::WHITE.alpha(0.075),
-        surface_hover: Rgba::WHITE.alpha(0.12),
-        edge: Rgba::WHITE.alpha(0.18),
-        highlight: Rgba::WHITE.alpha(0.30),
-        shadow: Rgba::BLACK.alpha(0.40),
-        scrim: Rgba::BLACK.alpha(0.50),
-        text: c("#F1F4F9"),
-        text_secondary: c("#B3C0D3"),
+        bg_top: c("#143466"),
+        bg_bottom: c("#060F22"),
+        glow: [accent.alpha(0.38), c("#2F6BFF").alpha(0.40), c("#8B5CF6").alpha(0.22)],
+        glass: c("#BFE9FF").alpha(0.10),
+        glass_strong: c("#0F2346").alpha(0.94),
+        surface: c("#DDF3FF").alpha(0.075),
+        surface_hover: c("#DDF3FF").alpha(0.13),
+        edge: Rgba::WHITE.alpha(0.20),
+        highlight: Rgba::WHITE.alpha(0.46),
+        shadow: c("#020814").alpha(0.50),
+        scrim: c("#02060D").alpha(0.66),
+        text: c("#F3F8FC"),
+        text_secondary: c("#B4C7DA"),
         accent,
-        accent_hover: c("#6AA8FF"),
-        accent_soft: accent.alpha(0.24),
-        on_accent: Rgba::WHITE,
-        ok: c("#2DD36F"),
-        warn: c("#FFB547"),
-        error: c("#FF5F6D"),
+        accent_hover: c("#7BE2FA"),
+        accent_soft: accent.alpha(0.20),
+        on_accent: c(INK),
+        ok: c("#3EE6A8"),
+        warn: c("#FFC24D"),
+        error: c("#FF7A85"),
     }
 }
 
+/// "Claro": cool daylight paper with the cyan deepened for legibility on white.
 pub fn light() -> Tokens {
-    let accent = c("#2563EB");
+    let accent = c("#0077B6");
     Tokens {
         dark: false,
-        bg_top: c("#F3F6FB"),
-        bg_bottom: c("#E4EAF3"),
-        glow: [accent.alpha(0.10), c("#7A5CFF").alpha(0.06), c("#21BFF2").alpha(0.07)],
-        glass: Rgba::WHITE.alpha(0.62),
-        glass_strong: Rgba::WHITE.alpha(0.94),
-        surface: Rgba::WHITE.alpha(0.78),
-        surface_hover: Rgba::WHITE.alpha(0.95),
-        edge: Rgba::BLACK.alpha(0.08),
-        highlight: Rgba::WHITE.alpha(0.95),
-        shadow: c("#1B2A44").alpha(0.10),
-        scrim: Rgba::BLACK.alpha(0.28),
-        text: c("#111827"),
-        text_secondary: c("#5B6474"),
+        bg_top: c("#EAF4FB"),
+        bg_bottom: c("#D5E5F2"),
+        glow: [c("#1FC6F2").alpha(0.26), c("#2F6BFF").alpha(0.14), c("#14E0C8").alpha(0.10)],
+        glass: Rgba::WHITE.alpha(0.66),
+        glass_strong: Rgba::WHITE.alpha(0.97),
+        surface: Rgba::WHITE.alpha(0.80),
+        surface_hover: Rgba::WHITE.alpha(0.97),
+        edge: c("#0B2545").alpha(0.11),
+        highlight: Rgba::WHITE,
+        shadow: c("#0B2545").alpha(0.12),
+        scrim: c("#0B1A2E").alpha(0.36),
+        text: c("#0B1A2E"),
+        text_secondary: c("#475A70"),
         accent,
-        accent_hover: c("#1D4FD0"),
-        accent_soft: accent.alpha(0.10),
+        accent_hover: c("#005F92"),
+        accent_soft: accent.alpha(0.11),
         on_accent: Rgba::WHITE,
-        ok: c("#15803D"),
+        ok: c("#0F8A5F"),
         warn: c("#B45309"),
-        error: c("#DC2626"),
+        error: c("#C2262E"),
     }
 }
 
@@ -212,6 +216,8 @@ pub fn resolve(appearance: &AppearanceSettings) -> Tokens {
         t.accent = accent;
         t.accent_hover = accent.mix(if t.dark { Rgba::WHITE } else { Rgba::BLACK }, 0.18);
         t.accent_soft = accent.alpha(if t.dark { 0.2 } else { 0.1 });
+        let ink = c(INK);
+        t.on_accent = if accent.contrast(Rgba::WHITE) >= accent.contrast(ink) { Rgba::WHITE } else { ink };
         t.glow[0] = accent.alpha(t.glow[0].3 as f32 / 255.0);
     }
     for (key, slot) in [("ok", &mut t.ok), ("warn", &mut t.warn), ("error", &mut t.error)] {

@@ -3,7 +3,11 @@
 
 import { CheckBox, ComboBox, LineEdit, ScrollView, Palette, Slider, Switch } from "std-widgets.slint";
 import { Theme } from "theme.slint";
-import { Backdrop, Glass, Card, PillButton, NavItem, Badge, StatusBanner, PageHeader, SectionTitle, Secondary, Body, Segmented } from "components.slint";
+import { Backdrop, Glass, Card, Icon, PillButton, NavItem, Badge, StatusBanner, PageHeader, SectionTitle, Secondary, Body, Segmented } from "components.slint";
+import "assets/fonts/Inter-Regular.ttf";
+import "assets/fonts/Inter-Medium.ttf";
+import "assets/fonts/Inter-SemiBold.ttf";
+import "assets/fonts/Inter-Bold.ttf";
 
 export { Theme }
 
@@ -256,6 +260,54 @@ component InterfaceCard inherits Card {
     }
 }
 
+// A dashboard tile: area icon, label, the live value and its state; opens the area's page.
+component DashTileCard inherits Card {
+    in property <DashTile> info;
+    callback open(int);
+    interactive: true;
+    tone: root.info.state == 2 ? 2 : (root.info.state == 1 ? 1 : 0);
+    height: max(84px, box.preferred-height);
+    accessible-role: button;
+    accessible-label: root.info.title + ": " + root.info.value;
+    accessible-action-default => { root.open(root.info.page); }
+    clicked => { root.open(root.info.page); }
+    box := HorizontalLayout {
+        padding: Theme.space-l;
+        padding-left: Theme.space-l + 3px;
+        spacing: Theme.space-m;
+        Rectangle {
+            width: 40px;
+            height: 40px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 12px;
+            background: root.info.state == 2 ? Theme.error.with-alpha(0.14) : root.info.state == 1 ? Theme.warn.with-alpha(0.14) : Theme.accent-soft;
+            Icon {
+                width: 20px;
+                height: 20px;
+                tint: root.info.state == 2 ? Theme.error : root.info.state == 1 ? Theme.warn : Theme.accent;
+                source: root.info.page == 1 ? @image-url("assets/icons/cpu.svg")
+                    : root.info.page == 0 ? @image-url("assets/icons/network.svg")
+                    : root.info.page == 2 ? @image-url("assets/icons/volume-2.svg")
+                    : root.info.page == 5 ? @image-url("assets/icons/monitor.svg")
+                    : root.info.page == 3 ? @image-url("assets/icons/history.svg")
+                    : root.info.page == 6 ? @image-url("assets/icons/stethoscope.svg")
+                    : @image-url("assets/icons/hard-drive-download.svg");
+            }
+        }
+        VerticalLayout {
+            spacing: 4px;
+            alignment: center;
+            Text { text: root.info.title; font-size: Theme.font-caption; font-weight: 500; color: Theme.text-secondary; }
+            Text { text: root.info.value; font-size: Theme.font-title + 1px; font-weight: 650; color: Theme.text; wrap: word-wrap; }
+        }
+        Icon {
+            y: (parent.height - self.height) / 2;
+            source: @image-url("assets/icons/chevron-right.svg");
+            tint: root.hovered ? Theme.accent : Theme.text-secondary;
+        }
+    }
+}
+
 // Empty / not-yet states: a quiet card instead of a bare line of text.
 component EmptyState inherits Card {
     in property <string> text;
@@ -372,6 +424,8 @@ export component AppWindow inherits Window {
     min-height: 480px;
     background: Theme.bg-bottom;
     default-font-size: Theme.font-body;
+    default-font-family: "Inter";
+    icon: @image-url("assets/app-icon.png");
 
     // Std widgets (combo boxes, switches, sliders) follow the look's light/dark scheme.
     property <bool> scheme-dark: Theme.dark;
@@ -390,31 +444,50 @@ export component AppWindow inherits Window {
             VerticalLayout {
                 padding: Theme.space-m;
                 spacing: 2px;
-                HorizontalLayout {
-                    height: 48px;
-                    padding-left: 8px;
-                    spacing: 10px;
+                // The brand: the original logo mark and wordmark, lit by a soft cyan glow.
+                Rectangle {
+                    height: 76px;
                     Rectangle {
-                        width: 26px;
-                        height: 26px;
-                        y: (parent.height - self.height) / 2;
-                        border-radius: 8px;
-                        background: @linear-gradient(135deg, Theme.accent-hover 0%, Theme.accent 100%);
-                        Text { text: "b"; color: Theme.on-accent; font-weight: 800; font-size: 16px; }
+                        x: 0px;
+                        y: -4px;
+                        width: 84px;
+                        height: 84px;
+                        background: @radial-gradient(circle, Theme.accent.with-alpha(Theme.dark ? 0.30 : 0.18) 0%, Theme.accent.with-alpha(0) 70%);
                     }
-                    Text { text: "bitBybit"; font-size: 19px; font-weight: 700; color: Theme.text; vertical-alignment: center; }
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-bottom: 8px;
+                        spacing: 10px;
+                        alignment: start;
+                        Image {
+                            source: @image-url("assets/logo-mark.png");
+                            height: 52px;
+                            width: 41px;
+                            y: (parent.height - self.height) / 2;
+                            image-fit: contain;
+                            accessible-role: image;
+                            accessible-label: "bitBybit";
+                        }
+                        // The wordmark as text: it follows the look (the logo's blue vanished on the glass backdrop).
+                        HorizontalLayout {
+                            y: (parent.height - self.height) / 2;
+                            accessible-role: none;
+                            Text { text: "bit"; font-size: 24px; font-weight: 800; letter-spacing: -0.6px; color: Theme.text; vertical-alignment: center; }
+                            Text { text: "Bybit"; font-size: 24px; font-weight: 800; letter-spacing: -0.6px; color: Theme.accent; vertical-alignment: center; }
+                        }
+                    }
                 }
-                NavItem { glyph: "\u{E80F}"; label: Tr.t("app.page.dashboard.title"); selected: root.page == 8; clicked => { root.page = 8; } }
-                NavItem { glyph: "\u{E9D9}"; label: Tr.t("app.page.case.title"); selected: root.page == 6; clicked => { root.page = 6; } }
-                NavItem { glyph: "\u{E968}"; label: Tr.t("app.tab.network"); selected: root.page == 0; clicked => { root.page = 0; } }
-                NavItem { glyph: "\u{E772}"; label: Tr.t("app.page.devices.title"); selected: root.page == 1; clicked => { root.page = 1; } }
-                NavItem { glyph: "\u{E964}"; label: Tr.t("app.page.drivers.title"); selected: root.page == 7; clicked => { root.page = 7; root.refresh-drivers(); } }
-                NavItem { glyph: "\u{E767}"; label: Tr.t("app.page.audio.title"); selected: root.page == 2; clicked => { root.page = 2; } }
-                NavItem { glyph: "\u{E7F4}"; label: Tr.t("app.page.displays.title"); selected: root.page == 5; clicked => { root.page = 5; } }
-                NavItem { glyph: "\u{E81C}"; label: Tr.t("app.tab.changes"); selected: root.page == 3; clicked => { root.page = 3; } }
+                NavItem { icon: @image-url("assets/icons/layout-dashboard.svg"); label: Tr.t("app.page.dashboard.title"); selected: root.page == 8; clicked => { root.page = 8; } }
+                NavItem { icon: @image-url("assets/icons/stethoscope.svg"); label: Tr.t("app.page.case.title"); selected: root.page == 6; clicked => { root.page = 6; } }
+                NavItem { icon: @image-url("assets/icons/network.svg"); label: Tr.t("app.tab.network"); selected: root.page == 0; clicked => { root.page = 0; } }
+                NavItem { icon: @image-url("assets/icons/cpu.svg"); label: Tr.t("app.page.devices.title"); selected: root.page == 1; clicked => { root.page = 1; } }
+                NavItem { icon: @image-url("assets/icons/hard-drive-download.svg"); label: Tr.t("app.page.drivers.title"); selected: root.page == 7; clicked => { root.page = 7; root.refresh-drivers(); } }
+                NavItem { icon: @image-url("assets/icons/volume-2.svg"); label: Tr.t("app.page.audio.title"); selected: root.page == 2; clicked => { root.page = 2; } }
+                NavItem { icon: @image-url("assets/icons/monitor.svg"); label: Tr.t("app.page.displays.title"); selected: root.page == 5; clicked => { root.page = 5; } }
+                NavItem { icon: @image-url("assets/icons/history.svg"); label: Tr.t("app.tab.changes"); selected: root.page == 3; clicked => { root.page = 3; } }
                 Rectangle { }
-                NavItem { glyph: "\u{E713}"; label: Tr.t("app.settings.title"); selected: root.page == 9; clicked => { root.page = 9; } }
-                NavItem { glyph: "\u{E946}"; label: Tr.t("app.about.title"); selected: root.page == 4; clicked => { root.page = 4; } }
+                NavItem { icon: @image-url("assets/icons/settings.svg"); label: Tr.t("app.settings.title"); selected: root.page == 9; clicked => { root.page = 9; } }
+                NavItem { icon: @image-url("assets/icons/info.svg"); label: Tr.t("app.about.title"); selected: root.page == 4; clicked => { root.page = 4; } }
             }
         }
 
@@ -435,29 +508,24 @@ export component AppWindow inherits Window {
                 spacing: Theme.space-m;
                 PageHeader {
                     title: Tr.t("app.page.dashboard.title");
-                    VerticalLayout { alignment: start; PillButton { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
+                    VerticalLayout { alignment: start; PillButton { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
                 }
                 ScrollView {
                     VerticalLayout {
                         spacing: Theme.space-s;
                         alignment: start;
-                        for tile in root.tiles: Card {
-                            interactive: true;
-                            tone: tile.state == 2 ? 2 : (tile.state == 1 ? 1 : 0);
-                            height: tile-box.preferred-height;
-                            accessible-role: button;
-                            accessible-label: tile.title;
-                            accessible-action-default => { root.page = tile.page; }
-                            clicked => { root.page = tile.page; }
-                            tile-box := HorizontalLayout {
-                                padding: Theme.space-l;
-                                spacing: Theme.space-m;
-                                VerticalLayout {
-                                    spacing: 2px;
-                                    Secondary { text: tile.title; }
-                                    Text { text: tile.value; font-size: Theme.font-title; font-weight: 600; color: Theme.text; wrap: word-wrap; }
+                        // Two columns: even tiles left, odd tiles right (Slint layouts have no wrapping grid).
+                        HorizontalLayout {
+                            spacing: Theme.space-m;
+                            for col in [0, 1]: VerticalLayout {
+                                alignment: start;
+                                // Equal columns: no preferred width, equal stretch.
+                                preferred-width: 0px;
+                                horizontal-stretch: 1;
+                                for tile[i] in root.tiles: VerticalLayout {
+                                    padding-bottom: Math.mod(i, 2) == col ? Theme.space-m : 0px;
+                                    if Math.mod(i, 2) == col: DashTileCard { info: tile; open(p) => { root.page = p; } }
                                 }
-                                Text { text: "›"; font-size: 22px; color: Theme.text-secondary; vertical-alignment: center; horizontal-stretch: 0; }
                             }
                         }
                     }
@@ -470,7 +538,7 @@ export component AppWindow inherits Window {
                 PageHeader {
                     title: Tr.t("app.page.network.title");
                     subtitle: Tr.t("app.network.intro");
-                    VerticalLayout { alignment: start; PillButton { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
+                    VerticalLayout { alignment: start; PillButton { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
                 }
                 ScrollView {
                     VerticalLayout {
@@ -523,7 +591,7 @@ export component AppWindow inherits Window {
                         HorizontalLayout {
                             spacing: Theme.space-s;
                             PillButton { text: Tr.t("app.devices.rescan"); clicked => { root.rescan(); } }
-                            PillButton { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
+                            PillButton { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
                         }
                     }
                 }
@@ -560,6 +628,7 @@ export component AppWindow inherits Window {
                     VerticalLayout {
                         spacing: Theme.space-s;
                         alignment: start;
+                        if root.devices.length == 0: EmptyState { text: root.devices-summary != "" ? root.devices-summary : Tr.t("app.devices.unavailable"); }
                         for device in root.devices: DeviceCard {
                             info: device;
                             action(id, a) => { root.device-action(id, a); }
@@ -674,7 +743,7 @@ export component AppWindow inherits Window {
                         HorizontalLayout {
                             spacing: Theme.space-s;
                             PillButton { text: Tr.t("app.audio.restartServices"); clicked => { root.restart-audio-services(); } }
-                            PillButton { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
+                            PillButton { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
                         }
                     }
                 }
@@ -706,7 +775,7 @@ export component AppWindow inherits Window {
                 PageHeader {
                     title: Tr.t("app.page.displays.title");
                     subtitle: root.displays-summary;
-                    VerticalLayout { alignment: start; PillButton { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
+                    VerticalLayout { alignment: start; PillButton { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
                 }
                 if root.displays.length == 0 && !root.displays-failed: EmptyState { text: Tr.t("app.displays.empty"); }
                 ScrollView {
@@ -724,7 +793,7 @@ export component AppWindow inherits Window {
                 PageHeader {
                     title: Tr.t("app.tab.changes");
                     subtitle: Tr.t("app.changes.intro");
-                    VerticalLayout { alignment: start; PillButton { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
+                    VerticalLayout { alignment: start; PillButton { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
                 }
                 if root.changes-message != "": Body { text: root.changes-message; }
                 if root.changes.length == 0: EmptyState { text: Tr.t("app.changes.empty"); }
@@ -887,14 +956,35 @@ export component AppWindow inherits Window {
                         tone: root.dialog-level >= 2 ? 2 : (root.dialog-level == 1 ? 1 : 4);
                     }
                 }
+                // Warnings and effects never scroll out of sight: they sit in a fixed box above the steps.
+                if root.dialog-warnings.length + root.dialog-effects.length > 0: Rectangle {
+                    border-radius: Theme.radius-m;
+                    background: Theme.warn.with-alpha(0.10);
+                    border-width: 1px;
+                    border-color: Theme.warn.with-alpha(0.35);
+                    height: warn-box.preferred-height;
+                    warn-box := VerticalLayout {
+                        padding: Theme.space-m;
+                        spacing: 6px;
+                        for warning in root.dialog-warnings: HorizontalLayout {
+                            spacing: Theme.space-s;
+                            Icon { source: @image-url("assets/icons/triangle-alert.svg"); tint: Theme.warn; y: 1px; }
+                            Text { text: warning; wrap: word-wrap; font-size: Theme.font-body; font-weight: 600; color: Theme.text; }
+                        }
+                        for effect in root.dialog-effects: HorizontalLayout {
+                            spacing: Theme.space-s;
+                            Icon { source: @image-url("assets/icons/info.svg"); tint: Theme.warn; y: 1px; }
+                            Text { text: effect; wrap: word-wrap; font-size: Theme.font-body; color: Theme.text; }
+                        }
+                    }
+                }
                 ScrollView {
-                    min-height: 80px;
-                    VerticalLayout {
+                    min-height: min(steps.preferred-height, 60px);
+                    preferred-height: steps.preferred-height;
+                    steps := VerticalLayout {
                         spacing: 6px;
                         alignment: start;
                         for step[i] in root.dialog-steps: Body { text: (i + 1) + ". " + step; }
-                        for effect in root.dialog-effects: Text { text: "• " + effect; wrap: word-wrap; font-size: Theme.font-body; color: Theme.warn; }
-                        for warning in root.dialog-warnings: Text { text: "⚠ " + warning; wrap: word-wrap; font-size: Theme.font-body; color: Theme.warn; }
                     }
                 }
                 HorizontalLayout {

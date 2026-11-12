@@ -1,37 +1,38 @@
-// Reusable Liquid Glass components. Glass is used for the navigation/control layer and floating surfaces; content
-// sits on calmer surfaces. Every interactive element has hover/pressed feedback and an accessible role/label.
+// Reusable Liquid Glass components. Glass is for the navigation/control layer and floating surfaces; content sits
+// on calmer cards. Interactive elements are keyboard-reachable (Tab, Enter/Space) with a visible focus ring, and
+// carry an accessible role and label. Icons are Lucide SVGs (ISC, third-party/lucide) tinted with `colorize`.
 
 import { Theme } from "theme.slint";
 
-// The luminous backdrop the glass sits on: a vertical gradient with three soft glows (drawn by the app: no backdrop
-// blur needed, identical on Windows 10 and 11).
+// The luminous backdrop the glass sits on: a deep gradient lit by the logo's cyan and royal blue (static
+// gradients, no backdrop blur: identical on Windows 10 and 11 and cheap on any GPU).
 export component Backdrop inherits Rectangle {
-    background: @linear-gradient(170deg, Theme.bg-top 0%, Theme.bg-bottom 100%);
+    background: @linear-gradient(160deg, Theme.bg-top 0%, Theme.bg-bottom 70%);
     clip: true;
     Rectangle {
-        x: -root.width * 0.2;
-        y: -root.height * 0.35;
-        width: root.width * 0.9;
+        x: -root.width * 0.25;
+        y: -root.height * 0.55;
+        width: root.width * 0.95;
         height: self.width;
-        background: @radial-gradient(circle, Theme.glow-a 0%, Theme.glow-a.with-alpha(0) 70%);
+        background: @radial-gradient(circle, Theme.glow-a 0%, Theme.glow-a.with-alpha(0) 68%);
     }
     Rectangle {
-        x: root.width * 0.55;
-        y: root.height * 0.05;
-        width: root.width * 0.7;
-        height: self.width;
-        background: @radial-gradient(circle, Theme.glow-b 0%, Theme.glow-b.with-alpha(0) 70%);
-    }
-    Rectangle {
-        x: root.width * 0.15;
-        y: root.height * 0.6;
+        x: root.width * 0.5;
+        y: -root.height * 0.2;
         width: root.width * 0.8;
         height: self.width;
-        background: @radial-gradient(circle, Theme.glow-c 0%, Theme.glow-c.with-alpha(0) 70%);
+        background: @radial-gradient(circle, Theme.glow-b 0%, Theme.glow-b.with-alpha(0) 68%);
+    }
+    Rectangle {
+        x: root.width * 0.2;
+        y: root.height * 0.55;
+        width: root.width * 0.9;
+        height: self.width;
+        background: @radial-gradient(circle, Theme.glow-c 0%, Theme.glow-c.with-alpha(0) 68%);
     }
 }
 
-// A glass layer: translucent fill, hairline edge, a specular highlight along the top and a soft diffuse shadow.
+// A glass layer: tinted translucent fill, hairline edge, a specular line along the top and a soft shadow.
 export component Glass inherits Rectangle {
     in property <bool> strong;
     in property <bool> raised: true;
@@ -40,112 +41,182 @@ export component Glass inherits Rectangle {
     border-width: 1px;
     border-color: Theme.edge;
     drop-shadow-color: root.raised ? Theme.shadow : transparent;
-    drop-shadow-blur: root.raised ? 24px : 0px;
-    drop-shadow-offset-y: root.raised ? 8px : 0px;
-    // Specular line: light catching the top edge of the glass.
+    drop-shadow-blur: root.raised ? 28px : 0px;
+    drop-shadow-offset-y: root.raised ? 10px : 0px;
     Rectangle {
-        x: root.border-radius * 0.6;
+        x: root.border-radius * 0.7;
         y: 1px;
-        width: root.width - root.border-radius * 1.2;
+        width: root.width - root.border-radius * 1.4;
         height: 1px;
         background: @linear-gradient(90deg, Theme.highlight.with-alpha(0) 0%, Theme.highlight 50%, Theme.highlight.with-alpha(0) 100%);
     }
     @children
 }
 
-// A content card: calmer than glass; an optional semantic edge (0 none, 1 warning, 2 problem, 3 accent).
+// A content card; tone paints a state rail on the left edge (0 none, 1 warning, 2 problem, 3 accent, 4 ok).
 export component Card inherits Rectangle {
     in property <int> tone;
     in property <bool> interactive;
     out property <bool> hovered: touch.has-hover;
     callback clicked;
+    property <color> rail: root.tone == 2 ? Theme.error : root.tone == 1 ? Theme.warn : root.tone == 3 ? Theme.accent : root.tone == 4 ? Theme.ok : transparent;
     border-radius: Theme.radius-m;
     background: root.interactive && touch.has-hover ? Theme.surface-hover : Theme.surface;
     border-width: 1px;
-    border-color: root.tone == 2 ? Theme.error.with-alpha(0.65) : root.tone == 1 ? Theme.warn.with-alpha(0.6) : root.tone == 3 ? Theme.accent.with-alpha(0.6) : Theme.edge;
-    animate background { duration: Theme.quick; easing: ease-out; }
+    border-color: root.tone == 2 ? Theme.error.with-alpha(0.45) : root.tone == 1 ? Theme.warn.with-alpha(0.4) : (root.interactive && touch.has-hover ? Theme.accent.with-alpha(0.45) : Theme.edge);
+    clip: true;
+    animate background, border-color { duration: Theme.quick; easing: ease-out; }
     touch := TouchArea {
         enabled: root.interactive;
+        mouse-cursor: root.interactive ? pointer : default;
         clicked => { root.clicked(); }
+    }
+    Rectangle {
+        x: 0;
+        width: 3px;
+        height: root.height;
+        background: root.rail;
     }
     @children
 }
 
-// Capsule button. kind: 0 secondary (glass), 1 primary (accent), 2 destructive, 3 quiet (text only).
+// A 16-px icon from assets/icons.
+export component Icon inherits Image {
+    in property <color> tint: Theme.text-secondary;
+    width: 16px;
+    height: 16px;
+    colorize: root.tint;
+    image-fit: contain;
+    accessible-role: none;
+}
+
+// Capsule button. kind: 0 secondary (glass), 1 primary (brand), 2 destructive, 3 quiet (text only).
 export component PillButton inherits Rectangle {
     in property <string> text;
+    in property <image> icon;
     in property <int> kind;
     in property <bool> enabled: true;
     callback clicked;
+    property <bool> has-icon: root.icon.width > 0;
+    property <color> fg: root.kind == 1 ? Theme.on-accent : root.kind == 2 ? Theme.error : Theme.text;
     height: Theme.control-height;
-    min-width: label.preferred-width + 28px;
+    min-width: row.preferred-width;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
     border-radius: self.height / 2;
     opacity: root.enabled ? 1 : 0.45;
     accessible-role: button;
     accessible-label: root.text;
     accessible-enabled: root.enabled;
     accessible-action-default => { if (root.enabled) { root.clicked(); } }
-    background: root.kind == 1 ? (touch.has-hover ? Theme.accent-hover : Theme.accent)
-        : root.kind == 2 ? (touch.has-hover ? Theme.error.with-alpha(0.32) : Theme.error.with-alpha(0.2))
+    background: root.kind == 1 ? (touch.pressed ? Theme.accent.darker(0.12) : touch.has-hover ? Theme.accent-hover : Theme.accent)
+        : root.kind == 2 ? (touch.has-hover ? Theme.error.with-alpha(0.26) : Theme.error.with-alpha(0.14))
         : root.kind == 3 ? (touch.has-hover ? Theme.surface-hover : transparent)
-        : (touch.has-hover ? Theme.surface-hover : Theme.glass);
-    border-width: root.kind == 0 || root.kind == 2 ? 1px : 0px;
-    border-color: root.kind == 2 ? Theme.error.with-alpha(0.55) : Theme.edge;
+        : (touch.pressed ? Theme.surface : touch.has-hover ? Theme.surface-hover : Theme.glass);
+    border-width: focus.has-focus ? 2px : (root.kind == 0 || root.kind == 2 ? 1px : 0px);
+    border-color: focus.has-focus ? Theme.accent : root.kind == 2 ? Theme.error.with-alpha(0.55) : Theme.edge;
+    drop-shadow-color: root.kind == 1 && root.enabled ? Theme.accent.with-alpha(touch.has-hover ? 0.45 : 0.28) : transparent;
+    drop-shadow-blur: root.kind == 1 ? 16px : 0px;
+    drop-shadow-offset-y: root.kind == 1 ? 4px : 0px;
     animate background { duration: Theme.quick; easing: ease-out; }
-    // Pressed feedback: a slight dip.
-    property <float> press: touch.pressed && root.enabled ? 0.97 : 1;
-    animate press { duration: Theme.quick; }
-    label := Text {
-        text: root.text;
-        font-size: Theme.font-body;
-        font-weight: root.kind == 1 || root.kind == 2 ? 600 : 500;
-        color: root.kind == 1 ? Theme.on-accent : root.kind == 2 ? Theme.error : Theme.text;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-        width: parent.width * root.press;
-        height: parent.height * root.press;
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
+    focus := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == "\n") {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
     }
     touch := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => {
+            focus.focus();
+            root.clicked();
+        }
+    }
+    row := HorizontalLayout {
+        padding-left: root.kind == 3 ? 12px : 16px;
+        padding-right: root.kind == 3 ? 12px : 16px;
+        spacing: 7px;
+        alignment: center;
+        if root.has-icon: Icon {
+            y: (parent.height - self.height) / 2;
+            source: root.icon;
+            tint: root.fg;
+            width: 15px;
+            height: 15px;
+        }
+        Text {
+            text: root.text;
+            font-size: Theme.font-body;
+            font-weight: root.kind == 1 || root.kind == 2 ? 600 : 500;
+            color: root.fg;
+            vertical-alignment: center;
+        }
     }
 }
 
-// Sidebar entry: the selected item sits on an accent-tinted glass pill with a small indicator.
+// Sidebar entry: the selected page sits on a cyan-lit pill with a glowing indicator.
 export component NavItem inherits Rectangle {
     in property <string> label;
-    in property <string> glyph;
+    in property <image> icon;
     in property <bool> selected;
     callback clicked;
-    height: 38px;
-    border-radius: self.height / 2;
+    height: 40px;
+    border-radius: 12px;
     background: root.selected ? Theme.accent-soft : (touch.has-hover ? Theme.surface-hover : transparent);
+    border-width: focus.has-focus ? 2px : 0px;
+    border-color: Theme.accent;
     animate background { duration: Theme.quick; easing: ease-out; }
     accessible-role: tab;
     accessible-label: root.label;
     accessible-item-selected: root.selected;
     accessible-action-default => { root.clicked(); }
+    focus := FocusScope {
+        key-pressed(event) => {
+            if (event.text == " " || event.text == "\n") {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
     touch := TouchArea {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
     Rectangle {
-        x: 6px;
+        x: 0;
         width: 3px;
-        height: root.selected ? 16px : 0px;
+        height: root.selected ? 18px : 0px;
         border-radius: 2px;
         background: Theme.accent;
+        drop-shadow-color: Theme.accent;
+        drop-shadow-blur: 8px;
         animate height { duration: Theme.smooth; easing: ease-out; }
     }
     HorizontalLayout {
-        padding-left: 16px;
-        padding-right: 12px;
-        spacing: 10px;
-        Text { text: root.glyph; font-family: "Segoe MDL2 Assets"; font-size: 15px; color: root.selected ? Theme.accent : Theme.text-secondary; vertical-alignment: center; width: 18px; horizontal-alignment: center; }
-        Text { text: root.label; font-size: Theme.font-body; font-weight: root.selected ? 600 : 400; color: Theme.text; vertical-alignment: center; overflow: elide; }
+        padding-left: 14px;
+        padding-right: 10px;
+        spacing: 12px;
+        Icon {
+            y: (parent.height - self.height) / 2;
+            source: root.icon;
+            width: 18px;
+            height: 18px;
+            tint: root.selected ? Theme.accent : Theme.text-secondary;
+        }
+        Text {
+            text: root.label;
+            font-size: Theme.font-body;
+            font-weight: root.selected ? 600 : 500;
+            color: root.selected ? Theme.text : Theme.text-secondary;
+            vertical-alignment: center;
+            overflow: elide;
+        }
     }
 }
 
@@ -154,48 +225,66 @@ export component Badge inherits Rectangle {
     in property <string> text;
     in property <int> tone;
     property <color> c: root.tone == 2 ? Theme.error : root.tone == 1 ? Theme.warn : root.tone == 3 ? Theme.accent : root.tone == 4 ? Theme.ok : Theme.text-secondary;
-    height: 20px;
-    width: t.preferred-width + 16px;
+    height: 22px;
+    width: t.preferred-width + 18px;
+    horizontal-stretch: 0;
     border-radius: self.height / 2;
-    background: root.c.with-alpha(0.16);
+    background: root.c.with-alpha(0.14);
     border-width: 1px;
-    border-color: root.c.with-alpha(0.35);
+    border-color: root.c.with-alpha(0.32);
     t := Text { text: root.text; font-size: 11px; font-weight: 600; color: root.c; horizontal-alignment: center; vertical-alignment: center; }
 }
 
-// Banner for state and feedback. kind: 0 working/info, 1 ok, 2 problem, 3 warning.
+// Banner for state and feedback. kind: 0 working/info, 1 ok, 2 problem, 3 warning. Trailing actions go inside.
 export component StatusBanner inherits Rectangle {
     in property <int> kind;
     in property <string> message;
     property <color> c: root.kind == 2 ? Theme.error : root.kind == 1 ? Theme.ok : root.kind == 3 ? Theme.warn : Theme.accent;
     min-height: row.preferred-height;
     border-radius: Theme.radius-m;
-    background: root.c.with-alpha(0.12);
+    background: root.c.with-alpha(0.10);
     border-width: 1px;
-    border-color: root.c.with-alpha(0.35);
+    border-color: root.c.with-alpha(0.32);
     accessible-role: text;
     accessible-label: root.message;
     row := HorizontalLayout {
-        padding: Theme.space-s;
+        padding: 6px;
         padding-left: Theme.space-m;
         spacing: Theme.space-s;
-        Rectangle { width: 8px; height: 8px; border-radius: 4px; background: root.c; y: (parent.height - self.height) / 2; }
-        Text { text: root.message; wrap: word-wrap; color: Theme.text; font-size: Theme.font-body; vertical-alignment: center; }
+        Icon {
+            y: (parent.height - self.height) / 2;
+            source: root.kind == 2 ? @image-url("assets/icons/circle-x.svg") : root.kind == 1 ? @image-url("assets/icons/circle-check.svg") : root.kind == 3 ? @image-url("assets/icons/triangle-alert.svg") : @image-url("assets/icons/info.svg");
+            tint: root.c;
+        }
+        Text { text: root.message; wrap: word-wrap; color: Theme.text; font-size: Theme.font-body; vertical-alignment: center; min-height: 22px; }
         @children
     }
 }
 
-// Page title with an optional subtitle and trailing actions.
+// Page title with an optional subtitle; trailing actions keep their natural width at the top right.
 export component PageHeader inherits HorizontalLayout {
     in property <string> title;
     in property <string> subtitle;
-    spacing: Theme.space-m;
+    spacing: Theme.space-l;
     VerticalLayout {
-        spacing: 2px;
-        Text { text: root.title; font-size: Theme.font-page; font-weight: 700; color: Theme.text; accessible-role: text; }
+        horizontal-stretch: 1;
+        spacing: 4px;
+        Text { text: root.title; font-size: Theme.font-page; font-weight: 700; color: Theme.text; letter-spacing: -0.4px; accessible-role: text; }
         if root.subtitle != "": Text { text: root.subtitle; color: Theme.text-secondary; wrap: word-wrap; font-size: Theme.font-body; }
     }
-    @children
+    HorizontalLayout {
+        horizontal-stretch: 0;
+        spacing: Theme.space-s;
+        alignment: end;
+        VerticalLayout {
+            alignment: start;
+            padding-top: 4px;
+            HorizontalLayout {
+                spacing: Theme.space-s;
+                @children
+            }
+        }
+    }
 }
 
 export component SectionTitle inherits Text {
@@ -216,27 +305,30 @@ export component Body inherits Text {
     wrap: word-wrap;
 }
 
-// Segmented control (themes, channels): the selected segment is a raised glass pill.
+// Segmented control (themes, channels): the selected segment is a lit capsule.
 export component Segmented inherits Rectangle {
     in property <[string]> items;
     in-out property <int> selected;
     callback changed(int);
     height: Theme.control-height + 6px;
+    horizontal-stretch: 0;
+    min-width: segs.preferred-width;
     border-radius: self.height / 2;
     background: Theme.surface;
     border-width: 1px;
     border-color: Theme.edge;
-    HorizontalLayout {
+    segs := HorizontalLayout {
         padding: 3px;
         spacing: 2px;
         for item[i] in root.items: Rectangle {
             border-radius: self.height / 2;
             background: i == root.selected ? Theme.accent : (seg-touch.has-hover ? Theme.surface-hover : transparent);
             animate background { duration: Theme.quick; easing: ease-out; }
-            min-width: seg-label.preferred-width + 24px;
+            min-width: seg-label.preferred-width + 28px;
             accessible-role: tab;
             accessible-label: item;
             accessible-item-selected: i == root.selected;
+            accessible-action-default => { root.selected = i; root.changed(i); }
             seg-touch := TouchArea {
                 mouse-cursor: pointer;
                 clicked => { root.selected = i; root.changed(i); }
@@ -244,7 +336,7 @@ export component Segmented inherits Rectangle {
             seg-label := Text {
                 text: item;
                 font-size: Theme.font-body;
-                font-weight: i == root.selected ? 600 : 400;
+                font-weight: i == root.selected ? 600 : 500;
                 color: i == root.selected ? Theme.on-accent : Theme.text;
                 horizontal-alignment: center;
                 vertical-alignment: center;
