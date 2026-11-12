@@ -83,7 +83,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | NET-11 | VPN sharing with WFP leak protection | new | `bitbybit-network::leak`, `platform-windows::net::wfp` | Logic | plan + state-machine tests, WFP API on CI | Protected only with filters verified; fail closed |
 | NET-12 | DHCP server | new | `bitbybit-network::dhcp` | Logic | codec, leases, loopback sockets | DISCOVER…RELEASE, conflicts, ranges |
 | NET-13 | DNS forwarder + cache | new | `bitbybit-network::dns` | Logic | codec, cache, loop guard, loopback sockets | fail closed without upstream |
-| NET-14 | Firewall rules (group bitBybit only) | new | `bitbybit-network::firewall`, `platform-windows::net::firewall` | Logic | model + opt-in | never disables the firewall |
+| NET-14 | Firewall rules (group bitBybit only) | new | `bitbybit-network::firewall`, `platform-windows::net::firewall` | WIP | model + opt-in | never disables the firewall |
 | NET-15 | Clients (leases + neighbours + hotspot) | new | `bitbybit-network::clients`, `platform-windows::net::neighbors` | Logic | merge tests | IP, MAC, state, interface |
 | NET-16 | Bridge / repeater detection | new | `bitbybit-network::capability` | Logic | unit | detection only |
 | NET-17 | Diagnostics tools (ping, trace, DNS, gateway) | `INetworkDiagnostics.cs` (types) | `bitbybit-network::diag`, `platform-windows::net::diag` | Logic | validation tests | bounded, cancellable |
@@ -112,7 +112,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | UPD-01 | SemVer with `-dev.N` | `Core/Updates/SemVersion.cs` | `bitbybit-updates::version` | Logic | ported | ordering |
 | UPD-02 | Signed manifest verification | `UpdateManifest.cs` | `bitbybit-updates::manifest` | Logic | ported + C#-signed fixture | fail closed |
 | UPD-03 | Release selection, trusted URLs, downgrade refusal | `UpdatePlanner.cs` | `bitbybit-updates::plan` | Logic | ported | repository-only |
-| UPD-04 | Download, verify, install, restart, recover | `App/Infrastructure/UpdateService.cs` | `platform-windows::http`, app, service op | Todo | hash/atomic tests | atomic swap or MSI hand-off |
+| UPD-04 | Download, verify, install, restart, recover | `App/Infrastructure/UpdateService.cs` | `platform-windows::http`, app, service op | WIP | hash/atomic tests | atomic swap or MSI hand-off |
 | UPD-05 | Release tool | `tools/BitByBit.ReleaseTool` | `bitbybit-release` | Todo | round trip + cross-check with C# key format | same manifest format |
 | UPD-06 | CI pre-release publishing | `preview.yml` | `.github/workflows/rust.yml` | Todo | CI | `vX.Y.Z-dev.N`, signed, verified |
 | INS-01 | MSI (WiX v5): app, service, shortcuts, upgrade, repair, uninstall | empty folder | `installer/wix` | Todo | CI install/uninstall | service registered; data preserved |

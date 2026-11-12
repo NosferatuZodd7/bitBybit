@@ -9,6 +9,8 @@ mod com;
 #[cfg(windows)]
 pub mod devices;
 #[cfg(windows)]
+pub mod http;
+#[cfg(windows)]
 pub mod net;
 #[cfg(windows)]
 pub mod pipe;

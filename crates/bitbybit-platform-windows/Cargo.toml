@@ -11,7 +11,11 @@ bitbybit-audio.workspace = true
 bitbybit-core.workspace = true
 bitbybit-domain.workspace = true
 bitbybit-ipc.workspace = true
+bitbybit-journal.workspace = true
 bitbybit-network.workspace = true
+bitbybit-recovery.workspace = true
+bitbybit-security.workspace = true
+serde_json.workspace = true
 log.workspace = true
 time.workspace = true
 
@@ -29,7 +33,9 @@ features = [
     "Win32_NetworkManagement_IpHelper",
     "Win32_NetworkManagement_Ndis",
     "Win32_NetworkManagement_Rras",
+    "Win32_NetworkManagement_WindowsFirewall",
     "Win32_Networking_NetworkListManager",
+    "Win32_Networking_WinHttp",
     "Win32_Networking_WinSock",
     "Win32_Security",
     "Win32_Security_Authorization",
@@ -37,6 +43,7 @@ features = [
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
     "Win32_System_IO",
+    "Win32_System_Ole",
     "Win32_System_Pipes",
     "Win32_System_Registry",
     "Win32_System_Threading",
@@ -45,7 +52,7 @@ features = [
 ]
 
 [dev-dependencies]
-serde_json.workspace = true
+bitbybit-updates.workspace = true
 
 [lints]
 workspace = true

@@ -52,6 +52,10 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked --no-fail-fast
       - run: cargo build --workspace --release --locked
+      - name: Opt-in system-change tests (disposable runner only)
+        env:
+          BITBYBIT_ALLOW_SYSTEM_CHANGES: '1'
+        run: cargo test -p bitbybit-platform-windows --test firewall_rules --locked -- --nocapture
       - name: Broker smoke test (console broker, developer mode for the test binaries)
         shell: pwsh
         run: |
