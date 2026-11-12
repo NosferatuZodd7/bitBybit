@@ -673,6 +673,7 @@ name = "bitbybit-network"
 version = "0.7.0"
 dependencies = [
  "bitbybit-core",
+ "bitbybit-domain",
  "bitbybit-evidence",
  "bitbybit-journal",
  "bitbybit-localization",

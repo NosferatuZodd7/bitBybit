@@ -9,6 +9,7 @@ fn collects_system_devices_services_and_store_without_changing_anything() {
     assert_eq!(s.services.len(), 7, "every interesting service is reported, installed or not");
     assert!(s.services.iter().any(|x| x.name == "wuauserv" && x.start_type.is_some()));
     assert!(s.install_policy.is_some());
+    assert!(!s.network_adapters.is_empty(), "the runner has a network adapter");
     let report = bitbybit_audio::case::analyze(&s, None);
     println!(
         "{:?} build {:?} · {} devices, {} gpus, {} endpoints, {} monitors, {} store packages, {} setupapi sections, {} findings; issues: {:?}",

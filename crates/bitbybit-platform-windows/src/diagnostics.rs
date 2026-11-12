@@ -271,7 +271,13 @@ pub fn collect(app_version: &str) -> Snapshot {
         Ok(packages) => s.driver_store_packages = packages,
         Err(e) => s.issues.push(issue("driverStore", e)),
     }
-    for area in ["network", "windowsUpdate", "pnpEvents"] {
+    match crate::net::inventory::collect() {
+        Ok(network) => {
+            s.network_adapters = bitbybit_network::overview::NetworkOverview::of(network).adapter_summaries()
+        }
+        Err(e) => s.issues.push(issue("network", e.to_string())),
+    }
+    for area in ["windowsUpdate", "pnpEvents"] {
         s.issues.push(issue(area, NOT_YET));
     }
     s
