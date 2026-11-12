@@ -280,7 +280,9 @@ pub fn collect() -> Result<NetworkSnapshot> {
     let mut interfaces = interfaces(now)?;
     let mut extras = adapters()?;
     let (v4, v6) = (ip_settings(AF_INET)?, ip_settings(AF_INET6)?);
+    let mut drivers = super::drivers::read();
     for i in &mut interfaces {
+        i.driver = i.interface_guid.as_deref().and_then(|g| drivers.remove(&super::drivers::normalize_guid(g)));
         if let Some(e) = extras.remove(&i.luid) {
             i.unicast_addresses = e.unicast;
             i.gateways = e.gateways;
