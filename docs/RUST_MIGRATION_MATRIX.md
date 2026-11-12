@@ -27,7 +27,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 
 | Id | Feature | C# origin | Rust module | State | Tests | Done when |
 |---|---|---|---|---|---|---|
-| DEV-01 | Device inventory (present + absent) | `QuickCollector.CollectDevices` (WMI) | `platform-windows::devices` (SetupAPI/CfgMgr32) | Todo | Windows read-only | lists devices with ids, class, problem, driver |
+| DEV-01 | Device inventory (present + absent) | `QuickCollector.CollectDevices` (WMI) | `platform-windows::devices` (SetupAPI/CfgMgr32) | WIP | Windows read-only | lists devices with ids, class, problem, driver |
 | DEV-02 | Problem codes as text | `Core/Devices/DeviceProblemCodes.cs` | `bitbybit-devices::problem` | Logic | table | all CM_PROB codes mapped |
 | DEV-03 | DeviceActionGuard | `Core/Devices/DeviceActionGuard.cs` | `bitbybit-devices::guard` | Logic | ported 6 tests | same verdicts |
 | DEV-04 | Restart / enable / disable / uninstall / rescan, journaled | `Platform/Devices`, `Operations/DeviceOperations.cs` | `platform-windows::devices`, `bitbybit-service::ops::devices` | Todo | opt-in system test | guard enforced in broker; revert handlers |

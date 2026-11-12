@@ -670,6 +670,7 @@ version = "0.7.0"
 dependencies = [
  "bitbybit-audio",
  "bitbybit-core",
+ "bitbybit-domain",
  "bitbybit-ipc",
  "bitbybit-network",
  "log",
