@@ -3,6 +3,7 @@
 
 pub mod inf;
 pub mod names;
+pub mod pnp_events;
 pub mod pnputil;
 pub mod policy;
 pub mod setupapi;

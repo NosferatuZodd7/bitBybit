@@ -5,13 +5,17 @@
 use crate::reg;
 use bitbybit_audio::changes::AudioDevices;
 use bitbybit_domain::snapshot::{
-    CollectionIssue, DenyDeviceIdEntry, DeviceInstallRestrictionsState, GpuSummary, ServiceSummary,
+    CollectionIssue, DenyDeviceIdEntry, DeviceInstallRestrictionsState, GpuSummary, PnpEventSummary, ServiceSummary,
     SetupApiSectionSummary, Snapshot, StorePackageSummary, SystemSummary, WindowsUpdateEntry,
 };
-use bitbybit_drivers::{inf, names::is_published_inf_name, setupapi};
+use bitbybit_drivers::{inf, names::is_published_inf_name, pnp_events, setupapi};
 use std::path::{Path, PathBuf};
 use time::OffsetDateTime;
 use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance};
+use windows::Win32::System::EventLog::{
+    EVT_HANDLE, EvtClose, EvtFormatMessage, EvtFormatMessageEvent, EvtNext, EvtOpenPublisherMetadata, EvtQuery,
+    EvtQueryChannelPath, EvtQueryReverseDirection, EvtRender, EvtRenderEventXml,
+};
 use windows::Win32::System::Services::{
     CloseServiceHandle, OpenSCManagerW, OpenServiceW, QUERY_SERVICE_CONFIGW, QueryServiceConfigW, QueryServiceStatus,
     SC_HANDLE, SC_MANAGER_CONNECT, SERVICE_QUERY_CONFIG, SERVICE_QUERY_STATUS, SERVICE_STATUS,
@@ -26,7 +30,6 @@ use windows::core::{HSTRING, PCWSTR};
 const INTERESTING_SERVICES: [&str; 7] =
     ["Audiosrv", "AudioEndpointBuilder", "SharedAccess", "icssvc", "WlanSvc", "wuauserv", "RasMan"];
 const RESTRICTIONS: &str = r"SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions";
-const NOT_YET: &str = "not collected by this version of bitBybit (Rust preview)";
 
 fn issue(area: &str, message: impl Into<String>) -> CollectionIssue {
     CollectionIssue { area: area.to_owned(), message: message.into() }
@@ -258,6 +261,80 @@ fn windows_update_history() -> std::result::Result<Vec<WindowsUpdateEntry>, Stri
     }
 }
 
+struct Evt(EVT_HANDLE);
+impl Drop for Evt {
+    fn drop(&mut self) {
+        // SAFETY: a handle returned by the event log API, closed once.
+        let _ = unsafe { EvtClose(self.0) };
+    }
+}
+
+/// Two-call pattern of EvtRender / EvtFormatMessage: size query, then a buffer of that many UTF-16 units.
+fn utf16_call(call: impl Fn(Option<&mut [u16]>, &mut u32) -> windows::core::Result<()>) -> Option<String> {
+    let mut used = 0u32;
+    let _ = call(None, &mut used);
+    if used == 0 || used > 1 << 20 {
+        return None;
+    }
+    let mut buf = vec![0u16; used as usize];
+    call(Some(&mut buf), &mut used).ok()?;
+    let end = buf.iter().position(|c| *c == 0).unwrap_or(buf.len());
+    Some(String::from_utf16_lossy(&buf[..end]))
+}
+
+/// Kernel-PnP configuration events of the audio/display devices, newest first (at most 5000 read, 300 kept).
+fn pnp_events() -> std::result::Result<Vec<PnpEventSummary>, String> {
+    // SAFETY: read-only query of a fixed channel; handles are owned by `Evt`.
+    let query = Evt(unsafe {
+        EvtQuery(
+            None,
+            &HSTRING::from(pnp_events::CHANNEL),
+            &HSTRING::from(pnp_events::QUERY),
+            EvtQueryChannelPath.0 | EvtQueryReverseDirection.0,
+        )
+    }
+    .map_err(|e| format!("EvtQuery: {}", e.message()))?);
+    // SAFETY: as above; without the publisher's messages the instance id stands in for the text.
+    let publisher =
+        unsafe { EvtOpenPublisherMetadata(None, &HSTRING::from("Microsoft-Windows-Kernel-PnP"), PCWSTR::null(), 0, 0) }
+            .ok()
+            .map(Evt);
+    let (mut out, mut scanned) = (Vec::new(), 0usize);
+    while scanned < 5000 && out.len() < 300 {
+        let mut batch = [0isize; 64];
+        let mut returned = 0u32;
+        // SAFETY: the batch array receives up to its length of event handles.
+        if unsafe { EvtNext(query.0, &mut batch, 5_000, 0, &mut returned) }.is_err() || returned == 0 {
+            break; // ERROR_NO_MORE_ITEMS, or a timeout: stop
+        }
+        for raw in &batch[..returned as usize] {
+            let event = Evt(EVT_HANDLE(*raw));
+            scanned += 1;
+            if out.len() >= 300 {
+                continue; // still closes the remaining handles of the batch
+            }
+            let xml = utf16_call(|buf, used| {
+                let size = buf.as_ref().map_or(0, |b| (b.len() * 2) as u32);
+                let ptr = buf.map(|b| b.as_mut_ptr().cast::<core::ffi::c_void>());
+                let mut count = 0u32;
+                // SAFETY: `ptr` (when present) points to `size` bytes; `used` receives the bytes needed.
+                let r = unsafe { EvtRender(None, event.0, EvtRenderEventXml.0, size, ptr, used, &mut count) };
+                *used = used.div_ceil(2);
+                r
+            });
+            let Some(xml) = xml else { continue };
+            let message = publisher.as_ref().and_then(|p| {
+                utf16_call(|buf, used| {
+                    // SAFETY: buffer of the given length (in characters).
+                    unsafe { EvtFormatMessage(Some(p.0), Some(event.0), 0, None, EvtFormatMessageEvent.0, buf, used) }
+                })
+            });
+            out.extend(pnp_events::from_event_xml(&xml, message));
+        }
+    }
+    Ok(out)
+}
+
 /// Device installation restrictions (read-only; standard users can read `SOFTWARE\Policies`).
 fn install_policy() -> DeviceInstallRestrictionsState {
     if !reg::exists(RESTRICTIONS) {
@@ -316,6 +393,9 @@ pub fn collect(app_version: &str) -> Snapshot {
         Ok(history) => s.windows_update_history = history,
         Err(e) => s.issues.push(issue("windowsUpdate", e)),
     }
-    s.issues.push(issue("pnpEvents", NOT_YET));
+    match pnp_events() {
+        Ok(events) => s.pnp_events = events,
+        Err(e) => s.issues.push(issue("pnpEvents", e)),
+    }
     s
 }
