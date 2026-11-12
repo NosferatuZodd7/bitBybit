@@ -1,0 +1,34 @@
+[package]
+name = "bitbybit-service"
+description = "bitBybit privileged broker: LocalSystem Windows service (bitBybitService) serving the closed operation allowlist over a named pipe."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "bitbybit-service"
+path = "src/main.rs"
+
+[dependencies]
+bitbybit-core.workspace = true
+bitbybit-ipc.workspace = true
+bitbybit-journal.workspace = true
+bitbybit-network.workspace = true
+bitbybit-recovery.workspace = true
+bitbybit-security.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+bitbybit-platform-windows.workspace = true
+windows-service = "0.8.1"
+
+[dev-dependencies]
+tempfile.workspace = true
+time.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

@@ -102,10 +102,10 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | IPC-07 | Audit log with redaction | `AuditRedaction.cs` | `bitbybit-ipc::audit` | Logic | ported | secrets masked |
 | IPC-08 | Event hub (long poll) | `BrokerEvents.cs` | `bitbybit-ipc::events` | Logic | ported | bounded ring |
 | IPC-09 | Client | `BrokerClient.cs` | `bitbybit-ipc::client` | Logic | end-to-end over a duplex stream | confirm callback |
-| SVC-01 | Windows service (LocalSystem) `bitBybitService` | placeholder | `bitbybit-service` | Todo | CI install/start | runs, stops cleanly |
-| SVC-02 | Named-pipe server, ACL, client identity | new | `platform-windows::pipe` | Todo | CI round trip | remote clients rejected |
+| SVC-01 | Windows service (LocalSystem) `bitBybitService` | placeholder | `bitbybit-service` | WIP | CI install/start | runs, stops cleanly |
+| SVC-02 | Named-pipe server, ACL, client identity | new | `platform-windows::pipe` | CI | CI round trip | remote clients rejected |
 | SVC-03 | Privileged operations behind the allowlist | `ElevatedCommand.cs` verbs | `bitbybit-service::ops` | Todo | dispatcher tests | every verb re-validated |
-| SVC-04 | Recovery at start, interrupted operations | new | `bitbybit-service::recovery` | Todo | fakes | leftovers reverted or flagged |
+| SVC-04 | Recovery at start, interrupted operations | new | `bitbybit-service::recovery` | Logic | fakes | leftovers reverted or flagged |
 | SVC-05 | VPN leak watchdog | new | `bitbybit-service::watch::vpn` | Todo | state machine | blocks on VPN loss |
 | SVC-06 | Audio profile watchdog | `AudioProfileHost.cs` | `bitbybit-service::watch::audio` | Todo | reconciler tests | bounded |
 | SVC-07 | Elevated helper replacement (portable broker host) | `ElevatedCommand.cs` | `bitbybit-service` library hosted by the app | Todo | CI | same allowlist, UAC consent |
