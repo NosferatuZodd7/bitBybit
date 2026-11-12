@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  bitBybit MSI (WiX v5, built on the Windows CI runner only):
+  - Program Files\bitBybit: bitBybit.exe (app), bitbybit-cli.exe, bitbybit-service.exe installed as the
+    bitBybitService Windows service (LocalSystem, automatic start), stopped and removed on uninstall.
+  - %ProgramData%\bitBybit gets a protected ACL (SYSTEM and Administrators full control, Users read only): standard
+    users cannot plant configuration (e.g. broker developer mode) that the LocalSystem service would trust.
+  - Major upgrades only; the product version comes from CI (-d Version=major.minor.build).
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="bitBybit" Manufacturer="bitBybit" Version="$(Version)" UpgradeCode="{B4629598-6C5E-4A96-806D-FD7AE9D1A775}"
+           Scope="perMachine" Compressed="yes" InstallerVersion="500">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of bitBybit is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="bitBybit">
+        <Component Id="App" Bitness="always64">
+          <File Id="AppExe" Source="$(Bin)\bitBybit.exe" KeyPath="yes" />
+        </Component>
+        <Component Id="Cli" Bitness="always64">
+          <File Id="CliExe" Source="$(Bin)\bitbybit-cli.exe" KeyPath="yes" />
+        </Component>
+        <Component Id="Service" Bitness="always64">
+          <File Id="ServiceExe" Source="$(Bin)\bitbybit-service.exe" KeyPath="yes" />
+          <ServiceInstall Name="bitBybitService" DisplayName="bitBybit"
+                          Description="bitBybit broker: makes the changes the bitBybit app asks for, after your confirmation, and records them so they can be reverted."
+                          Type="ownProcess" Start="auto" ErrorControl="normal" Account="LocalSystem" Vital="yes" />
+          <ServiceControl Id="ServiceControl" Name="bitBybitService" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DataFolder" Name="bitBybit">
+        <Component Id="DataAcl" Bitness="always64" Guid="*">
+          <CreateFolder>
+            <!-- Protected DACL inherited by everything below: SYSTEM + Administrators full control, Users read. -->
+            <PermissionEx Sddl="D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FRFX;;;BU)" />
+          </CreateFolder>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenu" Guid="*">
+        <Shortcut Id="AppShortcut" Name="bitBybit" Target="[INSTALLFOLDER]bitBybit.exe" WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKCU" Key="Software\bitBybit" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="bitBybit" Level="1">
+      <ComponentRef Id="App" />
+      <ComponentRef Id="Cli" />
+      <ComponentRef Id="Service" />
+      <ComponentRef Id="DataAcl" />
+      <ComponentRef Id="StartMenu" />
+    </Feature>
+  </Package>
+</Wix>

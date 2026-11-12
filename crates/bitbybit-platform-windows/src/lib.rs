@@ -13,6 +13,10 @@ pub mod diagnostics;
 #[cfg(windows)]
 pub mod display;
 #[cfg(windows)]
+pub mod drivers;
+#[cfg(windows)]
+pub mod elevation;
+#[cfg(windows)]
 pub mod http;
 #[cfg(windows)]
 pub mod net;
@@ -20,3 +24,9 @@ pub mod net;
 pub mod pipe;
 #[cfg(windows)]
 mod reg;
+#[cfg(windows)]
+pub mod tools;
+#[cfg(windows)]
+pub mod ui;
+#[cfg(windows)]
+pub mod windows_update;

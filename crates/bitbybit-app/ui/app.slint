@@ -1,7 +1,11 @@
-// bitBybit main window. Every visible text comes from the pt-PT catalog through Tr.t(key); data comes from the
-// broker. No text is written here except catalog keys.
+// bitBybit main window (Liquid Glass design system: theme.slint + components.slint). Every visible text comes from
+// the pt-PT catalog through Tr.t(key); data comes from the broker. No text is written here except catalog keys.
 
-import { Button, ScrollView, VerticalBox, HorizontalBox, Palette } from "std-widgets.slint";
+import { CheckBox, ComboBox, LineEdit, ScrollView, Palette, Slider, Switch } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Backdrop, Glass, Card, PillButton, NavItem, Badge, StatusBanner, PageHeader, SectionTitle, Secondary, Body, Segmented } from "components.slint";
+
+export { Theme }
 
 export global Tr {
     pure callback t(string) -> string;
@@ -17,32 +21,24 @@ export struct InterfaceRow {
 }
 
 export struct DeviceRow {
+    id: string,
     name: string,
     class: string,
     status: string,
     driver: string,
     problem: bool,
+    can-restart: bool,
+    can-enable: bool,
+    can-disable: bool,
+    can-uninstall: bool,
+    can-change-driver: bool,
 }
 
-component DeviceCard inherits Rectangle {
-    in property <DeviceRow> info;
-    border-radius: 8px;
-    border-width: 1px;
-    border-color: root.info.problem ? #c42b1c : Palette.border;
-    background: Palette.control-background;
-    height: layout.preferred-height;
-    layout := VerticalLayout {
-        padding: 10px;
-        spacing: 2px;
-        HorizontalLayout {
-            spacing: 8px;
-            Text { text: root.info.name; font-size: 14px; font-weight: 600; overflow: elide; }
-            Rectangle { }
-            Text { text: root.info.class; color: #707070; font-size: 12px; }
-        }
-        Text { text: root.info.status; wrap: word-wrap; color: root.info.problem ? #c42b1c : Palette.foreground; font-size: 12px; }
-        Text { text: root.info.driver; color: #707070; font-size: 12px; wrap: word-wrap; }
-    }
+export struct DriverChoice {
+    inf: string,
+    title: string,
+    detail: string,
+    current: bool,
 }
 
 export struct AudioRow {
@@ -52,31 +48,9 @@ export struct AudioRow {
     state: string,
     defaults: string,
     can-make-default: bool,
-}
-
-component AudioCard inherits Rectangle {
-    in property <AudioRow> info;
-    callback make-default(string);
-    border-radius: 8px;
-    border-width: 1px;
-    border-color: Palette.border;
-    background: Palette.control-background;
-    height: layout.preferred-height;
-    layout := HorizontalLayout {
-        padding: 10px;
-        spacing: 12px;
-        VerticalLayout {
-            spacing: 2px;
-            Text { text: root.info.name; font-size: 14px; font-weight: 600; overflow: elide; }
-            Text { text: root.info.flow + " · " + root.info.state; color: #707070; font-size: 12px; }
-            if root.info.defaults != "": Text { text: root.info.defaults; color: Palette.accent-background; font-size: 12px; }
-        }
-        Rectangle { }
-        if root.info.can-make-default: VerticalLayout {
-            alignment: center;
-            Button { text: Tr.t("app.audio.makeDefault"); clicked => { root.make-default(root.info.id); } }
-        }
-    }
+    volume: int,
+    muted: bool,
+    can-prefer: bool,
 }
 
 export struct DisplayRow {
@@ -87,28 +61,6 @@ export struct DisplayRow {
     warning: string,
 }
 
-component DisplayCard inherits Rectangle {
-    in property <DisplayRow> info;
-    border-radius: 8px;
-    border-width: 1px;
-    border-color: root.info.warning != "" ? #c42b1c : Palette.border;
-    background: Palette.control-background;
-    height: layout.preferred-height;
-    layout := VerticalLayout {
-        padding: 10px;
-        spacing: 2px;
-        HorizontalLayout {
-            spacing: 8px;
-            Text { text: root.info.name; font-size: 14px; font-weight: 600; overflow: elide; }
-            Rectangle { }
-            Text { text: root.info.mode; font-size: 12px; }
-        }
-        Text { text: root.info.connection; color: #707070; font-size: 12px; }
-        Text { text: root.info.edid; font-size: 12px; wrap: word-wrap; }
-        if root.info.warning != "": Text { text: root.info.warning; color: #c42b1c; font-size: 12px; wrap: word-wrap; }
-    }
-}
-
 export struct FindingRow {
     level: int,
     severity: string,
@@ -116,28 +68,13 @@ export struct FindingRow {
     detail: string,
     evidence: string,
     actions: string,
+    buttons: [string],
 }
 
-component FindingCard inherits Rectangle {
-    in property <FindingRow> info;
-    border-radius: 8px;
-    border-width: 1px;
-    border-color: root.info.level >= 2 ? #c42b1c : (root.info.level == 1 ? #9d5d00 : Palette.border);
-    background: Palette.control-background;
-    height: layout.preferred-height;
-    layout := VerticalLayout {
-        padding: 10px;
-        spacing: 4px;
-        HorizontalLayout {
-            spacing: 8px;
-            Text { text: root.info.severity; font-size: 11px; font-weight: 700; color: root.info.level >= 2 ? #c42b1c : (root.info.level == 1 ? #9d5d00 : #707070); vertical-alignment: center; }
-            Text { text: root.info.title; font-size: 14px; font-weight: 600; wrap: word-wrap; }
-        }
-        Text { text: root.info.detail; font-size: 12px; wrap: word-wrap; }
-        if root.info.evidence != "": Text { text: root.info.evidence; font-size: 12px; color: #707070; wrap: word-wrap; }
-        if root.info.actions != "": Text { text: root.info.actions; font-size: 12px; color: Palette.accent-background; wrap: word-wrap; }
-    }
-}
+export struct CleanupItem { id: string, device: bool, title: string, detail: string, impact: string, risk: string, recommended: bool }
+export struct StoreItem { inf: string, title: string, detail: string, used-by: string }
+export struct UpdateItem { id: string, title: string, detail: string }
+export struct DashTile { title: string, value: string, state: int, page: int }
 
 export struct ChangeRow {
     id: string,
@@ -149,95 +86,189 @@ export struct ChangeRow {
     can-revert: bool,
 }
 
-component ChangeCard inherits Rectangle {
-    in property <ChangeRow> info;
-    callback revert(string);
-    border-radius: 8px;
-    border-width: 1px;
-    border-color: Palette.border;
-    background: Palette.control-background;
+// Destructive actions (uninstall, delete) use the red capsule so they never look like harmless ones; every action
+// still goes through the confirmation dialog that shows its impact and risk.
+component DeviceCard inherits Card {
+    in property <DeviceRow> info;
+    callback action(string, string);
+    callback drivers(string, string);
+    tone: root.info.problem ? 2 : 0;
+    height: layout.preferred-height;
+    layout := VerticalLayout {
+        padding: Theme.space-m;
+        spacing: 4px;
+        HorizontalLayout {
+            spacing: Theme.space-s;
+            Text { text: root.info.name; font-size: Theme.font-emphasis; font-weight: 600; color: Theme.text; overflow: elide; }
+            Rectangle { }
+            Badge { text: root.info.class; tone: 0; }
+        }
+        Text { text: root.info.status; wrap: word-wrap; color: root.info.problem ? Theme.error : Theme.text; font-size: Theme.font-caption; }
+        Secondary { text: root.info.driver; }
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            padding-top: 4px;
+            if root.info.can-restart: PillButton { text: Tr.t("app.devices.action.restart"); clicked => { root.action(root.info.id, "Restart"); } }
+            if root.info.can-enable: PillButton { text: Tr.t("app.devices.action.enable"); clicked => { root.action(root.info.id, "Enable"); } }
+            if root.info.can-disable: PillButton { text: Tr.t("app.devices.action.disable"); clicked => { root.action(root.info.id, "Disable"); } }
+            if root.info.can-change-driver: PillButton { text: Tr.t("app.devices.action.drivers"); clicked => { root.drivers(root.info.id, root.info.name); } }
+            if root.info.can-uninstall: PillButton { text: Tr.t("app.devices.action.uninstall"); kind: 2; clicked => { root.action(root.info.id, "Uninstall"); } }
+        }
+    }
+}
+
+component AudioCard inherits Card {
+    in property <AudioRow> info;
+    callback make-default(string);
+    callback set-volume(string, float);
+    callback set-mute(string, bool);
+    callback prefer(string);
     height: layout.preferred-height;
     layout := HorizontalLayout {
-        padding: 10px;
-        spacing: 12px;
+        padding: Theme.space-m;
+        spacing: Theme.space-m;
         VerticalLayout {
-            spacing: 2px;
-            Text { text: root.info.kind; font-size: 14px; font-weight: 600; }
-            Text { text: root.info.description; wrap: word-wrap; font-size: 12px; }
-            Text { text: root.info.when + " · " + root.info.scope + " · " + root.info.status; color: #707070; font-size: 12px; }
+            spacing: 4px;
+            Text { text: root.info.name; font-size: Theme.font-emphasis; font-weight: 600; color: Theme.text; overflow: elide; }
+            Secondary { text: root.info.flow + " · " + root.info.state; }
+            if root.info.defaults != "": HorizontalLayout {
+                alignment: start;
+                Badge { text: root.info.defaults; tone: 3; }
+            }
+            if root.info.volume >= 0: HorizontalLayout {
+                spacing: Theme.space-s;
+                Slider {
+                    min-width: 160px;
+                    minimum: 0;
+                    maximum: 100;
+                    value: root.info.volume;
+                    accessible-label: Tr.t("app.audio.volume");
+                    released(v) => { root.set-volume(root.info.id, v); }
+                }
+                Switch {
+                    text: Tr.t("app.audio.mute");
+                    checked: root.info.muted;
+                    toggled => { root.set-mute(root.info.id, self.checked); }
+                }
+            }
+        }
+        Rectangle { }
+        if root.info.can-prefer: VerticalLayout {
+            alignment: center;
+            PillButton { text: Tr.t("app.audio.prefer"); clicked => { root.prefer(root.info.id); } }
+        }
+        if root.info.can-make-default: VerticalLayout {
+            alignment: center;
+            PillButton { text: Tr.t("app.audio.makeDefault"); kind: 1; clicked => { root.make-default(root.info.id); } }
+        }
+    }
+}
+
+component DisplayCard inherits Card {
+    in property <DisplayRow> info;
+    tone: root.info.warning != "" ? 2 : 0;
+    height: layout.preferred-height;
+    layout := VerticalLayout {
+        padding: Theme.space-m;
+        spacing: 4px;
+        HorizontalLayout {
+            spacing: Theme.space-s;
+            Text { text: root.info.name; font-size: Theme.font-emphasis; font-weight: 600; color: Theme.text; overflow: elide; }
+            Rectangle { }
+            Badge { text: root.info.mode; tone: 3; }
+        }
+        Secondary { text: root.info.connection; }
+        Body { text: root.info.edid; font-size: Theme.font-caption; }
+        if root.info.warning != "": Text { text: root.info.warning; color: Theme.error; font-size: Theme.font-caption; wrap: word-wrap; }
+    }
+}
+
+component FindingCard inherits Card {
+    in property <FindingRow> info;
+    callback run(int);
+    tone: root.info.level >= 2 ? 2 : (root.info.level == 1 ? 1 : 0);
+    height: layout.preferred-height;
+    layout := VerticalLayout {
+        padding: Theme.space-m;
+        spacing: 6px;
+        HorizontalLayout {
+            spacing: Theme.space-s;
+            VerticalLayout {
+                alignment: start;
+                Badge { text: root.info.severity; tone: root.info.level >= 2 ? 2 : (root.info.level == 1 ? 1 : 0); }
+            }
+            Text { text: root.info.title; font-size: Theme.font-emphasis; font-weight: 600; color: Theme.text; wrap: word-wrap; }
+        }
+        Body { text: root.info.detail; font-size: Theme.font-caption; }
+        if root.info.evidence != "": Secondary { text: root.info.evidence; }
+        if root.info.actions != "": Text { text: root.info.actions; font-size: Theme.font-caption; color: Theme.accent; wrap: word-wrap; }
+        for label[i] in root.info.buttons: HorizontalLayout {
+            alignment: start;
+            PillButton { text: label; clicked => { root.run(i); } }
+        }
+    }
+}
+
+component ChangeCard inherits Card {
+    in property <ChangeRow> info;
+    callback revert(string);
+    height: layout.preferred-height;
+    layout := HorizontalLayout {
+        padding: Theme.space-m;
+        spacing: Theme.space-m;
+        VerticalLayout {
+            spacing: 3px;
+            Text { text: root.info.kind; font-size: Theme.font-emphasis; font-weight: 600; color: Theme.text; }
+            Body { text: root.info.description; font-size: Theme.font-caption; }
+            Secondary { text: root.info.when + " · " + root.info.scope + " · " + root.info.status; }
         }
         Rectangle { }
         if root.info.can-revert: VerticalLayout {
             alignment: center;
-            Button { text: Tr.t("app.changes.revert"); clicked => { root.revert(root.info.id); } }
+            PillButton { text: Tr.t("app.changes.revert"); clicked => { root.revert(root.info.id); } }
         }
     }
 }
 
-component NavItem inherits Rectangle {
-    in property <string> label;
-    in property <bool> selected;
-    callback clicked;
-    height: 40px;
-    border-radius: 6px;
-    background: root.selected ? Palette.accent-background : (touch.has-hover ? Palette.alternate-background : transparent);
-    accessible-role: tab;
-    accessible-label: root.label;
-    touch := TouchArea {
-        clicked => { root.clicked(); }
-    }
-    Text {
-        x: 12px;
-        text: root.label;
-        vertical-alignment: center;
-        color: root.selected ? Palette.accent-foreground : Palette.foreground;
-        font-size: 14px;
-    }
-}
-
-component Banner inherits Rectangle {
-    // 0 = working, 1 = ok, 2 = problem
-    in property <int> kind;
-    in property <string> message;
-    height: msg.preferred-height + 16px;
-    border-radius: 6px;
-    background: root.kind == 2 ? #fde7e9 : (root.kind == 1 ? #dff6dd : Palette.alternate-background);
-    msg := Text {
-        x: 12px;
-        width: parent.width - 24px;
-        text: root.message;
-        wrap: word-wrap;
-        vertical-alignment: center;
-        // Dark text on the light status colours keeps contrast in both themes.
-        color: root.kind == 0 ? Palette.foreground : #1b1b1b;
-    }
-}
-
-component InterfaceCard inherits Rectangle {
+component InterfaceCard inherits Card {
     in property <InterfaceRow> info;
-    border-radius: 8px;
-    border-width: 1px;
-    border-color: Palette.border;
-    background: Palette.control-background;
     height: layout.preferred-height;
     layout := VerticalLayout {
-        padding: 12px;
+        padding: Theme.space-m;
         spacing: 4px;
         HorizontalLayout {
-            spacing: 8px;
-            Text { text: root.info.name; font-size: 15px; font-weight: 600; overflow: elide; }
-            if root.info.vpn: Rectangle {
-                width: vpn-label.preferred-width + 12px;
+            spacing: Theme.space-s;
+            Rectangle {
+                width: 8px;
+                height: 8px;
+                y: (parent.height - self.height) / 2;
                 border-radius: 4px;
-                background: Palette.accent-background;
-                vpn-label := Text { text: "VPN"; color: Palette.accent-foreground; font-size: 11px; vertical-alignment: center; horizontal-alignment: center; }
+                background: root.info.up ? Theme.ok : Theme.text-secondary;
             }
+            Text { text: root.info.name; font-size: Theme.font-emphasis; font-weight: 600; color: Theme.text; overflow: elide; vertical-alignment: center; }
+            if root.info.vpn: VerticalLayout { alignment: center; Badge { text: "VPN"; tone: 3; } }
             Rectangle { }
-            Text { text: root.info.status; color: root.info.up ? Palette.foreground : #8a8a8a; }
+            Text { text: root.info.status; color: root.info.up ? Theme.text : Theme.text-secondary; font-size: Theme.font-caption; vertical-alignment: center; }
         }
-        Text { text: root.info.kind; color: #707070; font-size: 12px; }
-        Text { text: root.info.addresses; font-size: 12px; wrap: word-wrap; }
+        Secondary { text: root.info.kind; }
+        Body { text: root.info.addresses; font-size: Theme.font-caption; }
     }
+}
+
+// Empty / not-yet states: a quiet card instead of a bare line of text.
+component EmptyState inherits Card {
+    in property <string> text;
+    height: 64px;
+    Secondary { text: root.text; horizontal-alignment: center; vertical-alignment: center; width: parent.width - 32px; }
+}
+
+// A labelled form row (label column + control).
+component FieldRow inherits HorizontalLayout {
+    in property <string> label;
+    spacing: Theme.space-s;
+    Text { text: root.label; color: Theme.text; font-size: Theme.font-body; vertical-alignment: center; min-width: 140px; }
+    @children
 }
 
 export component AppWindow inherits Window {
@@ -249,6 +280,15 @@ export component AppWindow inherits Window {
     in property <string> hidden-summary;
     in property <[InterfaceRow]> interfaces;
     in property <[DeviceRow]> devices;
+    callback device-action(string, string);
+    callback device-drivers(string, string);
+    callback rescan();
+    in property <string> driver-device-id;
+    in property <string> driver-device-name;
+    in property <[DriverChoice]> driver-choices;
+    callback install-driver(string, string);
+    callback rollback-driver(string);
+    callback close-drivers();
     in property <string> devices-summary;
     in property <[AudioRow]> audio;
     in property <string> audio-subtitle;
@@ -260,127 +300,437 @@ export component AppWindow inherits Window {
     in property <string> diagnosis-summary;
     in property <bool> diagnosis-running;
     callback diagnose();
+    callback run-finding-action(int, int);
     in property <[ChangeRow]> changes;
     in property <string> changes-message;
     callback revert(string);
     callback make-default(string);
-    in-out property <int> page: 0;
+    callback set-volume(string, float);
+    callback set-mute(string, bool);
+    callback restart-audio-services();
+    in property <[CleanupItem]> cleanup-items;
+    in property <[StoreItem]> store-items;
+    in property <[UpdateItem]> update-items;
+    in property <bool> updates-searched;
+    in property <string> backups-text;
+    in property <[string]> share-labels;
+    in-out property <int> share-upstream;
+    in-out property <int> share-downstream: 1;
+    in-out property <string> share-lan;
+    in-out property <bool> share-hotspot;
+    in-out property <bool> share-leak;
+    in property <bool> share-upstream-vpn;
+    in property <string> share-session;
+    callback share-upstream-changed();
+    callback start-sharing();
+    callback stop-sharing();
+    in property <string> app-update-text;
+    in property <bool> app-update-available;
+    callback check-app-update();
+    callback install-app-update();
+    callback refresh-drivers();
+    callback toggle-cleanup(string, bool, bool);
+    callback toggle-update(string, bool);
+    callback apply-cleanup();
+    callback remove-package(string);
+    callback search-updates();
+    callback install-updates();
+    callback prefer-endpoint(string);
+    callback forget-profile();
+    in property <string> audio-profile;
+    in-out property <int> page: 8;
+    in property <[DashTile]> tiles;
     callback refresh();
+    // Operation feedback (0 none, 1 working, 2 done, 3 failed) and the confirmation dialog.
+    in property <int> op-state;
+    in property <string> op-message;
+    in property <bool> op-elevate;
+    callback dismiss-op();
+    callback relaunch-elevated();
+    in property <bool> dialog-visible;
+    in property <string> dialog-summary;
+    in property <[string]> dialog-steps;
+    in property <[string]> dialog-warnings;
+    in property <[string]> dialog-effects;
+    in property <string> dialog-risk;
+    in property <int> dialog-level;
+    callback dialog-answer(bool);
+
+    // Settings page (9): look (0 dark, 1 glass, 2 light, 3 custom), custom base and accent, update channel.
+    in-out property <int> theme-index;
+    in-out property <int> custom-base;
+    in-out property <string> custom-accent;
+    in-out property <int> update-channel;
+    in property <string> settings-message;
+    callback settings-changed();
 
     title: "bitBybit " + root.version;
-    preferred-width: 1100px;
-    preferred-height: 720px;
-    min-width: 640px;
-    min-height: 420px;
-    background: Palette.background;
+    preferred-width: 1140px;
+    preferred-height: 740px;
+    min-width: 720px;
+    min-height: 480px;
+    background: Theme.bg-bottom;
+    default-font-size: Theme.font-body;
+
+    // Std widgets (combo boxes, switches, sliders) follow the look's light/dark scheme.
+    property <bool> scheme-dark: Theme.dark;
+    init => { Palette.color-scheme = Theme.dark ? ColorScheme.dark : ColorScheme.light; }
+    changed scheme-dark => { Palette.color-scheme = Theme.dark ? ColorScheme.dark : ColorScheme.light; }
+
+    Backdrop { width: root.width; height: root.height; }
 
     HorizontalLayout {
-        Rectangle {
-            width: 220px;
-            background: Palette.alternate-background;
+        padding: Theme.space-m;
+        spacing: Theme.space-m;
+
+        // Navigation: the glass layer floats over the content.
+        Glass {
+            width: 232px;
             VerticalLayout {
-                padding: 12px;
-                spacing: 4px;
-                Text { text: "bitBybit"; font-size: 20px; font-weight: 700; height: 40px; vertical-alignment: center; }
-                NavItem { label: Tr.t("app.tab.network"); selected: root.page == 0; clicked => { root.page = 0; } }
-                NavItem { label: Tr.t("app.page.devices.title"); selected: root.page == 1; clicked => { root.page = 1; } }
-                NavItem { label: Tr.t("app.page.audio.title"); selected: root.page == 2; clicked => { root.page = 2; } }
-                NavItem { label: Tr.t("app.page.case.title"); selected: root.page == 6; clicked => { root.page = 6; } }
-                NavItem { label: Tr.t("app.page.displays.title"); selected: root.page == 5; clicked => { root.page = 5; } }
-                NavItem { label: Tr.t("app.tab.changes"); selected: root.page == 3; clicked => { root.page = 3; } }
-                NavItem { label: Tr.t("app.about.title"); selected: root.page == 4; clicked => { root.page = 4; } }
+                padding: Theme.space-m;
+                spacing: 2px;
+                HorizontalLayout {
+                    height: 48px;
+                    padding-left: 8px;
+                    spacing: 10px;
+                    Rectangle {
+                        width: 26px;
+                        height: 26px;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: 8px;
+                        background: @linear-gradient(135deg, Theme.accent-hover 0%, Theme.accent 100%);
+                        Text { text: "b"; color: Theme.on-accent; font-weight: 800; font-size: 16px; }
+                    }
+                    Text { text: "bitBybit"; font-size: 19px; font-weight: 700; color: Theme.text; vertical-alignment: center; }
+                }
+                NavItem { glyph: "\u{E80F}"; label: Tr.t("app.page.dashboard.title"); selected: root.page == 8; clicked => { root.page = 8; } }
+                NavItem { glyph: "\u{E9D9}"; label: Tr.t("app.page.case.title"); selected: root.page == 6; clicked => { root.page = 6; } }
+                NavItem { glyph: "\u{E968}"; label: Tr.t("app.tab.network"); selected: root.page == 0; clicked => { root.page = 0; } }
+                NavItem { glyph: "\u{E772}"; label: Tr.t("app.page.devices.title"); selected: root.page == 1; clicked => { root.page = 1; } }
+                NavItem { glyph: "\u{E964}"; label: Tr.t("app.page.drivers.title"); selected: root.page == 7; clicked => { root.page = 7; root.refresh-drivers(); } }
+                NavItem { glyph: "\u{E767}"; label: Tr.t("app.page.audio.title"); selected: root.page == 2; clicked => { root.page = 2; } }
+                NavItem { glyph: "\u{E7F4}"; label: Tr.t("app.page.displays.title"); selected: root.page == 5; clicked => { root.page = 5; } }
+                NavItem { glyph: "\u{E81C}"; label: Tr.t("app.tab.changes"); selected: root.page == 3; clicked => { root.page = 3; } }
                 Rectangle { }
+                NavItem { glyph: "\u{E713}"; label: Tr.t("app.settings.title"); selected: root.page == 9; clicked => { root.page = 9; } }
+                NavItem { glyph: "\u{E946}"; label: Tr.t("app.about.title"); selected: root.page == 4; clicked => { root.page = 4; } }
             }
         }
-        VerticalBox {
-            padding: 20px;
-            spacing: 12px;
-            Banner { kind: root.broker-state; message: root.broker-message; }
-            if root.page == 0: VerticalLayout {
-                spacing: 10px;
-                HorizontalLayout {
-                    spacing: 12px;
-                    VerticalLayout {
-                        Text { text: Tr.t("app.page.network.title"); font-size: 22px; font-weight: 600; }
-                        Text { text: Tr.t("app.network.intro"); wrap: word-wrap; color: #707070; }
-                    }
-                    VerticalLayout {
-                        alignment: start;
-                        Button { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
-                    }
-                }
-                Text { text: root.route-summary; wrap: word-wrap; font-size: 14px; }
-                ScrollView {
-                    VerticalLayout {
-                        spacing: 8px;
-                        for row in root.interfaces: InterfaceCard { info: row; }
-                        Text { text: root.hidden-summary; color: #707070; font-size: 12px; }
-                    }
-                }
+
+        VerticalLayout {
+            padding: Theme.space-s;
+            padding-top: Theme.space-m;
+            spacing: Theme.space-m;
+            StatusBanner { kind: root.broker-state == 2 ? 2 : (root.broker-state == 1 ? 1 : 0); message: root.broker-message; }
+            if root.op-state != 0: StatusBanner {
+                kind: root.op-state == 3 ? 2 : (root.op-state == 2 ? 1 : 0);
+                message: root.op-message;
+                if root.op-elevate: PillButton { text: Tr.t("app.op.elevate"); kind: 1; clicked => { root.relaunch-elevated(); } }
+                if root.op-state != 1: PillButton { text: Tr.t("app.op.dismiss"); kind: 3; clicked => { root.dismiss-op(); } }
             }
-            if root.page == 1: VerticalLayout {
-                spacing: 10px;
-                HorizontalLayout {
-                    spacing: 12px;
-                    VerticalLayout {
-                        Text { text: Tr.t("app.page.devices.title"); font-size: 22px; font-weight: 600; }
-                        Text { text: root.devices-summary; color: #707070; wrap: word-wrap; }
-                    }
-                    VerticalLayout {
-                        alignment: start;
-                        Button { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
-                    }
+
+            // 8 · Resumo
+            if root.page == 8: VerticalLayout {
+                spacing: Theme.space-m;
+                PageHeader {
+                    title: Tr.t("app.page.dashboard.title");
+                    VerticalLayout { alignment: start; PillButton { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
                 }
                 ScrollView {
                     VerticalLayout {
-                        spacing: 6px;
-                        for device in root.devices: DeviceCard { info: device; }
-                    }
-                }
-            }
-            if root.page == 2: VerticalLayout {
-                spacing: 10px;
-                HorizontalLayout {
-                    spacing: 12px;
-                    VerticalLayout {
-                        Text { text: Tr.t("app.page.audio.title"); font-size: 22px; font-weight: 600; }
-                        Text { text: root.audio-subtitle; color: #707070; wrap: word-wrap; }
-                    }
-                    VerticalLayout {
+                        spacing: Theme.space-s;
                         alignment: start;
-                        Button { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
-                    }
-                }
-                Text { text: Tr.t("app.action.undocumented"); wrap: word-wrap; color: #707070; font-size: 12px; }
-                if root.audio-message != "": Text { text: root.audio-message; wrap: word-wrap; font-size: 13px; }
-                ScrollView {
-                    VerticalLayout {
-                        spacing: 6px;
-                        for endpoint in root.audio: AudioCard {
-                            info: endpoint;
-                            make-default(id) => { root.make-default(id); }
+                        for tile in root.tiles: Card {
+                            interactive: true;
+                            tone: tile.state == 2 ? 2 : (tile.state == 1 ? 1 : 0);
+                            height: tile-box.preferred-height;
+                            accessible-role: button;
+                            accessible-label: tile.title;
+                            accessible-action-default => { root.page = tile.page; }
+                            clicked => { root.page = tile.page; }
+                            tile-box := HorizontalLayout {
+                                padding: Theme.space-l;
+                                spacing: Theme.space-m;
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    Secondary { text: tile.title; }
+                                    Text { text: tile.value; font-size: Theme.font-title; font-weight: 600; color: Theme.text; wrap: word-wrap; }
+                                }
+                                Text { text: "›"; font-size: 22px; color: Theme.text-secondary; vertical-alignment: center; horizontal-stretch: 0; }
+                            }
                         }
                     }
                 }
             }
-            if root.page == 3: VerticalLayout {
-                spacing: 10px;
-                HorizontalLayout {
-                    spacing: 12px;
-                    VerticalLayout {
-                        Text { text: Tr.t("app.tab.changes"); font-size: 22px; font-weight: 600; }
-                        Text { text: Tr.t("app.changes.intro"); color: #707070; wrap: word-wrap; }
-                    }
-                    VerticalLayout {
-                        alignment: start;
-                        Button { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
-                    }
+
+            // 0 · Rede
+            if root.page == 0: VerticalLayout {
+                spacing: Theme.space-m;
+                PageHeader {
+                    title: Tr.t("app.page.network.title");
+                    subtitle: Tr.t("app.network.intro");
+                    VerticalLayout { alignment: start; PillButton { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
                 }
-                if root.changes-message != "": Text { text: root.changes-message; wrap: word-wrap; font-size: 13px; }
-                if root.changes.length == 0: Text { text: Tr.t("app.changes.empty"); color: #707070; }
                 ScrollView {
                     VerticalLayout {
-                        spacing: 6px;
+                        spacing: Theme.space-s;
+                        alignment: start;
+                        Body { text: root.route-summary; font-size: Theme.font-emphasis; }
+                        Glass {
+                            raised: false;
+                            border-radius: Theme.radius-l;
+                            height: share-box.preferred-height;
+                            share-box := VerticalLayout {
+                                padding: Theme.space-l;
+                                spacing: Theme.space-s;
+                                SectionTitle { text: Tr.t("app.share.title"); }
+                                if root.share-session != "": HorizontalLayout {
+                                    spacing: Theme.space-s;
+                                    VerticalLayout { alignment: center; Badge { text: "●"; tone: 4; } }
+                                    Body { text: Tr.t("app.share.active"); vertical-alignment: center; }
+                                    PillButton { text: Tr.t("app.share.stop"); clicked => { root.stop-sharing(); } }
+                                }
+                                if root.share-session == "": VerticalLayout {
+                                    spacing: Theme.space-s;
+                                    FieldRow { label: Tr.t("app.share.from"); ComboBox { model: root.share-labels; current-index <=> root.share-upstream; selected => { root.share-upstream-changed(); } } }
+                                    FieldRow { label: Tr.t("app.share.to"); ComboBox { model: root.share-labels; current-index <=> root.share-downstream; } }
+                                    FieldRow { label: Tr.t("app.share.subnet"); LineEdit { placeholder-text: Tr.t("app.share.subnetAuto"); text <=> root.share-lan; } }
+                                    Switch { text: Tr.t("app.share.hotspot"); checked <=> root.share-hotspot; }
+                                    Switch { text: Tr.t("app.share.leak"); checked <=> root.share-leak; enabled: root.share-upstream-vpn; }
+                                    if root.share-upstream-vpn && !root.share-leak: StatusBanner { kind: 3; message: Tr.t("app.share.leakOff"); }
+                                    HorizontalLayout {
+                                        alignment: start;
+                                        PillButton { text: Tr.t("app.share.start"); kind: 1; clicked => { root.start-sharing(); } }
+                                    }
+                                }
+                            }
+                        }
+                        for row in root.interfaces: InterfaceCard { info: row; }
+                        Secondary { text: root.hidden-summary; }
+                    }
+                }
+            }
+
+            // 1 · Dispositivos
+            if root.page == 1: VerticalLayout {
+                spacing: Theme.space-m;
+                PageHeader {
+                    title: Tr.t("app.page.devices.title");
+                    subtitle: root.devices-summary;
+                    VerticalLayout {
+                        alignment: start;
+                        HorizontalLayout {
+                            spacing: Theme.space-s;
+                            PillButton { text: Tr.t("app.devices.rescan"); clicked => { root.rescan(); } }
+                            PillButton { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
+                        }
+                    }
+                }
+                if root.driver-device-id != "": Glass {
+                    strong: true;
+                    height: driver-panel.preferred-height;
+                    driver-panel := VerticalLayout {
+                        padding: Theme.space-l;
+                        spacing: Theme.space-s;
+                        HorizontalLayout {
+                            spacing: Theme.space-s;
+                            SectionTitle { text: Tr.t("app.drivers.chooser") + " " + root.driver-device-name; wrap: word-wrap; }
+                            PillButton { text: Tr.t("app.drivers.rollback"); clicked => { root.rollback-driver(root.driver-device-id); } }
+                            PillButton { text: Tr.t("app.op.dismiss"); kind: 3; clicked => { root.close-drivers(); } }
+                        }
+                        for choice in root.driver-choices: Card {
+                            tone: choice.current ? 3 : 0;
+                            height: choice-row.preferred-height;
+                            choice-row := HorizontalLayout {
+                                padding: Theme.space-s;
+                                padding-left: Theme.space-m;
+                                spacing: Theme.space-s;
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    Text { text: choice.title + (choice.current ? " · " + Tr.t("app.drivers.current") : ""); font-size: Theme.font-body; font-weight: 600; color: Theme.text; wrap: word-wrap; }
+                                    Secondary { text: choice.detail; }
+                                }
+                                if !choice.current: VerticalLayout { alignment: center; PillButton { text: Tr.t("app.drivers.install"); kind: 1; clicked => { root.install-driver(root.driver-device-id, choice.inf); } } }
+                            }
+                        }
+                    }
+                }
+                ScrollView {
+                    VerticalLayout {
+                        spacing: Theme.space-s;
+                        alignment: start;
+                        for device in root.devices: DeviceCard {
+                            info: device;
+                            action(id, a) => { root.device-action(id, a); }
+                            drivers(id, n) => { root.device-drivers(id, n); }
+                        }
+                    }
+                }
+            }
+
+            // 7 · Controladores
+            if root.page == 7: VerticalLayout {
+                spacing: Theme.space-m;
+                PageHeader { title: Tr.t("app.page.drivers.title"); }
+                ScrollView {
+                    VerticalLayout {
+                        spacing: Theme.space-s;
+                        alignment: start;
+                        SectionTitle { text: Tr.t("app.page.updates.title"); }
+                        Secondary { text: Tr.t("app.page.updates.intro"); }
+                        HorizontalLayout {
+                            spacing: Theme.space-s;
+                            alignment: start;
+                            PillButton { text: Tr.t("app.page.updates.search"); clicked => { root.search-updates(); } }
+                            if root.update-items.length > 0: PillButton { text: Tr.t("app.drivers.installSelected"); kind: 1; clicked => { root.install-updates(); } }
+                        }
+                        if root.updates-searched && root.update-items.length == 0: EmptyState { text: Tr.t("app.page.updates.noneToast"); }
+                        for u in root.update-items: Card {
+                            height: upd.preferred-height;
+                            upd := HorizontalLayout {
+                                padding: Theme.space-s;
+                                padding-left: Theme.space-m;
+                                CheckBox { text: u.title + " — " + u.detail; toggled => { root.toggle-update(u.id, self.checked); } }
+                            }
+                        }
+
+                        SectionTitle { text: Tr.t("app.page.cleanup.title"); }
+                        if root.cleanup-items.length == 0: EmptyState { text: Tr.t("app.cleanup.nothing"); }
+                        for c in root.cleanup-items: Card {
+                            tone: c.recommended ? 0 : 1;
+                            height: cl.preferred-height;
+                            cl := HorizontalLayout {
+                                padding: Theme.space-m;
+                                spacing: Theme.space-s;
+                                VerticalLayout { alignment: start; CheckBox { toggled => { root.toggle-cleanup(c.id, c.device, self.checked); } } }
+                                VerticalLayout {
+                                    spacing: 3px;
+                                    HorizontalLayout {
+                                        spacing: Theme.space-s;
+                                        Text { text: c.title; font-size: Theme.font-body; font-weight: 600; color: Theme.text; wrap: word-wrap; }
+                                        if c.recommended: VerticalLayout { alignment: start; Badge { text: Tr.t("app.cleanup.recommended"); tone: 4; } }
+                                    }
+                                    if c.detail != "": Secondary { text: c.detail; }
+                                    Text { text: c.impact + " · " + c.risk; font-size: Theme.font-caption; color: Theme.warn; wrap: word-wrap; }
+                                }
+                            }
+                        }
+                        if root.cleanup-items.length > 0: HorizontalLayout {
+                            alignment: start;
+                            PillButton { text: Tr.t("app.cleanup.apply"); kind: 2; clicked => { root.apply-cleanup(); } }
+                        }
+
+                        SectionTitle { text: Tr.t("app.page.store.title"); }
+                        for p in root.store-items: Card {
+                            height: st.preferred-height;
+                            st := HorizontalLayout {
+                                padding: Theme.space-m;
+                                spacing: Theme.space-s;
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    Text { text: p.title; font-size: Theme.font-body; font-weight: 600; color: Theme.text; wrap: word-wrap; }
+                                    Secondary { text: p.detail; }
+                                    if p.used-by != "": Body { text: p.used-by; font-size: Theme.font-caption; }
+                                }
+                                if p.used-by == "": VerticalLayout { alignment: center; PillButton { text: Tr.t("app.store.remove"); kind: 2; clicked => { root.remove-package(p.inf); } } }
+                            }
+                        }
+
+                        SectionTitle { text: Tr.t("app.page.backups.title"); }
+                        Secondary { text: root.backups-text; }
+                    }
+                }
+            }
+
+            // 6 · Caso
+            if root.page == 6: VerticalLayout {
+                spacing: Theme.space-m;
+                PageHeader {
+                    title: Tr.t("app.page.case.title");
+                    subtitle: root.diagnosis-summary;
+                    VerticalLayout { alignment: start; PillButton { text: Tr.t("app.diagnosis.run"); kind: 1; enabled: !root.diagnosis-running; clicked => { root.diagnose(); } } }
+                }
+                ScrollView {
+                    VerticalLayout {
+                        spacing: Theme.space-s;
+                        alignment: start;
+                        for finding[fi] in root.findings: FindingCard {
+                            info: finding;
+                            run(ai) => { root.run-finding-action(fi, ai); }
+                        }
+                    }
+                }
+            }
+
+            // 2 · Áudio
+            if root.page == 2: VerticalLayout {
+                spacing: Theme.space-m;
+                PageHeader {
+                    title: Tr.t("app.page.audio.title");
+                    subtitle: root.audio-subtitle;
+                    VerticalLayout {
+                        alignment: start;
+                        HorizontalLayout {
+                            spacing: Theme.space-s;
+                            PillButton { text: Tr.t("app.audio.restartServices"); clicked => { root.restart-audio-services(); } }
+                            PillButton { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
+                        }
+                    }
+                }
+                Secondary { text: Tr.t("app.action.undocumented"); }
+                if root.audio-profile != "": StatusBanner {
+                    kind: 0;
+                    message: root.audio-profile;
+                    PillButton { text: Tr.t("app.audio.forgetProfile"); kind: 3; clicked => { root.forget-profile(); } }
+                }
+                if root.audio-message != "": Body { text: root.audio-message; }
+                ScrollView {
+                    VerticalLayout {
+                        spacing: Theme.space-s;
+                        alignment: start;
+                        for endpoint in root.audio: AudioCard {
+                            info: endpoint;
+                            make-default(id) => { root.make-default(id); }
+                            set-volume(id, v) => { root.set-volume(id, v); }
+                            set-mute(id, m) => { root.set-mute(id, m); }
+                            prefer(id) => { root.prefer-endpoint(id); }
+                        }
+                    }
+                }
+            }
+
+            // 5 · Ecrãs
+            if root.page == 5: VerticalLayout {
+                spacing: Theme.space-m;
+                PageHeader {
+                    title: Tr.t("app.page.displays.title");
+                    subtitle: root.displays-summary;
+                    VerticalLayout { alignment: start; PillButton { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
+                }
+                if root.displays.length == 0 && !root.displays-failed: EmptyState { text: Tr.t("app.displays.empty"); }
+                ScrollView {
+                    VerticalLayout {
+                        spacing: Theme.space-s;
+                        alignment: start;
+                        for display in root.displays: DisplayCard { info: display; }
+                    }
+                }
+            }
+
+            // 3 · Alterações
+            if root.page == 3: VerticalLayout {
+                spacing: Theme.space-m;
+                PageHeader {
+                    title: Tr.t("app.tab.changes");
+                    subtitle: Tr.t("app.changes.intro");
+                    VerticalLayout { alignment: start; PillButton { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
+                }
+                if root.changes-message != "": Body { text: root.changes-message; }
+                if root.changes.length == 0: EmptyState { text: Tr.t("app.changes.empty"); }
+                ScrollView {
+                    VerticalLayout {
+                        spacing: Theme.space-s;
+                        alignment: start;
                         for change in root.changes: ChangeCard {
                             info: change;
                             revert(id) => { root.revert(id); }
@@ -388,53 +738,174 @@ export component AppWindow inherits Window {
                     }
                 }
             }
-            if root.page == 6: VerticalLayout {
-                spacing: 10px;
-                HorizontalLayout {
-                    spacing: 12px;
-                    VerticalLayout {
-                        Text { text: Tr.t("app.page.case.title"); font-size: 22px; font-weight: 600; }
-                        Text { text: root.diagnosis-summary; color: #707070; wrap: word-wrap; }
-                    }
-                    VerticalLayout {
-                        alignment: start;
-                        Button { text: Tr.t("app.diagnosis.run"); enabled: !root.diagnosis-running; clicked => { root.diagnose(); } }
-                    }
-                }
+
+            // 9 · Definições
+            if root.page == 9: VerticalLayout {
+                spacing: Theme.space-m;
+                PageHeader { title: Tr.t("app.settings.title"); }
                 ScrollView {
                     VerticalLayout {
-                        spacing: 6px;
-                        for finding in root.findings: FindingCard { info: finding; }
+                        spacing: Theme.space-m;
+                        alignment: start;
+                        Glass {
+                            raised: false;
+                            height: look.preferred-height;
+                            look := VerticalLayout {
+                                padding: Theme.space-l;
+                                spacing: Theme.space-s;
+                                SectionTitle { text: Tr.t("app.settings.look"); }
+                                Secondary { text: Tr.t("app.settings.lookSaved"); }
+                                HorizontalLayout {
+                                    alignment: start;
+                                    Segmented {
+                                        items: [Tr.t("app.settings.theme.dark"), Tr.t("app.settings.theme.glass"), Tr.t("app.settings.theme.light"), Tr.t("app.settings.theme.custom")];
+                                        selected <=> root.theme-index;
+                                        changed(i) => { root.settings-changed(); }
+                                    }
+                                }
+                                if root.theme-index == 3: VerticalLayout {
+                                    spacing: Theme.space-s;
+                                    padding-top: Theme.space-s;
+                                    FieldRow {
+                                        label: Tr.t("app.settings.customBase");
+                                        Segmented {
+                                            items: [Tr.t("app.settings.theme.dark"), Tr.t("app.settings.theme.glass"), Tr.t("app.settings.theme.light")];
+                                            selected <=> root.custom-base;
+                                            changed(i) => { root.settings-changed(); }
+                                        }
+                                        Rectangle { }
+                                    }
+                                    FieldRow {
+                                        label: Tr.t("app.settings.colour.accent");
+                                        LineEdit {
+                                            max-width: 140px;
+                                            placeholder-text: "#RRGGBB";
+                                            text <=> root.custom-accent;
+                                            accepted => { root.settings-changed(); }
+                                        }
+                                        for swatch in [{ hex: "#388AFF", c: #388AFF }, { hex: "#7A5CFF", c: #7A5CFF }, { hex: "#14B8A6", c: #14B8A6 }, { hex: "#F97316", c: #F97316 }, { hex: "#EC4899", c: #EC4899 }]: Rectangle {
+                                            width: 26px;
+                                            height: 26px;
+                                            y: (parent.height - self.height) / 2;
+                                            border-radius: 13px;
+                                            background: swatch.c;
+                                            border-width: root.custom-accent == swatch.hex ? 2px : 1px;
+                                            border-color: root.custom-accent == swatch.hex ? Theme.text : Theme.edge;
+                                            accessible-role: button;
+                                            accessible-label: Tr.t("app.settings.suggestions") + " " + swatch.hex;
+                                            accessible-action-default => { root.custom-accent = swatch.hex; root.settings-changed(); }
+                                            TouchArea { mouse-cursor: pointer; clicked => { root.custom-accent = swatch.hex; root.settings-changed(); } }
+                                        }
+                                        Rectangle { }
+                                    }
+                                    Secondary { text: Tr.t("app.settings.accentHint"); }
+                                }
+                                Secondary { text: Tr.t("app.settings.motion"); }
+                            }
+                        }
+                        Glass {
+                            raised: false;
+                            height: upd-box.preferred-height;
+                            upd-box := VerticalLayout {
+                                padding: Theme.space-l;
+                                spacing: Theme.space-s;
+                                SectionTitle { text: Tr.t("app.settings.updates"); }
+                                FieldRow {
+                                    label: Tr.t("app.update.channel");
+                                    Segmented {
+                                        items: [Tr.t("app.update.channel.testing"), Tr.t("app.update.channel.stable")];
+                                        selected <=> root.update-channel;
+                                        changed(i) => { root.settings-changed(); }
+                                    }
+                                    Rectangle { }
+                                }
+                                Secondary { text: Tr.t("app.update.channelHint"); }
+                                Secondary { text: Tr.t("app.update.securityHint"); }
+                            }
+                        }
+                        if root.settings-message != "": StatusBanner { kind: 2; message: root.settings-message; }
                     }
                 }
             }
-            if root.page == 5: VerticalLayout {
-                spacing: 10px;
-                HorizontalLayout {
-                    spacing: 12px;
-                    VerticalLayout {
-                        Text { text: Tr.t("app.page.displays.title"); font-size: 22px; font-weight: 600; }
-                        Text { text: root.displays-summary; color: #707070; wrap: word-wrap; }
-                    }
-                    VerticalLayout {
-                        alignment: start;
-                        Button { text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
-                    }
-                }
-                if root.displays.length == 0 && !root.displays-failed: Text { text: Tr.t("app.displays.empty"); color: #707070; }
-                ScrollView {
-                    VerticalLayout {
-                        spacing: 6px;
-                        for display in root.displays: DisplayCard { info: display; }
-                    }
-                }
-            }
+
+            // 4 · Sobre
             if root.page == 4: VerticalLayout {
-                spacing: 8px;
-                Text { text: Tr.t("app.about.title"); font-size: 22px; font-weight: 600; }
-                Text { text: root.about-version; wrap: word-wrap; }
-                Text { text: Tr.t("app.about.privacy"); wrap: word-wrap; }
+                spacing: Theme.space-m;
+                PageHeader { title: Tr.t("app.about.title"); }
+                Glass {
+                    raised: false;
+                    height: about-box.preferred-height;
+                    about-box := VerticalLayout {
+                        padding: Theme.space-l;
+                        spacing: Theme.space-s;
+                        Body { text: root.about-version; font-size: Theme.font-emphasis; font-weight: 600; }
+                        Secondary { text: Tr.t("app.settings.aboutText"); }
+                        Secondary { text: Tr.t("app.about.privacy"); }
+                        HorizontalLayout {
+                            spacing: Theme.space-s;
+                            alignment: start;
+                            padding-top: 4px;
+                            PillButton { text: Tr.t("app.update.check"); clicked => { root.check-app-update(); } }
+                            if root.app-update-available: PillButton { text: Tr.t("app.update.install"); kind: 1; clicked => { root.install-app-update(); } }
+                        }
+                        if root.app-update-text != "": Body { text: root.app-update-text; }
+                    }
+                }
                 Rectangle { }
+            }
+        }
+    }
+
+    // Confirmation dialog: the plan's summary, risk, steps, effects and warnings are always shown; a high-risk plan
+    // gets a red edge and a destructive confirm button so it never looks like a harmless operation.
+    if root.dialog-visible: Rectangle {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        background: Theme.scrim;
+        TouchArea { }
+        Glass {
+            strong: true;
+            width: min(root.width - 48px, 640px);
+            height: min(root.height - 48px, dialog-box.preferred-height);
+            border-radius: Theme.radius-xl;
+            border-color: root.dialog-level >= 2 ? Theme.error.with-alpha(0.7) : (root.dialog-level == 1 ? Theme.warn.with-alpha(0.55) : Theme.edge);
+            accessible-role: groupbox;
+            accessible-label: root.dialog-summary;
+            dialog-box := VerticalLayout {
+                padding: Theme.space-xl;
+                spacing: Theme.space-s;
+                Secondary { text: Tr.t("app.dialog.title"); }
+                Text { text: root.dialog-summary; font-size: 18px; font-weight: 650; color: Theme.text; wrap: word-wrap; }
+                HorizontalLayout {
+                    alignment: start;
+                    Badge {
+                        text: Tr.t("app.dialog.risk") + " " + root.dialog-risk;
+                        tone: root.dialog-level >= 2 ? 2 : (root.dialog-level == 1 ? 1 : 4);
+                    }
+                }
+                ScrollView {
+                    min-height: 80px;
+                    VerticalLayout {
+                        spacing: 6px;
+                        alignment: start;
+                        for step[i] in root.dialog-steps: Body { text: (i + 1) + ". " + step; }
+                        for effect in root.dialog-effects: Text { text: "• " + effect; wrap: word-wrap; font-size: Theme.font-body; color: Theme.warn; }
+                        for warning in root.dialog-warnings: Text { text: "⚠ " + warning; wrap: word-wrap; font-size: Theme.font-body; color: Theme.warn; }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: Theme.space-s;
+                    alignment: end;
+                    padding-top: Theme.space-s;
+                    PillButton { text: Tr.t("app.dialog.cancel"); clicked => { root.dialog-answer(false); } }
+                    PillButton {
+                        text: root.dialog-level >= 2 ? Tr.t("app.dialog.confirmRisky") : Tr.t("app.dialog.confirm");
+                        kind: root.dialog-level >= 2 ? 2 : 1;
+                        clicked => { root.dialog-answer(true); }
+                    }
+                }
             }
         }
     }

@@ -1,6 +1,7 @@
 //! Driver rules that hold everywhere. Nothing here touches the system: the Windows crate executes exactly what
 //! these functions return, and the broker validates with them again.
 
+pub mod changes;
 pub mod inf;
 pub mod names;
 pub mod pnp_events;
@@ -8,6 +9,7 @@ pub mod pnputil;
 pub mod policy;
 pub mod setupapi;
 pub mod test_mode;
+pub mod windows_update;
 
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;

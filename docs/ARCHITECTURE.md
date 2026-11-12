@@ -1,3 +1,8 @@
+> **Note (0.7):** the implementation is now Rust (Slint UI, `crates/*`); the C# code described below was removed and
+> remains in git history. The process model (unelevated UI, LocalSystem broker with a closed allowlist, two-phase
+> confirmation, journal + drift-aware recovery) is unchanged; see `CLAUDE.md` for the crate map and
+> `docs/RUST_MIGRATION_MATRIX.md` for the feature-by-feature status.
+
 # bitBybit — Architecture
 
 Status: living document. Module owners update their section when the implementation changes.

@@ -52,5 +52,16 @@
   "network.leak.notGuaranteed": "A proteção não está garantida: os filtros do bitBybit estão em falta ou foram alterados. A partilha tem de parar.",
   "network.leak.unknown": "Não foi possível ler o estado dos filtros de proteção; a proteção não é assumida.",
   "network.bridge.macBridge": "Uma ponte de rede do Windows ('{0}') liga adaptadores na camada 2; a partilha através de um adaptador em ponte não é suportada.",
-  "network.bridge.wifiRepeater": "Modo repetidor: o hotspot e a ligação Wi-Fi partilham o mesmo rádio, por isso usam o mesmo canal e dividem a largura de banda."
+  "network.bridge.wifiRepeater": "Modo repetidor: o hotspot e a ligação Wi-Fi partilham o mesmo rádio, por isso usam o mesmo canal e dividem a largura de banda.",
+  "sharing.step.hotspot": "Ligar o Hotspot Móvel",
+  "sharing.step.lanAddress": "Dar à rede partilhada o endereço {0}/{1}",
+  "sharing.step.leakGuard": "Instalar {0} filtros de pacotes do bitBybit: os dispositivos partilhados só podem usar a VPN; se ela cair, ficam bloqueados",
+  "sharing.step.firewall": "Adicionar {0} regras de firewall do bitBybit para a rede partilhada",
+  "sharing.step.dhcp": "Atribuir os endereços {0}–{1} aos dispositivos ligados",
+  "sharing.step.dns": "Responder às consultas DNS dos dispositivos ligados",
+  "sharing.step.forwarding": "Ligar o reencaminhamento IPv4 nas duas interfaces",
+  "sharing.step.nat": "Criar o NAT {0} para {1}",
+  "sharing.step.ics": "Ligar a Partilha de Ligação à Internet",
+  "sharing.leak.needsVpn": "A proteção contra fugas é só para partilhar uma ligação VPN.",
+  "sharing.plan.summary": "Partilhar a ligação à Internet na rede {0}"
 }

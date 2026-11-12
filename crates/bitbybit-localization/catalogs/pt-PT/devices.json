@@ -50,5 +50,10 @@
   "devices.guard.changeDriver": "Instala, só neste dispositivo, outro controlador que já está no computador. O controlador atual continua disponível e a troca pode ser revertida.",
   "devices.guard.noDriver": "O dispositivo não tem controlador instalado.",
   "devices.guard.rollback": "Volta ao controlador que este dispositivo usava antes da última atualização, se o Windows o guardou.",
-  "devices.guard.unknown": "Não disponível."
+  "devices.guard.unknown": "Não disponível.",
+  "devices.plan.restart": "Reiniciar o dispositivo «{0}»",
+  "devices.plan.enable": "Ativar o dispositivo «{0}»",
+  "devices.plan.disable": "Desativar o dispositivo «{0}»",
+  "devices.plan.uninstall": "Desinstalar o dispositivo «{0}» (o pacote do controlador é mantido)",
+  "devices.plan.journal": "O estado anterior fica registado no diário de alterações do bitBybit, para poder reverter."
 }

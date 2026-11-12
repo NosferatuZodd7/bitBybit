@@ -21,7 +21,7 @@ is never moved to a testing build. The app never installs an older or equal vers
    `bitbybit-manifest.json.sig`). The private key comes only from the Actions secret `BITBYBIT_UPDATE_SIGNING_KEY`.
    Without the secret nothing is published.
 4. `bitbybit-release verify` checks the signature with the public key(s) **embedded in the app**
-   (`src/BitByBit.Core/Updates/TrustedUpdateKeys/*.pub.pem`) and every file's hash — CI refuses to publish what the app
+   (`crates/bitbybit-updates/keys/*.pub.pem`) and every file's hash — CI refuses to publish what the app
    would reject.
 5. The app (`UpdateService`) lists releases (`api.github.com/repos/<repo>/releases`), picks the newest of its channel that
    is newer than itself and has manifest + signature + exe, downloads only from
@@ -34,7 +34,7 @@ is never moved to a testing build. The app never installs an older or equal vers
 
 ## Keys
 
-* Generate: `bitbybit-release keygen --private <file outside the repo> --public src/BitByBit.Core/Updates/TrustedUpdateKeys/<name>.pub.pem`.
+* Generate: `bitbybit-release keygen --private <file outside the repo> --public crates/bitbybit-updates/keys/<name>.pub.pem`.
 * The private key goes only into the repository secret `BITBYBIT_UPDATE_SIGNING_KEY` (Settings › Secrets and variables ›
   Actions). `*.pem` files are git-ignored except `TrustedUpdateKeys/*.pub.pem`.
 * Rotation: add the new public key next to the old one, ship a build, then switch the secret; remove the old public key in

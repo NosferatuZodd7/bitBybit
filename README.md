@@ -35,49 +35,34 @@ experimentar o controlador genérico) continua a ser o primeiro teste da aplica�
 * **Atualizar-se a si própria** a partir das *releases* do repositório no GitHub (canal Testes ou Estável), com assinatura
   digital verificada; sem telemetria e sem servidores de terceiros.
 
-## O que já existe (versão 0.6)
+## O que já existe (versão 0.7 — reescrita em Rust)
+
+A aplicação foi reescrita em Rust (interface Slint), com um **serviço do Windows** (conta de sistema) que faz as
+alterações depois da confirmação. Sem o serviço instalado, a própria aplicação faz o mesmo papel: lê sem permissões
+especiais e pede para reiniciar como administrador quando uma alteração o exige.
 
 | Área | Estado |
 |---|---|
-| Diagnóstico Realtek/DisplayPort, evidências, relatórios (texto/JSON, dados sensíveis ocultados) | Feito |
-| Dispositivos: ações protegidas por regras (nunca desativa/desinstala a placa gráfica nem dispositivos críticos) | Feito |
-| Arquivo de controladores, cópias de segurança, limpeza com impacto, atualizações do Windows Update | Feito |
-| Modo de teste de controladores, reversão automática, **Resolver automaticamente** | Feito |
-| Diário de alterações com reversão (botão em destaque só quando há alterações ativas) | Feito |
-| Interface pt-PT com 4 aspetos (escuro, vidro, claro, personalizado), logótipo e ícone | Feito |
-| Atualização automática assinada (ECDSA P-256) a partir do GitHub | Feito |
-| Perfil de áudio "DisplayPort preferido" em segundo plano (ícone na bandeja) | Feito |
+| Resumo, diagnóstico Realtek/DisplayPort com evidências e ações propostas, relatórios (texto/JSON, dados sensíveis ocultados) | Feito |
+| Dispositivos: reiniciar, ativar, desativar, desinstalar, escolher/reverter controlador, sempre com as regras de proteção | Feito |
+| Controladores: atualizações do Windows Update, limpeza com impacto, Driver Store, cópias de segurança, bloqueio de instalação | Feito |
+| Áudio: predefinido, volume, sem som, reiniciar serviços de áudio, perfil "DisplayPort preferido" | Feito |
+| Ecrãs (ligações, modo, EDID) | Feito (só leitura) |
+| Rede: partilha de Internet (NAT, DHCP, DNS, firewall, Hotspot Móvel) e **proteção contra fugas da VPN** por filtros WFP que bloqueiam se a VPN cair | Feito |
+| Diário de alterações com reversão (recusa reverter o que foi alterado por outra via) | Feito |
+| Atualização automática assinada (ECDSA P-256) a partir do GitHub; instalador MSI com o serviço | Feito |
 
-**Honestidade sobre os testes:** a lógica de decisão tem testes automáticos (256) e a compilação, os testes e uma
-verificação das janelas correm num Windows real no GitHub. As ações que **alteram o sistema** (instalar/reverter
-controladores, limpeza, atualizações, modo de teste) estão compiladas e testadas com dados simulados, mas **ainda não
-foram validadas em hardware real**; o registo do que foi validado onde está em `docs/TESTING.md`.
+**Honestidade sobre os testes:** a lógica tem testes automáticos (mais de 290) e as leituras do Windows, o serviço, o
+relatório e as regras de firewall já correram num Windows real no GitHub. As ações que **alteram o sistema** estão
+compiladas e testadas com dados simulados, mas **ainda não foram validadas em hardware real**; o registo está em
+`docs/TESTING.md`.
 
-## O que falta implementar
+## O que falta ou ficou limitado nesta versão
 
-**Módulo de rede (o grande bloco em falta)** — hoje só existem os modelos e a deteção, sem ecrãs nem ações:
-
-* Hotspot Wi-Fi (Mobile Hotspot, Wi-Fi Direct, Hosted Network) e deteção honesta do que o PC suporta.
-* Partilha de ligação à Internet (ICS, NAT do Windows, encaminhamento) com validador de topologia.
-* Partilha de VPN **com proteção contra fugas** feita por filtragem de pacotes (WFP) que bloqueia tudo se a VPN cair —
-  só se anuncia proteção quando isto estiver ativo.
-* Servidor DHCP e DNS próprios (os motores existem; falta ligá-los e testá-los), firewall só com regras do bitBybit,
-  lista de clientes ligados. Ponte/repetidor: apenas deteção e capacidade, o Windows não tem API documentada para criar.
-
-**Infraestrutura**
-
-* **Serviço do Windows** (conta de sistema) que substitua o ajudante elevado atual: o protocolo, a lista fechada de
-  operações e a confirmação em duas fases já estão no código; falta o servidor do pipe com identificação do cliente.
-* **Instalador MSI** (WiX) e assinatura de código do executável (evita o aviso do SmartScreen).
-* Fila de operações visível, assistente do primeiro arranque, alterações de modo/topologia de ecrã e controlos de áudio
-  mais finos (volume, formatos) no ecrã.
-* Relatório de diagnóstico na linha de comandos mais completo e documentação final.
-
-**Validação em hardware real**
-
-* Repetir o caso Realtek/DisplayPort depois de reiniciar (persistência), e testar em PC real cada ação que altera o
-  sistema, antes de as marcar como validadas.
-* Ainda sem versão **Estável**: só existe o canal Testes; a primeira estável depende de um *tag* que só o dono publica.
+* Partilha pelo ICS do Windows, Wi-Fi Direct e Hosted Network (a partilha usa o NAT do Windows).
+* Mudar o modo/topologia dos ecrãs, formatos de áudio, modo de teste de controladores, "resolver tudo" com uma só
+  confirmação, ícone na bandeja (o perfil de áudio só atua com a aplicação aberta).
+* Assinatura de código do executável (evita o aviso do SmartScreen) e validação em hardware real de cada ação.
 
 ## Regras que não mudam
 
@@ -87,4 +72,4 @@ controladores, nunca altera a rota predefinida sem autorização, nenhuma chave 
 
 Documentação técnica: [`CLAUDE.md`](CLAUDE.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md),
 [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md), [`docs/TESTING.md`](docs/TESTING.md),
-[`docs/UPDATES.md`](docs/UPDATES.md), [`docs/PREVIEW.md`](docs/PREVIEW.md).
+[`docs/UPDATES.md`](docs/UPDATES.md), [`docs/RUST_MIGRATION_MATRIX.md`](docs/RUST_MIGRATION_MATRIX.md).

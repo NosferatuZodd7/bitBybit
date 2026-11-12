@@ -178,6 +178,76 @@ pub fn compare(current: &DeviceInstallRestrictionsState, owned: &OwnedDenyPolicy
     }
 }
 
+/// Journal kind shared with the C# app (applied state = `OwnedDenyPolicy` JSON).
+pub const DENY_POLICY_KIND: &str = "policy.deviceInstallDeny";
+
+/// The restriction policy key (Windows: HKLM registry, 64-bit view). `apply` executes exactly the operations.
+pub trait DenyPolicyStore: Send + Sync {
+    fn read(&self) -> Result<DeviceInstallRestrictionsState>;
+    fn apply(&self, operations: &[PolicyOperation]) -> Result<()>;
+}
+
+/// Denies installing drivers for `hardware_ids`: plans from the live policy, journals what bitBybit will own,
+/// applies, and verifies that every added entry is present. Returns the journal record id (none if nothing changed).
+pub fn deny(
+    store: &dyn DenyPolicyStore,
+    journal: &dyn bitbybit_journal::Journal,
+    hardware_ids: &[String],
+    now: time::OffsetDateTime,
+) -> Result<Option<uuid::Uuid>> {
+    use bitbybit_journal::{ChangeCategory, ChangeRecord, ChangeStatus};
+    let plan = plan_deny(&store.read()?, hardware_ids)?;
+    if plan.operations.is_empty() {
+        return Ok(None);
+    }
+    let mut record = ChangeRecord::new(
+        ChangeCategory::DevicePolicy,
+        DENY_POLICY_KIND,
+        "DeviceInstall\\Restrictions",
+        format!("Block driver installation for {}", hardware_ids.join(", ")),
+        now,
+    )
+    .with_states(None, Some(serde_json::to_string(&plan.owned)?));
+    record.risk = bitbybit_core::RiskLevel::Medium;
+    let id = record.id;
+    journal.append(record)?;
+    if let Err(e) = store.apply(&plan.operations) {
+        journal.update_status(id, ChangeStatus::RevertFailed, Some(format!("Apply failed: {}", e.message)))?;
+        return Err(e);
+    }
+    if compare(&store.read()?, &plan.owned) != LiveState::MatchesApplied {
+        journal.update_status(id, ChangeStatus::RevertFailed, Some("Applied but not verified.".into()))?;
+        return Err(Error::new(
+            bitbybit_core::ErrorCode::VerificationFailed,
+            "The policy entries are not all present.",
+        ));
+    }
+    Ok(Some(id))
+}
+
+/// Removes only bitBybit's own entries (and the flag it set) while they are still what it added.
+pub struct DenyPolicyRevert<'a>(pub &'a dyn DenyPolicyStore);
+
+fn owned(record: &bitbybit_journal::ChangeRecord) -> Option<OwnedDenyPolicy> {
+    serde_json::from_str(record.applied_state.as_deref()?).ok()
+}
+
+impl bitbybit_recovery::RevertHandler for DenyPolicyRevert<'_> {
+    fn target_kind(&self) -> &str {
+        DENY_POLICY_KIND
+    }
+
+    fn compare(&self, record: &bitbybit_journal::ChangeRecord) -> Result<LiveState> {
+        let (Some(owned), Ok(current)) = (owned(record), self.0.read()) else { return Ok(LiveState::Unknown) };
+        Ok(compare(&current, &owned))
+    }
+
+    fn revert(&self, record: &bitbybit_journal::ChangeRecord) -> Result<()> {
+        let owned = owned(record).ok_or_else(|| Error::invalid("Journal record has no owned policy state."))?;
+        self.0.apply(&plan_revert(&self.0.read()?, &owned))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -294,5 +364,52 @@ mod tests {
         assert_eq!(compare(&state(Some(1), owned.added_entries.clone()), &owned), LiveState::MatchesApplied);
         assert_eq!(compare(&state(Some(1), vec![owned.added_entries[0].clone()]), &owned), LiveState::Drifted);
         assert_eq!(compare(&DeviceInstallRestrictionsState::default(), &owned), LiveState::Gone);
+    }
+
+    /// In-memory policy key (unit tests only).
+    struct Memory(std::sync::Mutex<DeviceInstallRestrictionsState>);
+    impl DenyPolicyStore for Memory {
+        fn read(&self) -> Result<DeviceInstallRestrictionsState> {
+            Ok(self.0.lock().unwrap().clone())
+        }
+        fn apply(&self, operations: &[PolicyOperation]) -> Result<()> {
+            let mut s = self.0.lock().unwrap();
+            s.key_exists = true;
+            for op in operations {
+                match op.kind {
+                    PolicyOperationKind::SetDenyFlag => s.deny_device_ids_flag = Some(1),
+                    PolicyOperationKind::ClearDenyFlag => s.deny_device_ids_flag = Some(0),
+                    PolicyOperationKind::AddEntry => s.entries.push(DenyDeviceIdEntry {
+                        value_name: op.value_name.clone().unwrap(),
+                        hardware_id: op.hardware_id.clone().unwrap(),
+                    }),
+                    PolicyOperationKind::RemoveEntry => {
+                        s.entries.retain(|e| Some(&e.value_name) != op.value_name.as_ref())
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn deny_is_journaled_verified_and_reverted_keeping_foreign_entries() {
+        use bitbybit_journal::JsonLinesJournal;
+        use bitbybit_recovery::{RecoveryCoordinator, RevertHandler};
+        let dir = tempfile::tempdir().unwrap();
+        let journal = JsonLinesJournal::new(dir.path().join("changes.jsonl"));
+        let gpo = entry("1", r"PCI\VEN_8086&DEV_1234");
+        let store = Memory(std::sync::Mutex::new(state(Some(1), vec![gpo.clone()])));
+        let id = deny(&store, &journal, &ids(&[REALTEK]), time::OffsetDateTime::UNIX_EPOCH).unwrap().unwrap();
+        assert_eq!(store.read().unwrap().entries.len(), 2);
+        let handlers: [&dyn RevertHandler; 1] = [&DenyPolicyRevert(&store)];
+        RecoveryCoordinator::new(&journal, &handlers).revert(|r| r.id == id, false).unwrap();
+        let after = store.read().unwrap();
+        assert_eq!(after.entries, vec![gpo], "the administrator's entry stays");
+        assert_eq!(after.deny_device_ids_flag, Some(1), "bitBybit did not set the flag, so it keeps it");
+        assert!(
+            deny(&store, &journal, &ids(&[r"HDAUDIO\FUNC_01&VEN_10DE&DEV_0080"]), time::OffsetDateTime::UNIX_EPOCH)
+                .is_err()
+        );
     }
 }

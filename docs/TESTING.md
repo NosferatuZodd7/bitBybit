@@ -89,6 +89,28 @@ Windows 10/11 PC with the relevant devices and the evidence (exported report, lo
 | End-to-end dispatcher over TCP loopback (test transport) | ✅ | ✅ | ✅ | — |
 | Named-pipe server/client with caller identity | ⬜ | ⬜ | ⬜ | ⬜ |
 
+## Rust rewrite (0.7) — `cargo test --workspace`
+
+"Unit (fakes)" here means the Rust unit tests (in-memory fakes, recorded fixtures; Linux and Windows). The CI runner
+column refers to the `rust` workflow (last full Windows run: run 29, commit c23e586). Everything Windows added after
+that commit is **compiled only** (clippy for `x86_64-pc-windows-msvc`) until the next Windows run.
+
+| Scenario | Unit (fakes) | Compiled | CI runner | Real hardware |
+|---|---|---|---|---|
+| Broker over the named pipe (identity, LocalSystem check, allowlist), console broker smoke | ✅ | ✅ | ✅ (run 29) | — |
+| Read-only inventories: IP Helper network, SetupAPI devices, Core Audio endpoints, CCD/EDID displays | — | ✅ | ✅ (run 29) | — |
+| `bitbybit-cli diagnose` (all areas incl. Windows Update history and Kernel-PnP events) | ✅ analyzer | ✅ | ✅ (run 29, issues=0) | — |
+| Owned firewall rules add/verify/revert (opt-in step) | ✅ model | ✅ | ✅ (run 29) | — |
+| Signed update check over WinHTTP (real releases) | ✅ fixture | ✅ | ✅ (run 29) | — |
+| Device restart/enable/disable/uninstall, journal + drift-aware revert (`devices.action`) | ✅ | ✅ | ⬜ | ⬜ |
+| Driver install/rollback/package delete with backup (`drivers.*`), deny policy | ✅ | ✅ | ⬜ | ⬜ |
+| Windows Update driver search/install, restore point | ✅ | ✅ | ⬜ | ⬜ |
+| Sharing: hotspot, LAN address, forwarding, WinNAT, DHCP/DNS hosts, rollback on failure | ✅ session + hosts | ✅ | ⬜ | ⬜ |
+| WFP leak guard (persistent filters, read back, fail closed) + watchdog | ✅ plan/assess/watchdog | ✅ | ⬜ | ⬜ |
+| Audio services restart, volume/mute, DP profile reconciler | ✅ reconciler | ✅ | ⬜ | ⬜ |
+| App: confirmation dialog, in-process broker without service, self-update swap | ✅ view/swap | ✅ | ⬜ | ⬜ |
+| Release tool keygen/manifest/sign/verify; WiX MSI | ✅ round trip | ✅ | ⬜ | — |
+
 ## Tests that change system state
 
 None of the automated tests change system state. Future Windows integration tests that do will be opt-in

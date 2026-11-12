@@ -9,8 +9,16 @@ mod ui {
     slint::include_modules!();
 }
 
+pub(crate) use load as reload;
 use ui::{AppWindow, AudioRow, ChangeRow, DeviceRow, DisplayRow, FindingRow, InterfaceRow, Tr};
 
+mod devices_actions;
+mod drivers_page;
+mod ops;
+mod settings_page;
+mod sharing_page;
+mod theme;
+mod updater;
 mod view;
 
 use bitbybit_audio::profile::AudioEndpoint;
@@ -45,6 +53,78 @@ fn main() -> Result<(), slint::PlatformError> {
     );
     let weak = ui.as_weak();
     ui.on_diagnose(move || diagnose(weak.clone()));
+    ui.on_dialog_answer(ops::answer);
+    devices_actions::wire(&ui);
+    drivers_page::wire(&ui);
+    sharing_page::wire(&ui);
+    settings_page::wire(&ui);
+    if std::env::args().any(|a| a == updater::AFTER_UPDATE_FLAG)
+        && let Ok(exe) = std::env::current_exe()
+    {
+        updater::cleanup(&exe, &updater::staging());
+    }
+    ui.on_run_finding_action({
+        let weak = ui.as_weak();
+        move |f, a| run_finding_action(weak.clone(), f as usize, a as usize)
+    });
+    ui.on_check_app_update({
+        let weak = ui.as_weak();
+        move || check_app_update(weak.clone())
+    });
+    ui.on_install_app_update({
+        let weak = ui.as_weak();
+        move || install_app_update(weak.clone())
+    });
+    ui.on_set_volume({
+        let weak = ui.as_weak();
+        move |id, percent| audio_setting(weak.clone(), move || audio::set_volume(&id, percent))
+    });
+    ui.on_set_mute({
+        let weak = ui.as_weak();
+        move |id, muted| audio_setting(weak.clone(), move || audio::set_mute(&id, muted))
+    });
+    ui.on_prefer_endpoint({
+        let weak = ui.as_weak();
+        move |id| {
+            let w = weak.clone();
+            audio_setting(weak.clone(), move || {
+                audio::prefer(&id)?;
+                load(w);
+                Ok(())
+            })
+        }
+    });
+    ui.on_forget_profile({
+        let weak = ui.as_weak();
+        move || {
+            let w = weak.clone();
+            audio_setting(weak.clone(), move || {
+                audio::forget_profile()?;
+                load(w);
+                Ok(())
+            })
+        }
+    });
+    audio::watch_profile();
+    ui.on_restart_audio_services({
+        let weak = ui.as_weak();
+        move || ops::run(weak.clone(), "audio.restartServices", serde_json::json!({}), |ui, _| load(ui.as_weak()))
+    });
+    ui.on_dismiss_op({
+        let weak = ui.as_weak();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                ui.set_op_state(0);
+                ui.set_op_elevate(false);
+            }
+        }
+    });
+    ui.on_relaunch_elevated(|| {
+        #[cfg(windows)]
+        if bitbybit_platform_windows::elevation::relaunch_elevated().is_ok() {
+            let _ = slint::quit_event_loop();
+        }
+    });
     let weak = ui.as_weak();
     ui.on_revert(move |id| revert(weak.clone(), id.to_string()));
     load(ui.as_weak());
@@ -74,11 +154,33 @@ fn load(weak: slint::Weak<AppWindow>) {
         let changes = bitbybit_audio::report::ReportedChange::load(&bitbybit_core::paths::AppPaths::from_environment());
         let _ = slint::invoke_from_event_loop(move || {
             let Some(ui) = weak.upgrade() else { return };
+            let tiles = view::dashboard_tiles(
+                result.as_ref().ok().map(|d| &d.network),
+                result.as_ref().map(|d| d.devices.as_slice()).unwrap_or_default(),
+                audio.as_ref().map(Vec::as_slice).unwrap_or_default(),
+                displays.as_ref().ok().map(Vec::len),
+                &changes,
+                catalog,
+            );
+            ui.set_tiles(ModelRc::from(Rc::new(VecModel::from(
+                tiles
+                    .into_iter()
+                    .map(|t| ui::DashTile {
+                        title: t.title.into(),
+                        value: t.value.into(),
+                        state: t.state,
+                        page: t.page,
+                    })
+                    .collect::<Vec<_>>(),
+            ))));
             apply_audio(&ui, audio, catalog);
             apply_displays(&ui, displays, catalog);
             apply_changes(&ui, &changes, catalog);
             match result {
-                Ok(data) => apply(&ui, &data, catalog),
+                Ok(data) => {
+                    apply(&ui, &data, catalog);
+                    sharing_page::show(&ui, view::share_choices(&data.network), view::active_sharing_session(&changes));
+                }
                 Err(problem) => {
                     ui.set_broker_state(2);
                     ui.set_broker_message(catalog.resolve(&problem).into());
@@ -101,10 +203,25 @@ fn apply_audio(ui: &AppWindow, audio: Result<Vec<AudioEndpoint>, LocalizedText>,
                     state: r.state.into(),
                     defaults: r.defaults.into(),
                     can_make_default: r.can_make_default,
+                    volume: r.volume,
+                    can_prefer: r.can_prefer,
+                    muted: r.muted,
                 })
                 .collect();
             ui.set_audio(ModelRc::from(Rc::new(VecModel::from(rows))));
             ui.set_audio_subtitle(subtitle.into());
+            ui.set_audio_profile(
+                audio::profile_name()
+                    .map(|n| {
+                        catalog.resolve(&text!(
+                            "app.audio.profileOn",
+                            "Preferred: {0}. bitBybit makes it the default again when Windows switches.",
+                            n
+                        ))
+                    })
+                    .unwrap_or_default()
+                    .into(),
+            );
         }
         Err(problem) => ui.set_audio_subtitle(catalog.resolve(&problem).into()),
     }
@@ -138,6 +255,9 @@ fn diagnose(weak: slint::Weak<AppWindow>) {
                             issues.join(", ")
                         ));
                     }
+                    FINDING_ROUTES.with(|f| {
+                        *f.borrow_mut() = rows.iter().map(|r| r.buttons.iter().map(|b| b.1.clone()).collect()).collect()
+                    });
                     let rows: Vec<FindingRow> = rows
                         .into_iter()
                         .map(|f| FindingRow {
@@ -147,6 +267,12 @@ fn diagnose(weak: slint::Weak<AppWindow>) {
                             detail: f.detail.into(),
                             evidence: f.evidence.into(),
                             actions: f.actions.into(),
+                            buttons: ModelRc::from(Rc::new(VecModel::from(
+                                f.buttons
+                                    .into_iter()
+                                    .map(|(label, _)| slint::SharedString::from(label))
+                                    .collect::<Vec<_>>(),
+                            ))),
                         })
                         .collect();
                     ui.set_findings(ModelRc::from(Rc::new(VecModel::from(rows))));
@@ -201,6 +327,11 @@ fn apply_changes(ui: &AppWindow, changes: &[bitbybit_audio::report::ReportedChan
 
 /// Reverts one user-scope change through the drift-aware coordinator, then reloads everything.
 fn revert(weak: slint::Weak<AppWindow>, id: String) {
+    let (id, machine, whole) = view::parse_change_id(&id);
+    if machine {
+        let params = serde_json::json!({ "changeId": id, "wholeOperation": whole });
+        return ops::run(weak, "journal.revert", params, |ui, _| load(ui.as_weak()));
+    }
     std::thread::spawn(move || {
         let catalog = TextCatalog::default_catalog();
         let message =
@@ -212,6 +343,114 @@ fn revert(weak: slint::Weak<AppWindow>, id: String) {
             }
         });
         load(reload);
+    });
+}
+
+thread_local! {
+    /// Routes of the finding buttons on screen, by finding then action index.
+    static FINDING_ROUTES: std::cell::RefCell<Vec<Vec<view::ActionRoute>>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Runs a proposed action: broker operations with their plan; per-user audio changes in the app.
+fn run_finding_action(weak: slint::Weak<AppWindow>, finding: usize, action: usize) {
+    let Some(route) = FINDING_ROUTES.with(|f| f.borrow().get(finding).and_then(|a| a.get(action).cloned())) else {
+        return;
+    };
+    match route {
+        view::ActionRoute::Broker(op, params) => ops::run(weak, op, params, |ui, _| load(ui.as_weak())),
+        view::ActionRoute::MakeDefault(id) => make_default(weak, id),
+        view::ActionRoute::EnableEndpoint(id) => {
+            let w = weak.clone();
+            audio_setting(weak, move || {
+                audio::enable(&id)?;
+                load(w);
+                Ok(())
+            })
+        }
+        view::ActionRoute::Manual => {}
+    }
+}
+
+thread_local! {
+    static OFFER: std::cell::RefCell<Option<bitbybit_updates::check::Offer>> = const { std::cell::RefCell::new(None) };
+}
+
+fn update_text(ui: &AppWindow, t: LocalizedText, can_install: bool) {
+    ui.set_app_update_text(TextCatalog::default_catalog().resolve(&t).into());
+    ui.set_app_update_available(can_install);
+}
+
+/// Checks this repository's releases (signed manifest, fail closed) off the UI thread.
+fn check_app_update(weak: slint::Weak<AppWindow>) {
+    if let Some(ui) = weak.upgrade() {
+        update_text(&ui, text!("app.update.checking", "Checking for a new version…"), false);
+    }
+    std::thread::spawn(move || {
+        let result = updater::check();
+        let _ = slint::invoke_from_event_loop(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            match result {
+                Ok(Some(offer)) => {
+                    let version = offer.manifest.version.clone();
+                    OFFER.with(|o| *o.borrow_mut() = Some(offer));
+                    update_text(
+                        &ui,
+                        text!("app.update.available", "Version {0} is available (signature verified).", version),
+                        true,
+                    );
+                }
+                Ok(None) => update_text(&ui, text!("app.update.upToDate", "bitBybit is up to date."), false),
+                Err(e) => update_text(
+                    &ui,
+                    e.user_text.unwrap_or_else(|| {
+                        text!("app.update.failed", "The update could not be checked: {0}", e.message)
+                    }),
+                    false,
+                ),
+            }
+        });
+    });
+}
+
+/// Downloads, verifies (size + SHA-256 from the signed manifest), swaps the executable and restarts.
+fn install_app_update(weak: slint::Weak<AppWindow>) {
+    let Some(offer) = OFFER.with(|o| o.borrow().clone()) else { return };
+    if let Some(ui) = weak.upgrade() {
+        update_text(&ui, text!("app.update.installing", "Downloading and verifying the update…"), false);
+    }
+    std::thread::spawn(move || {
+        let result = updater::install(&offer);
+        let _ = slint::invoke_from_event_loop(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            match result {
+                Ok(exe) => {
+                    if std::process::Command::new(&exe).arg(updater::AFTER_UPDATE_FLAG).spawn().is_ok() {
+                        let _ = slint::quit_event_loop();
+                    } else {
+                        update_text(&ui, text!("app.update.restart", "Updated. Close and open bitBybit again."), false);
+                    }
+                }
+                Err(e) => update_text(
+                    &ui,
+                    text!("app.update.failed", "The update could not be installed: {0}", e.message),
+                    false,
+                ),
+            }
+        });
+    });
+}
+
+/// Applies a volume/mute change off the UI thread; a failure is shown on the audio page.
+fn audio_setting(weak: slint::Weak<AppWindow>, change: impl FnOnce() -> Result<(), LocalizedText> + Send + 'static) {
+    std::thread::spawn(move || {
+        if let Err(problem) = change() {
+            let message = TextCatalog::default_catalog().resolve(&problem);
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(ui) = weak.upgrade() {
+                    ui.set_audio_message(message.into());
+                }
+            });
+        }
     });
 }
 
@@ -258,6 +497,12 @@ fn apply(ui: &AppWindow, data: &Loaded, catalog: &TextCatalog) {
     let devices: Vec<DeviceRow> = devices
         .into_iter()
         .map(|d| DeviceRow {
+            id: d.id.into(),
+            can_restart: d.can_restart,
+            can_enable: d.can_enable,
+            can_disable: d.can_disable,
+            can_uninstall: d.can_uninstall,
+            can_change_driver: d.can_change_driver,
             name: d.name.into(),
             class: d.class.into(),
             status: d.status.into(),
@@ -287,10 +532,14 @@ fn apply(ui: &AppWindow, data: &Loaded, catalog: &TextCatalog) {
 #[cfg(windows)]
 mod broker {
     use super::*;
-    use bitbybit_ipc::builtin::{Empty, PingResponse};
-    use bitbybit_ipc::client::BrokerClient;
-    use bitbybit_ipc::protocol::PIPE_NAME;
-    use bitbybit_platform_windows::pipe::{connect, server_is_local_system};
+    use bitbybit_ipc::builtin::PingResponse;
+    use bitbybit_ipc::client::{BrokerClient, ConfirmPlan};
+    use bitbybit_ipc::dispatch::Dispatcher;
+    use bitbybit_ipc::envelope::{BrokerRequest, ResponseStatus};
+    use bitbybit_ipc::protocol::{PIPE_NAME, PROTOCOL_VERSION};
+    use bitbybit_platform_windows::pipe::{PipeStream, connect, own_identity, server_is_local_system};
+    use std::sync::atomic::AtomicBool;
+    use std::sync::{Arc, OnceLock};
     use std::time::Duration;
 
     fn problem(e: &bitbybit_core::Error) -> LocalizedText {
@@ -306,26 +555,156 @@ mod broker {
         devices: Vec<DeviceSummary>,
     }
 
-    pub fn load() -> Result<Loaded, LocalizedText> {
-        let stream = connect(PIPE_NAME, Duration::from_secs(5)).map_err(|e| {
-            text!("app.broker.unavailable", "The bitBybit service is not available: {0}", e.to_string())
-        })?;
-        // A pipe of the same name owned by anything but LocalSystem is an impostor; developers running the console
-        // broker opt out explicitly.
-        if !server_is_local_system(&stream) && std::env::var("BITBYBIT_DEV_BROKER").as_deref() != Ok("1") {
-            return Err(text!(
-                "app.broker.notGenuine",
-                "The service pipe does not belong to the bitBybit service (it does not run as Local System). For safety bitBybit does not use it."
-            ));
+    enum Broker {
+        Service(BrokerClient<PipeStream>),
+        /// No service installed: the elevated app hosts the same dispatcher (same allowlist, guards, journal).
+        InProcess(Arc<Dispatcher>),
+    }
+
+    /// Built once per run: start-up recovery, the leak watchdog and the dispatcher, allowing only this executable.
+    fn in_process() -> bitbybit_core::Result<Arc<Dispatcher>> {
+        static LOCAL: OnceLock<std::result::Result<Arc<Dispatcher>, String>> = OnceLock::new();
+        LOCAL
+            .get_or_init(|| {
+                let paths = bitbybit_core::paths::AppPaths::from_environment();
+                let setup = bitbybit_service::windows::setup(&paths);
+                // Recovery and the leak watchdog change system state: elevated only. Unelevated, the host serves
+                // reads, and the guard refuses elevated operations (the UI then offers the UAC restart).
+                let elevated = bitbybit_platform_windows::elevation::is_elevated();
+                if elevated {
+                    let all: Vec<&dyn bitbybit_recovery::RevertHandler> =
+                        setup.all_handlers.iter().map(|h| h.as_ref() as _).collect();
+                    if let Err(e) = bitbybit_service::recover_at_start(setup.journal.as_ref(), &all) {
+                        log::error!("Start-up recovery failed: {e}");
+                    }
+                }
+                let (journal, hosts, handlers) =
+                    (setup.journal.clone(), setup.hosts.clone(), setup.sharing_handlers.clone());
+                std::thread::spawn(move || {
+                    if !elevated {
+                        return;
+                    }
+                    let backend = bitbybit_service::sharing::ServiceSharing {
+                        platform: Arc::new(bitbybit_platform_windows::net::sharing::WindowsSharing),
+                        hosts,
+                    };
+                    loop {
+                        let refs: Vec<&dyn bitbybit_recovery::RevertHandler> =
+                            handlers.iter().map(|h| h.as_ref() as _).collect();
+                        let sessions =
+                            bitbybit_network::session::SharingSessions::new(journal.as_ref(), &backend, &refs);
+                        bitbybit_service::sharing::leak_watchdog_tick(
+                            journal.as_ref(),
+                            &bitbybit_platform_windows::net::wfp::installed,
+                            &|s| sessions.stop(s).map(|_| ()),
+                        );
+                        std::thread::sleep(Duration::from_secs(15));
+                    }
+                });
+                let exe = std::env::current_exe().map_err(|e| e.to_string())?.to_string_lossy().into_owned();
+                bitbybit_service::build_dispatcher(bitbybit_core::version(), &[exe.as_str()], None, setup.platform)
+                    .map(|(d, _)| Arc::new(d))
+            })
+            .clone()
+            .map_err(|e| bitbybit_core::Error::new(bitbybit_core::ErrorCode::PlatformError, e))
+    }
+
+    fn broker() -> bitbybit_core::Result<Broker> {
+        match connect(PIPE_NAME, Duration::from_secs(5)) {
+            Ok(stream) => {
+                // A pipe of the same name owned by anything but LocalSystem is an impostor; developers running the
+                // console broker opt out explicitly.
+                if !server_is_local_system(&stream) && std::env::var("BITBYBIT_DEV_BROKER").as_deref() != Ok("1") {
+                    return Err(bitbybit_core::Error::new(bitbybit_core::ErrorCode::AccessDenied, "The service pipe is not genuine.")
+                        .with_user_text(text!(
+                            "app.broker.notGenuine",
+                            "The service pipe does not belong to the bitBybit service (it does not run as Local System). For safety bitBybit does not use it."
+                        )));
+                }
+                Ok(Broker::Service(BrokerClient::new(stream.clone(), stream)))
+            }
+            // No service installed: the same broker runs inside the app.
+            Err(_) => Ok(Broker::InProcess(in_process()?)),
         }
-        let client = BrokerClient::new(stream.clone(), stream);
-        let ping: PingResponse =
-            client.invoke("broker.ping", &Empty {}, None, Duration::from_secs(10)).map_err(|e| problem(&e))?;
-        let network: NetworkOverview =
-            client.invoke("network.overview", &Empty {}, None, Duration::from_secs(30)).map_err(|e| problem(&e))?;
-        let list: DeviceList =
-            client.invoke("devices.inventory", &Empty {}, None, Duration::from_secs(60)).map_err(|e| problem(&e))?;
+    }
+
+    impl Broker {
+        fn call<R: serde::de::DeserializeOwned>(
+            &self,
+            operation: &str,
+            params: &serde_json::Value,
+            confirm: Option<ConfirmPlan<'_>>,
+        ) -> bitbybit_core::Result<R> {
+            match self {
+                Broker::Service(c) => c.invoke(operation, params, confirm, Duration::from_secs(30 * 60)),
+                Broker::InProcess(d) => {
+                    let identity = own_identity();
+                    let send = |token: Option<String>| {
+                        d.dispatch(
+                            &BrokerRequest {
+                                protocol_version: PROTOCOL_VERSION,
+                                request_id: uuid::Uuid::new_v4(),
+                                operation: operation.to_owned(),
+                                parameters: params.clone(),
+                                confirmation_token: token,
+                            },
+                            &identity,
+                            Arc::new(AtomicBool::new(false)),
+                        )
+                    };
+                    let mut r = send(None);
+                    if r.status == ResponseStatus::ConfirmationRequired {
+                        let (Some(plan), Some(token)) = (r.plan.as_ref(), r.confirmation_token.clone()) else {
+                            return Err(bitbybit_core::Error::new(
+                                bitbybit_core::ErrorCode::VerificationFailed,
+                                "Inconsistent confirmation.",
+                            ));
+                        };
+                        let Some(confirm) = confirm else {
+                            return Err(bitbybit_core::Error::new(
+                                bitbybit_core::ErrorCode::ConfirmationRequired,
+                                "Needs confirmation.",
+                            ));
+                        };
+                        if !confirm(plan, r.confirmation_expires_at) {
+                            return Err(bitbybit_core::Error::new(bitbybit_core::ErrorCode::Cancelled, "Declined."));
+                        }
+                        r = send(Some(token));
+                    }
+                    match (r.status, r.result, r.error) {
+                        (ResponseStatus::Ok, Some(v), _) => Ok(serde_json::from_value(v)?),
+                        (ResponseStatus::Error, _, Some(e)) => Err(e),
+                        _ => Err(bitbybit_core::Error::new(
+                            bitbybit_core::ErrorCode::VerificationFailed,
+                            "Unexpected broker answer.",
+                        )),
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn load() -> Result<Loaded, LocalizedText> {
+        let b = broker().map_err(|e| problem(&e))?;
+        let empty = serde_json::json!({});
+        let ping: PingResponse = b.call("broker.ping", &empty, None).map_err(|e| problem(&e))?;
+        let network: NetworkOverview = b.call("network.overview", &empty, None).map_err(|e| problem(&e))?;
+        let list: DeviceList = b.call("devices.inventory", &empty, None).map_err(|e| problem(&e))?;
         Ok(Loaded { broker_version: ping.broker_version, network, devices: list.devices })
+    }
+
+    pub fn devices() -> bitbybit_core::Result<Vec<DeviceSummary>> {
+        let list: DeviceList = broker()?.call("devices.inventory", &serde_json::json!({}), None)?;
+        Ok(list.devices)
+    }
+
+    /// One operation; `confirm` is shown any plan the broker returns.
+    pub fn invoke(
+        operation: &str,
+        params: &serde_json::Value,
+        confirm: ConfirmPlan<'_>,
+    ) -> bitbybit_core::Result<serde_json::Value> {
+        broker()?.call(operation, params, Some(confirm))
     }
 }
 
@@ -335,6 +714,21 @@ mod broker {
 
     pub fn load() -> Result<Loaded, LocalizedText> {
         Err(text!("app.broker.onlyWindows", "The bitBybit service exists only on Windows."))
+    }
+
+    pub fn devices() -> bitbybit_core::Result<Vec<DeviceSummary>> {
+        Ok(vec![])
+    }
+
+    pub fn invoke(
+        _operation: &str,
+        _params: &serde_json::Value,
+        _confirm: bitbybit_ipc::client::ConfirmPlan<'_>,
+    ) -> bitbybit_core::Result<serde_json::Value> {
+        Err(bitbybit_core::Error::new(
+            bitbybit_core::ErrorCode::NotSupported,
+            "The bitBybit service exists only on Windows.",
+        ))
     }
 }
 
@@ -347,6 +741,32 @@ mod audio {
     use bitbybit_core::paths::AppPaths;
     use bitbybit_journal::JsonLinesJournal;
     use bitbybit_platform_windows::audio::CoreAudio;
+
+    /// Enables an endpoint, journaled in the user journal and verified (undocumented IPolicyConfig).
+    pub fn enable(id: &str) -> Result<(), LocalizedText> {
+        let journal = JsonLinesJournal::new(AppPaths::from_environment().user_journal_file());
+        let failed = |why: String| text!("app.audio.changeFailed", "The audio device could not be changed: {0}", why);
+        match JournaledAudioChanges::new(&CoreAudio, &journal).set_enabled(id, true, time::OffsetDateTime::now_utc()) {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(failed("Windows did not report the device as enabled".into())),
+            Err(e) => Err(failed(e.message)),
+        }
+    }
+
+    /// Volume and mute are the user's everyday settings: applied and read back, not journaled.
+    pub fn set_volume(id: &str, percent: f32) -> Result<(), LocalizedText> {
+        CoreAudio
+            .set_volume(id, (percent / 100.0).clamp(0.0, 1.0))
+            .map(|_| ())
+            .map_err(|e| text!("app.audio.changeFailed", "The audio device could not be changed: {0}", e.message))
+    }
+
+    pub fn set_mute(id: &str, muted: bool) -> Result<(), LocalizedText> {
+        CoreAudio
+            .set_mute(id, muted)
+            .map(|_| ())
+            .map_err(|e| text!("app.audio.changeFailed", "The audio device could not be changed: {0}", e.message))
+    }
 
     pub fn endpoints() -> Result<Vec<AudioEndpoint>, LocalizedText> {
         CoreAudio
@@ -367,6 +787,60 @@ mod audio {
             .first()
             .map(|o| o.new_status)
             .ok_or_else(|| text!("app.changes.notActive", "This change is no longer active."))
+    }
+
+    fn profiles() -> bitbybit_audio::profile::ProfileStore {
+        // Per user: default devices belong to the user, and the machine folder is not writable unelevated.
+        bitbybit_audio::profile::ProfileStore::new(&AppPaths::from_environment().user_root().join("profiles"))
+    }
+
+    pub fn profile_name() -> Option<String> {
+        profiles().load().filter(|p| p.enabled).map(|p| p.preferred_endpoint.friendly_name.clone().unwrap_or(p.name))
+    }
+
+    /// Remembers this HDMI/DisplayPort endpoint as the preferred default.
+    pub fn prefer(id: &str) -> Result<(), LocalizedText> {
+        let failed = |why: String| text!("app.audio.changeFailed", "The audio device could not be changed: {0}", why);
+        let endpoint = endpoints()?.into_iter().find(|e| e.id == id).ok_or_else(|| failed("not found".into()))?;
+        let profile = bitbybit_audio::profile::AudioPreferenceProfile::for_display_port(
+            &endpoint,
+            time::OffsetDateTime::now_utc(),
+        );
+        profiles().save(&profile).map_err(|e| failed(e.message))
+    }
+
+    pub fn forget_profile() -> Result<(), LocalizedText> {
+        profiles()
+            .delete()
+            .map_err(|e| text!("app.audio.changeFailed", "The audio device could not be changed: {0}", e.message))
+    }
+
+    /// While the app runs: every 20 s the reconciler decides; a `SetDefault` is applied through the journaled path.
+    pub fn watch_profile() {
+        use bitbybit_audio::profile::{DecisionKind, ReconcileTrigger, Reconciler};
+        std::thread::spawn(|| {
+            let mut current: Option<Reconciler> = None;
+            let mut trigger = ReconcileTrigger::Startup;
+            loop {
+                match profiles().load().filter(|p| p.enabled) {
+                    None => current = None,
+                    Some(p) => {
+                        let r = current.get_or_insert_with(|| Reconciler::new(p));
+                        if let Ok(list) = CoreAudio.endpoints() {
+                            let now = time::OffsetDateTime::now_utc();
+                            let d = r.evaluate(trigger, &list, now, None);
+                            if let (DecisionKind::SetDefault, Some(id)) = (d.kind, d.endpoint_id) {
+                                let ok = make_default(&id).is_ok();
+                                log::info!("Audio profile applied {id}: verified={ok}");
+                                r.record_applied(&id, now, ok);
+                            }
+                        }
+                    }
+                }
+                trigger = ReconcileTrigger::Periodic;
+                std::thread::sleep(std::time::Duration::from_secs(20));
+            }
+        });
     }
 
     pub fn make_default(id: &str) -> Result<(), LocalizedText> {
@@ -390,6 +864,32 @@ mod audio {
 
     pub fn endpoints() -> Result<Vec<AudioEndpoint>, LocalizedText> {
         Err(text!("app.audio.unavailable", "Windows audio is not available: {0}", "Linux".to_owned()))
+    }
+
+    pub fn profile_name() -> Option<String> {
+        None
+    }
+
+    pub fn enable(_id: &str) -> Result<(), LocalizedText> {
+        Err(text!("app.audio.changeFailed", "The audio device could not be changed: {0}", "Linux".to_owned()))
+    }
+
+    pub fn prefer(_id: &str) -> Result<(), LocalizedText> {
+        Err(text!("app.audio.changeFailed", "The audio device could not be changed: {0}", "Linux".to_owned()))
+    }
+
+    pub fn forget_profile() -> Result<(), LocalizedText> {
+        Ok(())
+    }
+
+    pub fn watch_profile() {}
+
+    pub fn set_volume(_id: &str, _percent: f32) -> Result<(), LocalizedText> {
+        Err(text!("app.audio.changeFailed", "The audio device could not be changed: {0}", "Linux".to_owned()))
+    }
+
+    pub fn set_mute(_id: &str, _muted: bool) -> Result<(), LocalizedText> {
+        Err(text!("app.audio.changeFailed", "The audio device could not be changed: {0}", "Linux".to_owned()))
     }
 
     pub fn revert(_id: &str) -> Result<bitbybit_journal::ChangeStatus, LocalizedText> {
@@ -441,5 +941,30 @@ mod diagnosis {
 
     pub fn run() -> Result<(bitbybit_domain::diagnostics::DiagnosticReport, Vec<String>), LocalizedText> {
         Err(text!("app.diagnosis.unavailable", "The analysis could not run: {0}", "Linux".to_owned()))
+    }
+}
+
+/// Reads the app does itself (no service needed).
+mod platform_reads {
+    /// Third-party Driver Store packages.
+    pub fn store_packages() -> Vec<bitbybit_domain::snapshot::StorePackageSummary> {
+        #[cfg(windows)]
+        return bitbybit_platform_windows::diagnostics::store_packages().unwrap_or_default();
+        #[cfg(not(windows))]
+        Vec::new()
+    }
+
+    /// bitBybit's driver backup folders, newest first.
+    pub fn backups() -> Vec<String> {
+        let root = bitbybit_core::paths::AppPaths::from_environment().driver_backups();
+        let mut names: Vec<String> = std::fs::read_dir(root)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|e| e.path().is_dir())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort_by(|a, b| b.cmp(a));
+        names
     }
 }

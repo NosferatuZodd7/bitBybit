@@ -516,6 +516,7 @@ dependencies = [
  "bitbybit-core",
  "bitbybit-devices",
  "bitbybit-domain",
+ "bitbybit-drivers",
  "bitbybit-evidence",
  "bitbybit-ipc",
  "bitbybit-journal",
@@ -523,10 +524,16 @@ dependencies = [
  "bitbybit-network",
  "bitbybit-platform-windows",
  "bitbybit-recovery",
+ "bitbybit-service",
+ "bitbybit-updates",
+ "log",
  "serde",
+ "serde_json",
  "slint",
  "slint-build",
+ "tempfile",
  "time",
+ "uuid",
 ]
 
 [[package]]
@@ -584,9 +591,14 @@ version = "0.7.0"
 dependencies = [
  "bitbybit-core",
  "bitbybit-domain",
+ "bitbybit-journal",
  "bitbybit-localization",
+ "bitbybit-recovery",
  "serde",
+ "serde_json",
+ "tempfile",
  "time",
+ "uuid",
 ]
 
 [[package]]
@@ -614,11 +626,16 @@ name = "bitbybit-drivers"
 version = "0.7.0"
 dependencies = [
  "bitbybit-core",
+ "bitbybit-devices",
  "bitbybit-domain",
  "bitbybit-journal",
  "bitbybit-recovery",
+ "bitbybit-security",
+ "log",
  "regex",
  "serde",
+ "serde_json",
+ "tempfile",
  "time",
  "uuid",
 ]
@@ -694,6 +711,7 @@ version = "0.7.0"
 dependencies = [
  "bitbybit-audio",
  "bitbybit-core",
+ "bitbybit-devices",
  "bitbybit-display",
  "bitbybit-domain",
  "bitbybit-drivers",
@@ -704,10 +722,12 @@ dependencies = [
  "bitbybit-security",
  "bitbybit-updates",
  "log",
+ "serde",
  "serde_json",
  "time",
  "windows",
  "windows-core",
+ "windows-future",
 ]
 
 [[package]]
@@ -720,6 +740,19 @@ dependencies = [
  "tempfile",
  "time",
  "uuid",
+]
+
+[[package]]
+name = "bitbybit-release"
+version = "0.7.0"
+dependencies = [
+ "bitbybit-core",
+ "bitbybit-updates",
+ "getrandom 0.4.3",
+ "p256",
+ "serde_json",
+ "tempfile",
+ "time",
 ]
 
 [[package]]
@@ -738,7 +771,9 @@ name = "bitbybit-service"
 version = "0.7.0"
 dependencies = [
  "bitbybit-core",
+ "bitbybit-devices",
  "bitbybit-domain",
+ "bitbybit-drivers",
  "bitbybit-ipc",
  "bitbybit-journal",
  "bitbybit-network",

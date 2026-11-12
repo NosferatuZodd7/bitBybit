@@ -29,7 +29,7 @@ use windows::core::{HSTRING, PCWSTR};
 
 const INTERESTING_SERVICES: [&str; 7] =
     ["Audiosrv", "AudioEndpointBuilder", "SharedAccess", "icssvc", "WlanSvc", "wuauserv", "RasMan"];
-const RESTRICTIONS: &str = r"SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions";
+pub(crate) const RESTRICTIONS: &str = r"SOFTWARE\Policies\Microsoft\Windows\DeviceInstall\Restrictions";
 
 fn issue(area: &str, message: impl Into<String>) -> CollectionIssue {
     CollectionIssue { area: area.to_owned(), message: message.into() }
@@ -133,6 +133,79 @@ fn services() -> std::result::Result<Vec<ServiceSummary>, String> {
             let (display_name, start_type) = config(&service).unwrap_or((None, None));
             ServiceSummary { name: (*name).to_owned(), display_name, status: state, start_type }
         })
+        .collect())
+}
+
+/// The audio services bitBybit may restart (and nothing else).
+pub const AUDIO_SERVICES: [&str; 2] = ["AudioEndpointBuilder", "Audiosrv"];
+
+fn wait_for(service: &Service, state: windows::Win32::System::Services::SERVICE_STATUS_CURRENT_STATE) -> bool {
+    // Bounded wait: 60 polls of 500 ms; never a restart loop.
+    for _ in 0..60 {
+        let mut status = SERVICE_STATUS::default();
+        // SAFETY: out-parameter only.
+        if unsafe { QueryServiceStatus(service.0, &mut status) }.is_ok() && status.dwCurrentState == state {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    false
+}
+
+/// Stops "Windows Audio" (Audiosrv) and starts both audio services again, once. Needs administrator / LocalSystem.
+/// Returns the services' state afterwards.
+pub fn restart_audio_services() -> bitbybit_core::Result<Vec<ServiceSummary>> {
+    use windows::Win32::System::Services::{
+        ControlService, SERVICE_CONTROL_STOP, SERVICE_RUNNING, SERVICE_START, SERVICE_STOP, SERVICE_STOPPED,
+        StartServiceW,
+    };
+    let err = |api: &str, e: windows::core::Error| {
+        bitbybit_core::Error::platform(format!("{api}: {}", e.message()), e.code().0)
+    };
+    // SAFETY: SCM handles owned by `Service`; only the two allowlisted audio services are opened.
+    unsafe {
+        let manager = Service(
+            OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_CONNECT).map_err(|e| err("OpenSCManagerW", e))?,
+        );
+        let open = |name: &str| {
+            OpenServiceW(manager.0, &HSTRING::from(name), SERVICE_QUERY_STATUS | SERVICE_STOP | SERVICE_START)
+                .map(Service)
+                .map_err(|e| err("OpenServiceW", e))
+        };
+        let (builder, audio) = (open(AUDIO_SERVICES[0])?, open(AUDIO_SERVICES[1])?);
+        let mut status = SERVICE_STATUS::default();
+        if QueryServiceStatus(audio.0, &mut status).is_ok() && status.dwCurrentState != SERVICE_STOPPED {
+            ControlService(audio.0, SERVICE_CONTROL_STOP, &mut status)
+                .map_err(|e| err("ControlService(stop Audiosrv)", e))?;
+            if !wait_for(&audio, SERVICE_STOPPED) {
+                return Err(bitbybit_core::Error::new(
+                    bitbybit_core::ErrorCode::Timeout,
+                    "Windows Audio did not stop in time.",
+                ));
+            }
+        }
+        for service in [&builder, &audio] {
+            let mut s = SERVICE_STATUS::default();
+            if QueryServiceStatus(service.0, &mut s).is_ok() && s.dwCurrentState != SERVICE_RUNNING {
+                // ERROR_SERVICE_ALREADY_RUNNING (1056) is fine: a dependency started it.
+                if let Err(e) = StartServiceW(service.0, None)
+                    && e.code().0 & 0xFFFF != 1056
+                {
+                    return Err(err("StartServiceW", e));
+                }
+            }
+            if !wait_for(service, SERVICE_RUNNING) {
+                return Err(bitbybit_core::Error::new(
+                    bitbybit_core::ErrorCode::Timeout,
+                    "An audio service did not start in time.",
+                ));
+            }
+        }
+    }
+    Ok(services()
+        .map_err(|e| bitbybit_core::Error::platform(e, 0))?
+        .into_iter()
+        .filter(|s| AUDIO_SERVICES.contains(&s.name.as_str()))
         .collect())
 }
 
@@ -335,8 +408,13 @@ fn pnp_events() -> std::result::Result<Vec<PnpEventSummary>, String> {
     Ok(out)
 }
 
+/// Third-party Driver Store packages (read-only; standard users can read `%windir%\INF`).
+pub fn store_packages() -> bitbybit_core::Result<Vec<StorePackageSummary>> {
+    driver_store(&windows_dir()).map_err(|e| bitbybit_core::Error::platform(e, 0))
+}
+
 /// Device installation restrictions (read-only; standard users can read `SOFTWARE\Policies`).
-fn install_policy() -> DeviceInstallRestrictionsState {
+pub(crate) fn install_policy() -> DeviceInstallRestrictionsState {
     if !reg::exists(RESTRICTIONS) {
         return DeviceInstallRestrictionsState::default();
     }

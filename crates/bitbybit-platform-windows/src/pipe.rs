@@ -337,6 +337,15 @@ pub fn client_identity(stream: &PipeStream) -> ClientIdentity {
     if let Err(e) = unsafe { GetNamedPipeClientProcessId(stream.raw(), &mut pid) } {
         return ClientIdentity::unresolved(&format!("GetNamedPipeClientProcessId failed: {e}"), 0);
     }
+    identity_of(pid)
+}
+
+/// This process, for a broker hosted in-process by the elevated app (no pipe involved).
+pub fn own_identity() -> ClientIdentity {
+    identity_of(std::process::id())
+}
+
+fn identity_of(pid: u32) -> ClientIdentity {
     match process_facts(pid) {
         Ok(f) => ClientIdentity {
             process_id: pid,

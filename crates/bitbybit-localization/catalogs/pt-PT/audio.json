@@ -52,5 +52,7 @@
   "audio.action.rescan.title": "Procurar alterações de hardware",
   "audio.action.rescan.impact": "O Windows volta a enumerar os dispositivos (como \"Procurar alterações de hardware\" no Gestor de Dispositivos). Nenhuma configuração é alterada.",
   "audio.action.analyzeDriver.title": "Analisar o controlador de \"{0}\"",
-  "audio.action.analyzeDriver.impact": "Abre a análise do controlador (pacote instalado, histórico, origem da instalação). Só leitura."
+  "audio.action.analyzeDriver.impact": "Abre a análise do controlador (pacote instalado, histórico, origem da instalação). Só leitura.",
+  "audio.plan.restartServices": "Reiniciar os serviços de áudio do Windows (Audiosrv, AudioEndpointBuilder)",
+  "audio.plan.restartServicesImpact": "O som para durante alguns segundos; as aplicações que estejam a reproduzir áudio podem ter de ser reiniciadas."
 }

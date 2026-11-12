@@ -31,6 +31,18 @@ pub struct DeviceSubject {
     pub inf_name: Option<String>,
 }
 
+impl DeviceSubject {
+    pub fn from_summary(d: &bitbybit_domain::snapshot::DeviceSummary) -> Self {
+        Self {
+            class_name: d.class_name.clone(),
+            hardware_ids: d.hardware_ids.clone(),
+            is_present: d.is_present,
+            problem_code: d.problem_code,
+            inf_name: d.driver.as_ref().and_then(|x| x.inf_name.clone()),
+        }
+    }
+}
+
 /// Whether an action is offered, with its risk and the reason shown to the user.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Verdict {

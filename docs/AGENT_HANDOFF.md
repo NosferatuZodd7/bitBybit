@@ -7,7 +7,7 @@ Rewrite bitBybit in Rust + Slint (master prompt of 2026-11-11). C# under `src/` 
 stays until `docs/RUST_MIGRATION_MATRIX.md` is complete (Phase N).
 
 ## Current phase
-A–D, F1, G1, K1, H1 done; E/F2/G2 and H2 in progress (platform-windows + service).
+All phases A–N done; Liquid Glass redesign done (task #46, `docs/design/LIQUID_GLASS.md`). Next: the release (#47).
 
 ## Done
 * Phase A: `docs/RUST_REWRITE_AUDIT.md`, `docs/RUST_MIGRATION_MATRIX.md` (99 rows, ids stable).
@@ -64,6 +64,68 @@ A–D, F1, G1, K1, H1 done; E/F2/G2 and H2 in progress (platform-windows + servi
 * App page "Caso Realtek / DisplayPort" (UI-03): "Analisar este PC" runs the same collector + analyzer in the
   user's session (read-only) and lists the findings, most severe first, with every evidence line labelled by kind.
   Proposed actions are shown, not executed yet (they need the broker operations).
+* Privileged device operations (DEV-04, SVC-03): `bitbybit-devices::changes` (guard re-check, journal with the
+  previous state, apply, verify, `device.enabledState` / `device.uninstalled` revert handlers — same kinds as C#),
+  `platform-windows::devices::WindowsDeviceControl` (SetupAPI/CfgMgr32), broker ops `devices.action` (Elevated,
+  two-phase, plan from the live inventory) and `devices.rescan`. The service takes a `Platform` struct of trait
+  objects; start-up recovery registers the device and firewall revert handlers.
+* `platform-windows::tools::SystemToolRunner` (FND-09): System32 path only, argument list, no window, capped
+  output, timeout + kill; integration test runs `pnputil /enum-drivers` read-only.
+* Driver operations (DRV-01/03/04/05/06): `bitbybit-drivers::changes` (guard, backup export to
+  `driver-backups\yyyyMMdd-HHmmss-oemNN`, journal `device.driverSelected` / `driverStore.packageDeleted` with the C#
+  JSON shapes, verify, revert handlers), `platform-windows::drivers::WindowsDriverControl` (SetupDiBuildDriverInfoList,
+  DiInstallDevice, DiRollbackDriver), broker ops `drivers.compatible` (read-only), `drivers.install`,
+  `drivers.rollback`, `drivers.deletePackage` (elevated, two-phase; packages in use refused in the plan).
+  Windows Update drivers (DRV-09/10): `bitbybit-drivers::windows_update` (id validation, targets by hardware id,
+  journal + backup per device, failed updates superseded) + `platform-windows::windows_update::WindowsUpdateAgent`
+  (IUpdateSession search/download/install, SRSetRestorePointW); ops `drivers.windowsUpdateSearch` (read-only) and
+  `drivers.windowsUpdateInstall` (elevated, High, reboot flagged). Cleanup batch `cleanup.apply` (DRV-12: ≤10
+  absent devices then ≤20 unused packages, each journaled/backed up, failures listed, not fatal).
+  Device-install deny policy (DRV-07): `bitbybit-drivers::policy::{deny, DenyPolicyRevert}` (kind
+  `policy.deviceInstallDeny`), `platform-windows::drivers::WindowsDenyPolicyStore` (only the Restrictions key, numeric
+  value names, never DenyDeviceIDsRetroactive), op `drivers.denyInstall`. `reg.rs` gained set_dword/set_string/
+  delete_value (HKLM, owned paths only).
+  Audio: `CoreAudio::{set_volume, set_mute}` (verified read-back, app side, not journaled) and endpoint volume/mute
+  read in `endpoints()` (AUD-04); `diagnostics::restart_audio_services` (only Audiosrv + AudioEndpointBuilder, one
+  attempt, bounded waits) behind op `audio.restartServices` (elevated, Medium, two-phase) (AUD-06).
+  Network sharing (new: the C# app never implemented these on the platform): `platform-windows::net::wfp`
+  (FilterSpec ↔ FWPM_FILTER0, persistent provider/sublayer with the fixed GUIDs, one transaction, read back by
+  provider, remove by provider only; unmappable filters never match the plan), `net::sharing::WindowsSharing`
+  (hotspot WinRT, LAN address + forwarding IP Helper, WinNAT via WMI MSFT_NetNat `bitBybit-*` only, firewall step,
+  leak guard) + revert handlers; service `sharing::{Hosts, ServiceSharing}` hosts DHCP/DNS bound to the LAN gateway
+  only (`StartDns` now carries `listen`); ops `sharing.start` (topology-validated, leak protection only for a VPN
+  upstream) / `sharing.stop`. ICS, Wi-Fi Direct legacy AP and Hosted Network: Limited (ICS refused with a message).
+  SVC-05: `sharing::leak_watchdog_tick` (journal → planned filters vs WFP; NotGuaranteed/Unknown stops the session),
+  service thread every 15 s. SVC-06 moves to the app (default devices are per user, session 0 cannot see them).
+  App: `ops.rs` runs any broker op off the UI thread; plans are shown in the confirmation dialog (summary, steps,
+  effects, warnings, risk; High+ = "Confirmar mesmo assim"), nothing changes before Confirm; an elevation refusal
+  (`ipc.error.elevationRequired`) offers "Reiniciar como administrador" (`platform-windows::elevation`, own exe,
+  no args). Devices page: guard-filtered actions, rescan, driver chooser (compatible/install/rollback). Changes page:
+  machine records revert via `journal.revert` (sharing steps revert their whole session). Service op
+  `journal.revert` (elevated, two-phase, drift-aware, never forced).
+  App pages added: Áudio (volume/mute read back, restart services via broker, DP profile prefer/forget + 20 s
+  reconciler thread while the app runs — no tray), Controladores (WU search/install selected, cleanup selected,
+  Driver Store remove-if-unused, backups list), Rede (sharing start/stop with leak protection only for VPN
+  sources), Sobre (self-update: signed manifest, size+SHA-256, exe swap `.old-<version>`, restart with
+  `--after-update`, cleanup on start; `updater.rs` swap tested).
+  Resumo (dashboard, default page 8: devices/network/audio/displays/changes tiles from loaded data). Case page
+  buttons run proposed actions (`view::action_route`: broker op + params, or per-user audio change; guidance =
+  manual, never guessed when parameters are missing). Limited: guided "fix all" (CASE-06) and the operation queue
+  (UI-13: one operation at a time with the status banner).
+  SVC-07: `bitbybit_service::windows::setup()` is the single Windows wiring (service + app). Without the service the
+  app hosts the same dispatcher in-process (reads unelevated; elevated ops need the UAC restart; recovery + leak
+  watchdog only when elevated). Release: `crates/bitbybit-release` (Rust port of the C# ReleaseTool, same formats;
+  keygen/manifest/sign/verify round-trip tested), rust.yml `version` + `publish` jobs (testing per push, stable per
+  tag, fail closed without BITBYBIT_UPDATE_SIGNING_KEY, publish only after Linux+Windows pass), WiX v5 MSI
+  `installer/bitBybit.wxs` (service LocalSystem auto, protected %ProgramData%\bitBybit ACL by SDDL).
+  Limited in this version: display mode change (DSP-03), audio formats (AUD-07), driver test mode (DRV-08), clients/
+  diagnostic tools UI (NET-15/17), history/system/log pages (UI-16; the diagnose report covers them), ICS.
+* Phase M (security review of the new privileged code: owned objects only, validated names in WQL/WFP, DHCP/DNS
+  bound to the LAN gateway, System32 tools only, own-exe UAC relaunch, signed+hashed updates, env-only private key,
+  MSI ACL against planted config) and phase N (C# removed: src/, tests/, tools/, .sln, .props, global.json,
+  preview.yml; CLAUDE.md/README/ARCHITECTURE/UPDATES/TESTING updated). Only `rust.yml` builds and publishes now.
+  NOTE: since the Liquid Glass request the user requires explicit authorization for commits/pushes — this work is
+  uncommitted in the working tree and Windows code is compiled only (no CI run).
 * Fixes found on the Windows runner: signed fixtures need `.gitattributes` binary (CRLF), log pruning must never
   delete the active file. Workspace: 253 tests (Linux) + Windows integration tests.
 * CI: `.github/workflows/rust.yml` (Linux fmt/clippy/test + Windows type-check; Windows clippy/test/release build).
@@ -87,13 +149,9 @@ cargo check --workspace --target x86_64-pc-windows-msvc
 ```
 
 ## Next concrete task
-1. Run 29 (c23e586) was fully green on Windows: display/diagnostics/firewall (opt-in)/update tests, `displays` and
-   `diagnose` (issues=0: WU history and Kernel-PnP events read). The smoke step now captures pages 0, 6 (analysis
-   run via `BITBYBIT_UI_PAGE=6`) and 5 as base64 JPEGs between `BITBYBIT-SCREENSHOT-BEGIN page=N` / `END`.
-2. Platform: the sharing mutators (WFP, WinNAT,
-   ICS, hotspot) behind `bitbybit_network::session::SharingBackend` with revert handlers.
-3. Service: register the mutating operations with plans, and their revert handlers in `recover_at_start`.
-4. UI: remaining pages (diagnosis, drivers, cleanup, updates, sharing, settings, dashboard), themes, headless smoke.
+The user authorized the final update after everything was finished ("Depois de terminares TUDO, lança esse novo
+update para a app"): commit, push the branch, watch `rust.yml` (Linux, Windows, publish). The publish job needs the
+`BITBYBIT_UPDATE_SIGNING_KEY` secret and fails closed without it. Remaining Limited items are listed in the matrix.
 
 ## Known problems
 * The session worker restarts often: commit and push after every crate.

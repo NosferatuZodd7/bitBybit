@@ -39,7 +39,9 @@ pub enum StepAction {
     StartDhcp {
         pool: PoolConfig,
     },
+    /// Forwarder listening on the LAN gateway address only (never on the uplink).
     StartDns {
+        listen: Ipv4Addr,
         upstreams: Vec<SocketAddr>,
     },
     /// IPv4 forwarding on the listed interfaces (previous values journaled).
@@ -147,7 +149,7 @@ pub fn build_plan(input: &PlanInput) -> Vec<StepAction> {
             if let Some(pool) = &input.pool {
                 steps.push(StepAction::StartDhcp { pool: pool.clone() });
             }
-            steps.push(StepAction::StartDns { upstreams: input.dns_upstreams.clone() });
+            steps.push(StepAction::StartDns { listen: input.gateway, upstreams: input.dns_upstreams.clone() });
             steps.push(StepAction::EnableForwarding { luids: vec![input.upstream_luid, input.downstream_luid] });
             steps.push(StepAction::CreateNat { name: format!("{OWNED_NAME_PREFIX}share"), internal: input.lan });
         }

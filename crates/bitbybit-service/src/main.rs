@@ -21,29 +21,15 @@ fn main() {
 mod broker {
     use bitbybit_core::paths::AppPaths;
     use bitbybit_ipc::protocol::{APP_EXECUTABLE, CLI_EXECUTABLE, DEVELOPER_MODE_CONFIG, PIPE_NAME};
-    use bitbybit_journal::JsonLinesJournal;
+    use bitbybit_platform_windows::net::sharing;
     use bitbybit_platform_windows::pipe::{PipeServer, client_identity, connect};
-    use bitbybit_service::{NetworkInventory, build_dispatcher, developer_directory, recover_at_start};
+    use bitbybit_service::{build_dispatcher, developer_directory, recover_at_start};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::time::Duration;
 
     /// Connections served at once; more are closed immediately.
     const MAX_CONNECTIONS: usize = 16;
-
-    struct SetupApi;
-    impl bitbybit_service::DeviceInventory for SetupApi {
-        fn collect(&self) -> bitbybit_core::Result<Vec<bitbybit_domain::snapshot::DeviceSummary>> {
-            bitbybit_platform_windows::devices::collect()
-        }
-    }
-
-    struct IpHelper;
-    impl NetworkInventory for IpHelper {
-        fn collect(&self) -> bitbybit_core::Result<bitbybit_network::model::NetworkSnapshot> {
-            bitbybit_platform_windows::net::inventory::collect()
-        }
-    }
 
     /// Serves until `stop` is set (then `wake` unblocks the pending accept).
     pub fn run(stop: Arc<AtomicBool>) {
@@ -52,8 +38,12 @@ mod broker {
             .install();
         log::info!("bitBybit service {} starting", bitbybit_core::version());
 
-        let journal = JsonLinesJournal::new(paths.journal_file());
-        match recover_at_start(&journal, &[]) {
+        let setup = bitbybit_service::windows::setup(&paths);
+        let (watchdog_journal, watchdog_hosts, watchdog_handlers) =
+            (setup.journal.clone(), setup.hosts.clone(), setup.sharing_handlers.clone());
+        let all: Vec<&dyn bitbybit_recovery::RevertHandler> =
+            setup.all_handlers.iter().map(|h| h.as_ref() as _).collect();
+        match recover_at_start(setup.journal.as_ref(), &all) {
             Ok(o) if !o.is_empty() => log::info!("Start-up recovery handled {} change(s)", o.len()),
             Ok(_) => {}
             Err(e) => log::error!("Start-up recovery failed: {e}"),
@@ -73,7 +63,7 @@ mod broker {
             log::warn!("Developer mode is enabled for {d}");
         }
         let (dispatcher, _events) =
-            match build_dispatcher(bitbybit_core::version(), &image_refs, developer.as_deref(), IpHelper, SetupApi) {
+            match build_dispatcher(bitbybit_core::version(), &image_refs, developer.as_deref(), setup.platform) {
                 Ok(d) => d,
                 Err(e) => {
                     log::error!("Broker configuration is invalid: {e}");
@@ -81,6 +71,28 @@ mod broker {
                 }
             };
         let dispatcher = Arc::new(dispatcher);
+        {
+            // Leak-guard watchdog: stops a sharing session whose WFP protection is no longer guaranteed.
+            let (journal, stop_flag) = (watchdog_journal, stop.clone());
+            let backend = bitbybit_service::sharing::ServiceSharing {
+                platform: Arc::new(sharing::WindowsSharing),
+                hosts: watchdog_hosts,
+            };
+            let handlers = watchdog_handlers;
+            std::thread::spawn(move || {
+                while !stop_flag.load(Ordering::SeqCst) {
+                    let refs: Vec<&dyn bitbybit_recovery::RevertHandler> =
+                        handlers.iter().map(|h| h.as_ref() as _).collect();
+                    let sessions = bitbybit_network::session::SharingSessions::new(journal.as_ref(), &backend, &refs);
+                    bitbybit_service::sharing::leak_watchdog_tick(
+                        journal.as_ref(),
+                        &bitbybit_platform_windows::net::wfp::installed,
+                        &|s| sessions.stop(s).map(|_| ()),
+                    );
+                    std::thread::sleep(Duration::from_secs(15));
+                }
+            });
+        }
         let server = match PipeServer::new(PIPE_NAME) {
             Ok(s) => s,
             Err(e) => {

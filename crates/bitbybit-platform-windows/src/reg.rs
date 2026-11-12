@@ -2,8 +2,9 @@
 
 use windows::Win32::Foundation::{ERROR_SUCCESS, WIN32_ERROR};
 use windows::Win32::System::Registry::{
-    HKEY, HKEY_LOCAL_MACHINE, KEY_READ, REG_ROUTINE_FLAGS, REG_SZ, REG_VALUE_TYPE, RRF_RT_REG_BINARY, RRF_RT_REG_DWORD,
-    RRF_RT_REG_SZ, RegCloseKey, RegEnumKeyExW, RegEnumValueW, RegGetValueW, RegOpenKeyExW,
+    HKEY, HKEY_LOCAL_MACHINE, KEY_READ, REG_DWORD, REG_ROUTINE_FLAGS, REG_SZ, REG_VALUE_TYPE, RRF_RT_REG_BINARY,
+    RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegCloseKey, RegDeleteKeyValueW, RegEnumKeyExW, RegEnumValueW, RegGetValueW,
+    RegOpenKeyExW, RegSetKeyValueW,
 };
 use windows::core::{HSTRING, PWSTR};
 
@@ -112,4 +113,51 @@ pub fn string_values(path: &str) -> Vec<(String, String)> {
         }
     }
     out
+}
+
+fn written(api: &str, code: WIN32_ERROR) -> bitbybit_core::Result<()> {
+    if code == ERROR_SUCCESS {
+        Ok(())
+    } else {
+        Err(bitbybit_core::Error::platform(format!("{api} failed"), code.0 as i32))
+    }
+}
+
+/// Writes a REG_DWORD under HKLM (the key is created when missing). Callers pass fixed, owned paths only.
+pub fn set_dword(path: &str, value: &str, data: u32) -> bitbybit_core::Result<()> {
+    let bytes = data.to_le_bytes();
+    // SAFETY: 4 bytes of REG_DWORD data.
+    written("RegSetKeyValueW", unsafe {
+        RegSetKeyValueW(
+            HKEY_LOCAL_MACHINE,
+            &HSTRING::from(path),
+            &HSTRING::from(value),
+            REG_DWORD.0,
+            Some(bytes.as_ptr().cast()),
+            4,
+        )
+    })
+}
+
+/// Writes a REG_SZ under HKLM (the key is created when missing).
+pub fn set_string(path: &str, value: &str, data: &str) -> bitbybit_core::Result<()> {
+    let wide: Vec<u16> = data.encode_utf16().chain(std::iter::once(0)).collect();
+    // SAFETY: NUL-terminated UTF-16 data of the given byte length.
+    written("RegSetKeyValueW", unsafe {
+        RegSetKeyValueW(
+            HKEY_LOCAL_MACHINE,
+            &HSTRING::from(path),
+            &HSTRING::from(value),
+            REG_SZ.0,
+            Some(wide.as_ptr().cast()),
+            (wide.len() * 2) as u32,
+        )
+    })
+}
+
+/// Deletes one value under HKLM; a value that is already gone is not an error.
+pub fn delete_value(path: &str, value: &str) -> bitbybit_core::Result<()> {
+    // SAFETY: fixed key path and value name.
+    let code = unsafe { RegDeleteKeyValueW(HKEY_LOCAL_MACHINE, &HSTRING::from(path), &HSTRING::from(value)) };
+    if code == windows::Win32::Foundation::ERROR_FILE_NOT_FOUND { Ok(()) } else { written("RegDeleteKeyValueW", code) }
 }

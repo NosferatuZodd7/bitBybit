@@ -1,5 +1,19 @@
 {
   "drivers.policy.invalidId": "'{0}' não é um ID de hardware válido e específico.",
   "drivers.policy.displayAudio": "'{0}' pertence ao áudio HDMI/DisplayPort da placa gráfica (NVIDIA/AMD/Intel). O bitBybit nunca o bloqueia.",
-  "drivers.policy.tooGeneric": "'{0}' é demasiado genérico (tem de indicar o barramento, o fabricante e o dispositivo) e poderia bloquear outros dispositivos."
+  "drivers.policy.tooGeneric": "'{0}' é demasiado genérico (tem de indicar o barramento, o fabricante e o dispositivo) e poderia bloquear outros dispositivos.",
+  "drivers.plan.backup": "Primeiro, o pacote de controlador de terceiros atual é copiado para a pasta de cópias de segurança do bitBybit.",
+  "drivers.plan.journal": "O controlador anterior fica registado no diário de alterações do bitBybit, para poder ser reposto.",
+  "drivers.plan.install": "Instalar o controlador {0} em «{1}»",
+  "drivers.plan.rollback": "Voltar ao controlador anterior de «{0}»",
+  "drivers.plan.inUse": "{0} é usado por: {1}. Dê primeiro outro controlador a esses dispositivos.",
+  "drivers.plan.delete": "Remover o pacote de controlador {0} da Driver Store",
+  "drivers.plan.deleteKeep": "O Windows recusa a remoção se algum dispositivo passar a usar o pacote; os controladores que vêm com o Windows nunca são removidos.",
+  "drivers.plan.restorePoint": "Primeiro é criado um ponto de restauro do sistema (se o Restauro do Sistema estiver ligado).",
+  "drivers.plan.windowsUpdate": "{0} — para: {1}",
+  "drivers.plan.windowsUpdateSummary": "Instalar {0} controlador(es) do Windows Update",
+  "drivers.plan.denyEntry": "Bloquear a instalação de controladores para {0}",
+  "drivers.plan.denyNothing": "Estes identificadores já estão bloqueados; nada muda.",
+  "drivers.plan.denyRevert": "As entradas existentes (por exemplo, de um administrador) são mantidas; reverter remove apenas as entradas do bitBybit.",
+  "drivers.plan.denySummary": "Bloquear a instalação automática de controladores para {0} identificador(es) de dispositivo"
 }

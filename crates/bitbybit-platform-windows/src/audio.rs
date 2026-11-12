@@ -7,6 +7,7 @@ use bitbybit_audio::changes::{AudioDevices, AudioRole, DefaultAssignment};
 use bitbybit_audio::profile::{AudioDataFlow, AudioEndpoint, AudioRoles, EndpointStatus, FormFactor, JackKind};
 use bitbybit_core::{Error, ErrorCode, Result};
 use windows::Win32::Foundation::PROPERTYKEY;
+use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::{
     DEVICE_STATE, DEVICE_STATEMASK_ALL, EDataFlow, ERole, IMMDevice, IMMDeviceEnumerator, MMDeviceEnumerator, eCapture,
     eCommunications, eConsole, eMultimedia, eRender,
@@ -146,7 +147,46 @@ const ROLES: [(ERole, AudioRole); 3] = [
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CoreAudio;
 
+fn endpoint_volume(device: &IMMDevice) -> Option<IAudioEndpointVolume> {
+    // SAFETY: standard activation of the endpoint volume interface.
+    unsafe { device.Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None) }.ok()
+}
+
+fn volume_of(endpoint_id: &str) -> Result<IAudioEndpointVolume> {
+    if endpoint_id.trim().is_empty() || endpoint_id.len() > 512 {
+        return Err(Error::invalid("Invalid endpoint id."));
+    }
+    // SAFETY: the enumerator resolves the id; an unknown id is an error.
+    let device = unsafe { enumerator()?.GetDevice(&HSTRING::from(endpoint_id)) }
+        .map_err(|_| Error::not_found("The audio device was not found."))?;
+    endpoint_volume(&device).ok_or_else(|| Error::new(ErrorCode::NotSupported, "The device has no volume control."))
+}
+
 impl CoreAudio {
+    /// Master volume (0..=1), verified by reading it back. Not journaled: it is the user's everyday setting.
+    pub fn set_volume(&self, endpoint_id: &str, scalar: f32) -> Result<f32> {
+        if !scalar.is_finite() || !(0.0..=1.0).contains(&scalar) {
+            return Err(Error::invalid("The volume must be between 0 and 100 %."));
+        }
+        let v = volume_of(endpoint_id)?;
+        // SAFETY: valid interface; no event context.
+        unsafe {
+            v.SetMasterVolumeLevelScalar(scalar, std::ptr::null())
+                .map_err(|e| platform("SetMasterVolumeLevelScalar", &e))?;
+            v.GetMasterVolumeLevelScalar().map_err(|e| platform("GetMasterVolumeLevelScalar", &e))
+        }
+    }
+
+    /// Mute on/off, verified by reading it back.
+    pub fn set_mute(&self, endpoint_id: &str, muted: bool) -> Result<bool> {
+        let v = volume_of(endpoint_id)?;
+        // SAFETY: valid interface; no event context.
+        unsafe {
+            v.SetMute(muted, std::ptr::null()).map_err(|e| platform("SetMute", &e))?;
+            Ok(v.GetMute().map_err(|e| platform("GetMute", &e))?.as_bool() == muted)
+        }
+    }
+
     fn policy() -> Result<IPolicyConfig> {
         crate::com::init();
         // SAFETY: undocumented in-process COM class; failure is reported, never assumed.
@@ -192,6 +232,13 @@ impl AudioDevices for CoreAudio {
                         Some(Prop::Guid(g)) if g != GUID::zeroed() => JackKind::Other,
                         _ => JackKind::Unknown,
                     };
+                }
+                if endpoint.state == EndpointStatus::Active
+                    && let Some(volume) = endpoint_volume(&device)
+                {
+                    // SAFETY: activated interface of a live device.
+                    endpoint.volume = unsafe { volume.GetMasterVolumeLevelScalar() }.ok();
+                    endpoint.muted = unsafe { volume.GetMute() }.ok().map(|m| m.as_bool());
                 }
                 // shortcut: controller_hardware_id stays None (as in the C# app); read it via the device topology when the matcher needs it.
                 endpoint.default_roles = AudioRoles::combine(

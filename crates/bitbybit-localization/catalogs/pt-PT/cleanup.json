@@ -5,5 +5,8 @@
   "cleanup.impact.microsoft": "Controlador publicado pela Microsoft que pode pertencer a uma funcionalidade do Windows. Mantenha-o, a não ser que saiba para que serve.",
   "cleanup.impact.replaced": "Serve \"{0}\", que está ligado mas agora usa outro controlador ({1}). Remover impede que o Windows volte a trocar esse dispositivo para este; não muda o funcionamento atual.",
   "cleanup.impact.absentHardware": "Serve \"{0}\", que já não está ligado. Se o voltar a ligar, o Windows procura um controlador (Windows Update).",
-  "cleanup.impact.noMatch": "Não corresponde a nenhum dispositivo que este computador conheça (ligado ou antigo). Remover não afeta nenhum dispositivo."
+  "cleanup.impact.noMatch": "Não corresponde a nenhum dispositivo que este computador conheça (ligado ou antigo). Remover não afeta nenhum dispositivo.",
+  "cleanup.plan.device": "Remover o dispositivo ausente «{0}»",
+  "cleanup.plan.package": "Remover o pacote de controlador sem uso {0} (com cópia de segurança antes)",
+  "cleanup.plan.summary": "Limpar {0} item(ns)"
 }

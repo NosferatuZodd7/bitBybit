@@ -10,49 +10,44 @@ Read `docs/ARCHITECTURE.md` before structural changes and keep `docs/IMPLEMENTAT
 ## Repository layout
 
 ```
-bitBybit.sln
-src/BitByBit.Core/              net10.0 — platform-neutral domain logic (models, analyzers, validators, protocols,
-                                DHCP/DNS engines, update verification). MUST NOT use Windows-only APIs.
-src/BitByBit.Platform.Windows/  net10.0-windows10.0.19041.0, x64 — Win32 (CsWin32), COM, WinRT, WMI/CIM implementations
-                                of Core interfaces. One folder per module, each with its own NativeMethods.txt.
-src/BitByBit.Service/           Windows Service (LocalSystem) — privileged broker: named-pipe IPC with a closed
-                                operation allowlist, watchdogs (VPN leak guard, audio profile), journal recovery.
-src/BitByBit.App/               WPF UI (exe: bitBybit.exe), unelevated, MVVM (CommunityToolkit.Mvvm).
-src/BitByBit.Cli/               bitbybit-cli.exe — read-only evidence collection / diagnostics reports.
-tools/BitByBit.ReleaseTool/     bitbybit-release — signing-key generation, release manifest signing/verification (CI).
-tests/BitByBit.Core.Tests/      xUnit v3, runs on any OS.
-tests/BitByBit.Platform.Windows.Tests/  integration tests against real Windows APIs (skip elsewhere).
-installer/                      WiX v5 MSI (built on Windows CI only; not part of the .sln).
-docs/                           ARCHITECTURE, COMPATIBILITY, IMPLEMENTATION_PLAN, DEVICE_DRIVER_DIAGNOSTICS, SECURITY,
-                                UPDATES, TESTING, INSTALL, REALTEK_DISPLAYPORT runbook.
+Cargo.toml                      Rust workspace (crates/*), edition 2024, version in [workspace.package]
+crates/bitbybit-core            platform-neutral: errors, paths, settings, localized text, risk levels
+crates/bitbybit-{domain,evidence,journal,recovery,security,localization}
+crates/bitbybit-{devices,drivers,audio,display,network,updates,ipc}   domain logic (MUST NOT use Windows APIs)
+crates/bitbybit-platform-windows  Win32/COM/WinRT/WMI implementations (cfg(windows); empty elsewhere)
+crates/bitbybit-service         bitBybitService (LocalSystem): named-pipe broker, closed allowlist, watchdogs,
+                                start-up recovery; `windows::setup()` is also used by the app's in-process broker
+crates/bitbybit-app             bitBybit.exe — Slint UI (ui/app.slint), pt-PT via catalog keys only
+crates/bitbybit-cli             bitbybit-cli.exe — read-only evidence and the `diagnose` report
+crates/bitbybit-release         bitbybit-release — signing-key generation, manifest signing/verification (CI)
+crates/bitbybit-localization/catalogs/pt-PT/<module>.json   all user-facing text
+installer/bitBybit.wxs          WiX v5 MSI (built on Windows CI only)
+docs/                           ARCHITECTURE, RUST_MIGRATION_MATRIX, AGENT_HANDOFF, TESTING, UPDATES, …
 ```
 
-Namespaces mirror folders: `BitByBit.Core.<Module>`, `BitByBit.Platform.Windows.<Module>`.
-Modules: `Devices`, `Drivers`, `Audio`, `Display`, `AudioCase` (Realtek/DisplayPort case), `Profiles`, `Network`,
-`Sharing`, `Hotspot`, `Dhcp`, `Dns`, `Vpn`, `LeakProtection`, `Firewall`, `Clients`, `Updates`, `Ipc`, `Journal`.
+The C# implementation was removed after the Rust rewrite (it remains in git history).
 
 ## Build & test
 
 ```bash
-dotnet build bitBybit.sln                                  # works on Linux too (EnableWindowsTargeting)
-dotnet test tests/BitByBit.Core.Tests                      # any OS
-dotnet test tests/BitByBit.Platform.Windows.Tests          # Windows only (tests self-skip elsewhere)
-dotnet publish src/BitByBit.App -c Release -r win-x64 --self-contained   # real Windows exe, buildable on Linux
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace                                     # any OS; Windows integration tests self-skip elsewhere
+cargo clippy --workspace --all-targets --target x86_64-pc-windows-msvc -- -D warnings   # type-check Windows code on Linux
 ```
 
-- `TreatWarningsAsErrors` is on. Fix warnings; do not suppress them globally.
-- Central package versions live in `Directory.Packages.props` (add `PackageVersion` there, `PackageReference` without
-  version in the project).
-- On Linux you can compile Windows projects but cannot run them. Never claim a Windows-only path was executed unless
+- Warnings are errors (clippy `-D warnings`). Fix them; do not suppress them globally.
+- Dependency versions live in the root `Cargo.toml` `[workspace.dependencies]`; crates use `x.workspace = true`.
+- On Linux you can compile Windows code but cannot run it. Never claim a Windows-only path was executed unless
   it ran on Windows (CI runner or real machine) — say "compiled only" otherwise.
 
 ## Coding conventions
 
-- File-scoped namespaces, nullable enabled, `_camelCase` private fields, async methods take `CancellationToken`.
-- Return `Result`/`Result<T>` (`BitByBit.Core.Common`) for expected failures; throw only for programmer errors.
+- No `unwrap`/`expect` in normal paths; blocking work runs off the UI thread (threads + channels, no async runtime).
+- Return `bitbybit_core::Result` for expected failures; panics only for programmer errors.
 - User-facing text: emit `LocalizedText` (key + English fallback + args). Add the pt-PT text to
-  `src/BitByBit.Core/Localization/Catalogs/pt-PT/<module>.json` (one file per module; keys `module.area.name`,
-  camelCase segments). Never hardcode Portuguese strings in Core/Platform code. Logs are English via `ILogger`.
+  `crates/bitbybit-localization/catalogs/pt-PT/<module>.json` (one file per module; keys `module.area.name`,
+  camelCase segments). Never hardcode Portuguese strings in Rust code. Logs are English via `log`.
 - Diagnostics: produce `DiagnosticFinding`s whose `EvidenceItem`s are typed `Fact`/`Observation`/`Inference`/`Hypothesis`.
   Never present a hypothesis as a fact (e.g. "installed by Windows Update" needs a WU history entry or a setupapi
   log line pointing at SoftwareDistribution; otherwise it is a Hypothesis).
@@ -63,26 +58,20 @@ dotnet publish src/BitByBit.App -c Release -r win-x64 --self-contained   # real 
 
 ### Windows interop
 
-- Prefer CsWin32: add API names to the module's `NativeMethods.txt` (e.g. `src/BitByBit.Platform.Windows/Audio/NativeMethods.txt`).
-  Generated APIs are in `Windows.Win32.PInvoke` and `Windows.Win32.*` namespaces. Use fully qualified names for ambiguous
-  APIs (e.g. `Windows.Win32.NetworkManagement.WindowsFilteringPlatform.FwpmEngineOpen0`). `PlatformTarget` is x64.
-- Hand-written `[ComImport]` interfaces are acceptable for COM interfaces missing from win32metadata (e.g. the
+- Use the `windows` crate (add the needed `Win32_*` features in `crates/bitbybit-platform-windows/Cargo.toml`).
+- Hand-written `#[interface]` COM declarations are acceptable for interfaces missing from win32metadata (e.g. the
   undocumented `IPolicyConfig`) — label undocumented interfaces clearly in code, docs and capability reasons.
-- Late-bound COM (`HNetCfg.HNetShare`, `HNetCfg.FwPolicy2`, `Microsoft.Update.Session`) is fine via `dynamic`; always
-  release COM objects.
-- WMI/CIM via `System.Management` (e.g. `root\StandardCimv2` `MSFT_NetNat`, `root\cimv2` `Win32_PnPSignedDriver`).
-- Mark Windows types with `[SupportedOSPlatform("windows")]` (or `windows10.0.xxxxx` for WinRT APIs needing a newer build).
+- WMI via `IWbemServices` (e.g. `root\StandardCimv2` `MSFT_NetNat`); WinRT via the `windows` crate projections.
 - **Never** build PowerShell/cmd script strings. The only external processes allowed are the System32 tools in
-  `FixedTool` via `IFixedToolRunner` with validated argument lists. Exceptions limited to the UI: shell-opening a
-  bitBybit-owned folder in Explorer and relaunching bitBybit's own executable with `runas` (UAC) — no arguments from
-  untrusted input.
+  `bitbybit_security::tools::FixedTool` via `ToolRunner` with validated argument lists. Exceptions limited to the UI:
+  relaunching bitBybit's own executable with `runas` (UAC) or after an update — no arguments from untrusted input.
 
 ## Safety rules (non-negotiable)
 
 - Before changing routes, NAT, DHCP, DNS, firewall, WFP, IP addresses, drivers, device state, device-install policies,
-  services or audio/display configuration: read current state, journal the change (`IChangeJournal`, previous state
-  included, no secrets), apply, verify, record the outcome. Reverts go through `RecoveryCoordinator`, which refuses to
-  revert objects that drifted externally.
+  services or audio/display configuration: read current state, journal the change (`bitbybit_journal::Journal`,
+  previous state included, no secrets), apply, verify, record the outcome. Reverts go through `RecoveryCoordinator`,
+  which refuses to revert objects that drifted externally.
 - Only touch objects bitBybit owns: names/groups prefixed `bitBybit` (NAT `bitBybit-*`, firewall group `bitBybit`,
   WFP provider/sublayer with the fixed bitBybit GUIDs), or objects recorded in the journal. Never "remove all NetNat",
   never disable the Windows Defender Firewall, never block Windows Update globally, never purge the Driver Store,
@@ -90,14 +79,14 @@ dotnet publish src/BitByBit.App -c Release -r win-x64 --self-contained   # real 
   never bypass driver signature enforcement, never loop restarting services/devices (bounded retries with backoff).
 - Do not change the default route without explicit user authorization.
 - Do not claim leak protection unless enforced by packet filtering that fails closed (not just route preference).
-- Logs, journals and reports: redact via `BitByBit.Core.Logging.Redactor` (passwords, keys, tokens, serials).
+- Logs, journals and reports: redact via `bitbybit_security::redact` (passwords, keys, tokens, serials).
   No telemetry. No dependency on servers the user does not control (GitHub Releases of this repo only).
 - Update packages must verify an ECDSA P-256 signature over the release manifest with a key embedded in the app;
   fail closed if missing/invalid. Private keys never enter the repository.
 
 ## Testing honesty
 
-- Unit tests (Core) use fakes/fixtures and are labelled as such. Windows integration tests must state what they
+- Unit tests use fakes/fixtures and are labelled as such. Windows integration tests must state what they
   touched. Tests that change system state are opt-in (`BITBYBIT_ALLOW_SYSTEM_CHANGES=1`) and for disposable machines only.
 - `docs/TESTING.md` tracks, per scenario, whether it was: unit-tested with fakes, run on a Windows CI runner, or
   validated on real hardware. Never mark a scenario as hardware-validated without evidence.

@@ -8,13 +8,20 @@ publish.workspace = true
 
 [dependencies]
 bitbybit-core.workspace = true
+bitbybit-devices.workspace = true
 bitbybit-domain.workspace = true
 bitbybit-journal.workspace = true
 bitbybit-recovery.workspace = true
+bitbybit-security.workspace = true
+log.workspace = true
 regex.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 time.workspace = true
 uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

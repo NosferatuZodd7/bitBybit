@@ -1,11 +1,15 @@
-# Rust rewrite: format, lint and test on Linux (platform-neutral crates) and on Windows (everything).
-# Nothing is published from here until the migration matrix says the Rust app replaces the C# one.
+# bitBybit (Rust): format, lint and test on Linux (platform-neutral crates) and on Windows (everything), then the
+# signed update. Every push to the development branch is published as a TESTING build (GitHub pre-release
+# vX.Y.Z-dev.N); a pushed tag vX.Y.Z publishes a STABLE release (tags are only pushed by the owner). Nothing is
+# published unless the Windows tests pass and the manifest is signed with the BITBYBIT_UPDATE_SIGNING_KEY secret
+# and verifies with the public key embedded in the app (fail closed).
 name: rust
 
 on:
   push:
     branches: ['claude/**']
-    paths: ['crates/**', 'ui/**', '.gitattributes', '.gitignore', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'rustfmt.toml', 'clippy.toml', '.github/workflows/rust.yml']
+    tags: ['v*']
+    paths: ['crates/**', 'ui/**', '.gitattributes', '.gitignore', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'rustfmt.toml', 'clippy.toml', 'installer/**', '.github/workflows/rust.yml']
   workflow_dispatch:
 
 permissions:
@@ -19,6 +23,31 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Testing: workspace version + "-dev.<run>" (moved to the next patch if that version is already stable).
+  # Stable (tag vX.Y.Z): the tag must equal the workspace version.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.decide.outputs.version }}
+      channel: ${{ steps.decide.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: decide
+        shell: bash
+        run: |
+          base=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\([0-9.]*\)"/\1/p' Cargo.toml | head -1)
+          if [ -z "$base" ]; then echo "::error::No workspace version in Cargo.toml"; exit 1; fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            if [ "${GITHUB_REF_NAME#v}" != "$base" ]; then echo "::error::Tag $GITHUB_REF_NAME does not match $base"; exit 1; fi
+            echo "version=$base" >> "$GITHUB_OUTPUT"; echo "channel=stable" >> "$GITHUB_OUTPUT"
+          else
+            if git ls-remote --exit-code --tags origin "refs/tags/v$base" >/dev/null; then
+              IFS=. read -r major minor patch <<< "$base"; base="$major.$minor.$((patch + 1))"
+              echo "::warning::v$base is the next patch: the workspace version is already published as stable."
+            fi
+            echo "version=$base-dev.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"; echo "channel=testing" >> "$GITHUB_OUTPUT"
+          fi
+
   linux:
     runs-on: ubuntu-latest
     steps:
@@ -39,6 +68,7 @@ jobs:
         run: cargo check --workspace --all-targets --locked --target x86_64-pc-windows-msvc
 
   windows:
+    needs: version
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -51,7 +81,27 @@ jobs:
           key: windows-${{ hashFiles('Cargo.lock') }}
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked --no-fail-fast
-      - run: cargo build --workspace --release --locked
+      - name: Release build (version and update repository baked in)
+        env:
+          BITBYBIT_VERSION: ${{ needs.version.outputs.version }}
+          BITBYBIT_UPDATE_REPOSITORY: ${{ github.repository }}
+        shell: pwsh
+        run: |
+          cargo build --workspace --release --locked
+          if ($LASTEXITCODE -ne 0) { throw "release build failed" }
+          New-Item -ItemType Directory -Force rel | Out-Null
+          Copy-Item target/release/bitBybit.exe, target/release/bitbybit-service.exe, target/release/bitbybit-cli.exe rel/
+      - name: MSI (WiX v5)
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          if ($LASTEXITCODE -ne 0) { throw "wix install failed" }
+          # MSI versions are numeric: major.minor.<run number> (always increasing across both channels).
+          $base = '${{ needs.version.outputs.version }}'.Split('-')[0].Split('.')
+          $msi = "$($base[0]).$($base[1]).${{ github.run_number }}"
+          wix build installer/bitBybit.wxs -arch x64 -d Bin=rel -d Version=$msi -o rel/bitBybit.msi
+          if ($LASTEXITCODE -ne 0) { throw "MSI build failed" }
+          Remove-Item rel/*.wixpdb -ErrorAction SilentlyContinue
       - name: Opt-in system-change tests (disposable runner only)
         env:
           BITBYBIT_ALLOW_SYSTEM_CHANGES: '1'
@@ -116,3 +166,67 @@ jobs:
           name: app-windows-screenshot
           path: app-windows-page*.png
           if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bitBybit-win-x64-unsigned
+          path: rel
+          if-no-files-found: error
+
+  # Signs the manifest and publishes the release the app updates from (development branch and v* tags only).
+  publish:
+    needs: [version, linux, windows]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/claude/windows-network-manager-hb8idp' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      CHANNEL: ${{ needs.version.outputs.channel }}
+      HAS_KEY: ${{ secrets.BITBYBIT_UPDATE_SIGNING_KEY != '' }}
+    steps:
+      - name: Signing key configured?
+        if: env.HAS_KEY != 'true'
+        run: |
+          echo "::warning::Secret BITBYBIT_UPDATE_SIGNING_KEY is not set: this build is NOT published as an update (fail closed)."
+          echo "### Atualização não publicada (falta o segredo BITBYBIT_UPDATE_SIGNING_KEY)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@v5
+        if: env.HAS_KEY == 'true'
+      - uses: actions/download-artifact@v4
+        if: env.HAS_KEY == 'true'
+        with:
+          name: bitBybit-win-x64-unsigned
+          path: rel
+      - name: Manifest, signature, verification with the app's embedded key
+        if: env.HAS_KEY == 'true'
+        env:
+          BITBYBIT_UPDATE_SIGNING_KEY: ${{ secrets.BITBYBIT_UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          tool="cargo run -q --locked -p bitbybit-release --"
+          $tool manifest --version "$VERSION" --channel "$CHANNEL" --commit "$GITHUB_SHA" --repository "$GITHUB_REPOSITORY" \
+            --out rel/bitbybit-manifest.json rel/bitBybit.exe rel/bitbybit-service.exe rel/bitbybit-cli.exe rel/bitBybit.msi
+          $tool sign --manifest rel/bitbybit-manifest.json --out rel/bitbybit-manifest.json.sig
+          # The app only trusts its embedded public key(s): refuse to publish anything it would reject.
+          $tool verify --manifest rel/bitbybit-manifest.json --sig rel/bitbybit-manifest.json.sig --assets rel
+          (cd rel && sha256sum bitBybit.exe bitbybit-service.exe bitbybit-cli.exe bitBybit.msi > SHA256SUMS.txt)
+      - name: Publish the GitHub release
+        if: env.HAS_KEY == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          {
+            if [ "$CHANNEL" = "testing" ]; then
+              echo "Versão de testes publicada automaticamente a partir de ${GITHUB_SHA:0:7}. O bitBybit no canal **Testes** instala-a sozinho."
+            else
+              echo "Versão estável."
+            fi
+            echo
+            git log -1 --format=%B "$GITHUB_SHA" | grep -v -E '^(Co-Authored-By|Claude-Session):' || true
+          } > notes.md
+          flags=()
+          if [ "$CHANNEL" = "testing" ]; then flags+=(--prerelease); else flags+=(--latest); fi
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "bitBybit $VERSION" --notes-file notes.md "${flags[@]}" \
+            rel/bitBybit.exe rel/bitbybit-service.exe rel/bitbybit-cli.exe rel/bitBybit.msi rel/bitbybit-manifest.json rel/bitbybit-manifest.json.sig rel/SHA256SUMS.txt
+          echo "### Publicado: $tag ($CHANNEL)" >> "$GITHUB_STEP_SUMMARY"

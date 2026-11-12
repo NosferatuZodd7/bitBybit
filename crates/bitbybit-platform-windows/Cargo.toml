@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 bitbybit-audio.workspace = true
 bitbybit-core.workspace = true
+bitbybit-devices.workspace = true
 bitbybit-display.workspace = true
 bitbybit-drivers.workspace = true
 bitbybit-domain.workspace = true
@@ -17,6 +18,7 @@ bitbybit-journal.workspace = true
 bitbybit-network.workspace = true
 bitbybit-recovery.workspace = true
 bitbybit-security.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 log.workspace = true
 time.workspace = true
@@ -24,19 +26,25 @@ time.workspace = true
 [target.'cfg(windows)'.dependencies]
 # Needed by the `interface` macro for the undocumented IPolicyConfig (same version `windows` uses).
 windows-core = "0.62"
+windows-future = "0.3"
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.62"
 features = [
+    "Foundation",
+    "Networking_Connectivity",
+    "Networking_NetworkOperators",
     "Win32_Devices_DeviceAndDriverInstallation",
     "Win32_Devices_Display",
     "Win32_Graphics_Gdi",
     "Win32_Devices_Properties",
     "Win32_Foundation",
     "Win32_Media_Audio",
+    "Win32_Media_Audio_Endpoints",
     "Win32_NetworkManagement_IpHelper",
     "Win32_NetworkManagement_Ndis",
     "Win32_NetworkManagement_Rras",
+    "Win32_NetworkManagement_WindowsFilteringPlatform",
     "Win32_NetworkManagement_WindowsFirewall",
     "Win32_Networking_NetworkListManager",
     "Win32_Networking_WinHttp",
@@ -51,12 +59,17 @@ features = [
     "Win32_System_Ole",
     "Win32_System_Pipes",
     "Win32_System_Registry",
+    "Win32_System_Rpc",
+    "Win32_System_Restore",
     "Win32_System_Services",
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
     "Win32_System_UpdateAgent",
     "Win32_System_Variant",
+    "Win32_System_Wmi",
+    "Win32_UI_Shell",
     "Win32_UI_Shell_PropertiesSystem",
+    "Win32_UI_WindowsAndMessaging",
 ]
 
 [dev-dependencies]

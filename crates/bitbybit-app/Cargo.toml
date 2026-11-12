@@ -16,22 +16,29 @@ bitbybit-audio.workspace = true
 bitbybit-core.workspace = true
 bitbybit-devices.workspace = true
 bitbybit-domain.workspace = true
+bitbybit-drivers.workspace = true
 bitbybit-journal.workspace = true
 bitbybit-localization.workspace = true
 bitbybit-network.workspace = true
+bitbybit-updates.workspace = true
+bitbybit-ipc.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 slint.workspace = true
+time.workspace = true
+uuid.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 bitbybit-recovery.workspace = true
-time.workspace = true
-serde.workspace = true
-bitbybit-ipc.workspace = true
 bitbybit-platform-windows.workspace = true
+bitbybit-service.workspace = true
 
 [build-dependencies]
 slint-build.workspace = true
 
 [dev-dependencies]
+tempfile.workspace = true
 bitbybit-evidence.workspace = true
 time.workspace = true
 

@@ -3,7 +3,13 @@
 //! development). Every operation re-validates its input; mutating operations go through the dispatcher's
 //! two-phase confirmation and the change journal.
 
+pub mod ops;
+pub mod sharing;
+#[cfg(windows)]
+pub mod windows;
+
 use bitbybit_core::Result;
+use bitbybit_devices::changes::DeviceControl;
 use bitbybit_domain::snapshot::DeviceSummary;
 use bitbybit_ipc::auth::AuthorizationPolicy;
 use bitbybit_ipc::builtin::{Ping, PollEvents};
@@ -49,13 +55,13 @@ pub struct DeviceList {
 }
 
 /// `devices.inventory`: every device, present or not, with driver facts. Changes nothing.
-pub struct DeviceInventoryOperation<I> {
+pub struct DeviceInventoryOperation {
     descriptor: Descriptor,
-    inventory: I,
+    inventory: Arc<dyn DeviceInventory>,
 }
 
-impl<I: DeviceInventory> DeviceInventoryOperation<I> {
-    pub fn new(inventory: I) -> Self {
+impl DeviceInventoryOperation {
+    pub fn new(inventory: Arc<dyn DeviceInventory>) -> Self {
         Self {
             descriptor: Descriptor {
                 name: "devices.inventory",
@@ -69,7 +75,7 @@ impl<I: DeviceInventory> DeviceInventoryOperation<I> {
     }
 }
 
-impl<I: DeviceInventory> BrokerOperation for DeviceInventoryOperation<I> {
+impl BrokerOperation for DeviceInventoryOperation {
     type Request = NoParameters;
     type Response = DeviceList;
     fn descriptor(&self) -> &Descriptor {
@@ -93,13 +99,13 @@ pub trait NetworkInventory: Send + Sync {
 pub struct NoParameters {}
 
 /// `network.overview`: interfaces, classification, connectivity and route ownership. Changes nothing.
-pub struct NetworkOverviewOperation<I> {
+pub struct NetworkOverviewOperation {
     descriptor: Descriptor,
-    inventory: I,
+    inventory: Arc<dyn NetworkInventory>,
 }
 
-impl<I: NetworkInventory> NetworkOverviewOperation<I> {
-    pub fn new(inventory: I) -> Self {
+impl NetworkOverviewOperation {
+    pub fn new(inventory: Arc<dyn NetworkInventory>) -> Self {
         Self {
             descriptor: Descriptor {
                 name: "network.overview",
@@ -113,7 +119,7 @@ impl<I: NetworkInventory> NetworkOverviewOperation<I> {
     }
 }
 
-impl<I: NetworkInventory> BrokerOperation for NetworkOverviewOperation<I> {
+impl BrokerOperation for NetworkOverviewOperation {
     type Request = NoParameters;
     type Response = NetworkOverview;
     fn descriptor(&self) -> &Descriptor {
@@ -127,23 +133,91 @@ impl<I: NetworkInventory> BrokerOperation for NetworkOverviewOperation<I> {
     }
 }
 
+/// What the operations read and change (Windows implementations in `main.rs`, fakes in tests).
+#[derive(Clone)]
+pub struct Platform {
+    pub network: Arc<dyn NetworkInventory>,
+    pub devices: Arc<dyn DeviceInventory>,
+    pub device_control: Arc<dyn DeviceControl>,
+    pub driver_control: Arc<dyn bitbybit_drivers::changes::DriverControl>,
+    pub windows_update: Arc<dyn bitbybit_drivers::windows_update::WindowsUpdateDrivers>,
+    pub deny_policy: Arc<dyn bitbybit_drivers::policy::DenyPolicyStore>,
+    pub audio_services: Arc<dyn ops::audio::AudioServices>,
+    /// Platform sharing steps (Windows: `net::sharing::WindowsSharing`) and their revert handlers; DHCP/DNS are
+    /// added by `build_dispatcher` from `hosts`.
+    pub sharing_backend: Arc<dyn bitbybit_network::session::SharingBackend>,
+    pub sharing_handlers: Vec<Arc<dyn RevertHandler>>,
+    pub hosts: Arc<sharing::Hosts>,
+    /// Every machine revert handler (devices, drivers, policy, firewall…) for `journal.revert`; the sharing
+    /// handlers above are added automatically.
+    pub revert_handlers: Vec<Arc<dyn RevertHandler>>,
+    /// System32 tools (pnputil) with validated arguments.
+    pub tools: Arc<dyn bitbybit_security::tools::ToolRunner>,
+    /// `%ProgramData%\bitBybit\driver-backups`.
+    pub backup_root: std::path::PathBuf,
+    /// The machine change journal.
+    pub journal: Arc<dyn Journal>,
+}
+
 /// The frozen allowlist and the dispatcher. `allowed_images`: full paths of the installed clients.
 pub fn build_dispatcher(
     version: &str,
     allowed_images: &[&str],
     developer_dir: Option<&str>,
-    inventory: impl NetworkInventory + 'static,
-    devices: impl DeviceInventory + 'static,
+    platform: Platform,
 ) -> std::result::Result<(Dispatcher, Arc<EventHub>), String> {
     let policy = AuthorizationPolicy::new(allowed_images, developer_dir)?;
     let events = Arc::new(EventHub::new(1024));
+    let drivers = ops::drivers::DriverContext {
+        inventory: platform.devices.clone(),
+        control: platform.driver_control.clone(),
+        windows_update: platform.windows_update.clone(),
+        tools: platform.tools.clone(),
+        journal: platform.journal.clone(),
+        backup_root: platform.backup_root.clone(),
+    };
+    let cleanup_devices = platform.device_control.clone();
+    let mut sharing_handlers = platform.sharing_handlers.clone();
+    sharing_handlers.push(Arc::new(sharing::DhcpRevert(platform.hosts.clone())));
+    sharing_handlers.push(Arc::new(sharing::DnsRevert(platform.hosts.clone())));
+    let revert_journal = platform.journal.clone();
+    let mut revert_handlers = platform.revert_handlers.clone();
+    revert_handlers.extend(sharing_handlers.iter().cloned());
+    let sharing_context = ops::sharing::SharingContext {
+        network: platform.network.clone(),
+        backend: Arc::new(sharing::ServiceSharing {
+            platform: platform.sharing_backend.clone(),
+            hosts: platform.hosts.clone(),
+        }),
+        handlers: sharing_handlers,
+        journal: platform.journal.clone(),
+    };
+    let deny_journal = platform.journal.clone();
     let ping = Ping::new(version, policy.developer_mode());
     let names = ping.operations.clone();
     let registry = RegistryBuilder::default()
         .register(ping)?
         .register(PollEvents::new(events.clone()))?
-        .register(NetworkOverviewOperation::new(inventory))?
-        .register(DeviceInventoryOperation::new(devices))?
+        .register(NetworkOverviewOperation::new(platform.network))?
+        .register(DeviceInventoryOperation::new(platform.devices.clone()))?
+        .register(ops::devices::DeviceActionOperation::new(
+            platform.devices,
+            platform.device_control.clone(),
+            platform.journal,
+        ))?
+        .register(ops::devices::RescanOperation::new(platform.device_control))?
+        .register(ops::drivers::CompatibleOperation::new(drivers.clone()))?
+        .register(ops::drivers::InstallOperation::new(drivers.clone()))?
+        .register(ops::drivers::RollbackOperation::new(drivers.clone()))?
+        .register(ops::drivers::DeletePackageOperation::new(drivers.clone()))?
+        .register(ops::drivers::WindowsUpdateSearchOperation::new(drivers.clone()))?
+        .register(ops::drivers::WindowsUpdateInstallOperation::new(drivers.clone()))?
+        .register(ops::drivers::CleanupOperation::new(drivers, cleanup_devices))?
+        .register(ops::drivers::DenyInstallOperation::new(platform.deny_policy, deny_journal))?
+        .register(ops::audio::RestartAudioServicesOperation::new(platform.audio_services))?
+        .register(ops::sharing::StartOperation::new(sharing_context.clone()))?
+        .register(ops::sharing::StopOperation::new(sharing_context))?
+        .register(ops::journal::RevertOperation::new(revert_journal, revert_handlers))?
         .freeze();
     let _ = names.set(registry.names());
     let tokens = TokenService::new().map_err(|e| format!("no OS random source: {e}"))?;
@@ -173,12 +247,145 @@ mod tests {
     struct NoDevices;
     impl DeviceInventory for NoDevices {
         fn collect(&self) -> Result<Vec<DeviceSummary>> {
-            Ok(vec![DeviceSummary {
-                instance_id: r"PCI\VEN_10EC&DEV_8168\01".into(),
-                is_present: Some(true),
-                ..DeviceSummary::default()
-            }])
+            Ok(vec![
+                DeviceSummary {
+                    instance_id: r"PCI\VEN_10EC&DEV_8168\01".into(),
+                    name: Some("Realtek PCIe GbE".into()),
+                    class_name: Some("Net".into()),
+                    hardware_ids: vec![r"PCI\VEN_10EC&DEV_8168".into()],
+                    is_present: Some(true),
+                    ..DeviceSummary::default()
+                },
+                DeviceSummary {
+                    instance_id: r"HID\VID_046D&PID_C52B\7".into(),
+                    class_name: Some("Keyboard".into()),
+                    is_present: Some(true),
+                    ..DeviceSummary::default()
+                },
+            ])
         }
+    }
+
+    /// Fake controller (unit tests only): records the calls, every device starts enabled.
+    #[derive(Default)]
+    struct FakeControl(std::sync::Mutex<Vec<String>>);
+    impl DeviceControl for FakeControl {
+        fn status(&self, _: &str) -> Result<bitbybit_devices::changes::DeviceStatus> {
+            let disabled = self.0.lock().unwrap().iter().any(|c| c.starts_with("disable"));
+            Ok(bitbybit_devices::changes::DeviceStatus {
+                present: true,
+                started: !disabled,
+                problem: disabled.then_some(22),
+            })
+        }
+        fn set_enabled(&self, id: &str, enabled: bool) -> Result<bool> {
+            self.0.lock().unwrap().push(format!("{} {id}", if enabled { "enable" } else { "disable" }));
+            Ok(false)
+        }
+        fn restart(&self, _: &str) -> Result<bool> {
+            Ok(false)
+        }
+        fn uninstall(&self, _: &str) -> Result<bool> {
+            Ok(false)
+        }
+        fn rescan(&self) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Fake driver controller and tools (unit tests only): no drivers, nothing runs.
+    struct NoDrivers;
+    impl bitbybit_drivers::changes::DriverControl for NoDrivers {
+        fn installed(&self, _: &str) -> Result<Option<bitbybit_drivers::InstalledDriver>> {
+            Ok(None)
+        }
+        fn compatible(&self, _: &str) -> Result<Vec<bitbybit_drivers::DriverCandidate>> {
+            Ok(vec![])
+        }
+        fn install(&self, _: &str, _: &str) -> Result<bool> {
+            Ok(false)
+        }
+        fn rollback(&self, _: &str) -> Result<bool> {
+            Ok(false)
+        }
+        fn package_in_store(&self, _: &str) -> bool {
+            false
+        }
+        fn devices_using(&self, inf: &str) -> Result<Vec<String>> {
+            Ok(if inf == "oem45.inf" { vec!["Realtek Audio".into()] } else { vec![] })
+        }
+    }
+    struct NoUpdates;
+    impl bitbybit_drivers::windows_update::WindowsUpdateDrivers for NoUpdates {
+        fn search(&self) -> Result<Vec<bitbybit_drivers::DriverUpdateCandidate>> {
+            Ok(vec![])
+        }
+        fn install(&self, _: &[String]) -> Result<bitbybit_drivers::windows_update::InstallResult> {
+            Ok(Default::default())
+        }
+        fn restore_point(&self, _: &str) -> Result<()> {
+            Ok(())
+        }
+    }
+    struct NoPolicy;
+    impl bitbybit_drivers::policy::DenyPolicyStore for NoPolicy {
+        fn read(&self) -> Result<bitbybit_domain::snapshot::DeviceInstallRestrictionsState> {
+            Ok(Default::default())
+        }
+        fn apply(&self, _: &[bitbybit_drivers::policy::PolicyOperation]) -> Result<()> {
+            Ok(())
+        }
+    }
+    struct NoAudioServices;
+    impl ops::audio::AudioServices for NoAudioServices {
+        fn restart(&self) -> Result<Vec<bitbybit_domain::snapshot::ServiceSummary>> {
+            Ok(vec![])
+        }
+    }
+    struct NoSharing;
+    impl bitbybit_network::session::SharingBackend for NoSharing {
+        fn prepare(&self, _: &bitbybit_network::session::StepAction) -> Result<bitbybit_network::session::StepStates> {
+            Err(bitbybit_core::Error::invalid("no sharing in unit tests"))
+        }
+        fn apply(&self, _: &bitbybit_network::session::StepAction) -> Result<()> {
+            Ok(())
+        }
+        fn verify(&self, _: &bitbybit_network::session::StepAction) -> Result<bool> {
+            Ok(false)
+        }
+    }
+    struct NoTools;
+    impl bitbybit_security::tools::ToolRunner for NoTools {
+        fn run(
+            &self,
+            _: bitbybit_security::tools::FixedTool,
+            _: &[String],
+            _: std::time::Duration,
+        ) -> Result<bitbybit_security::tools::ToolOutput> {
+            Err(bitbybit_core::Error::invalid("no tools in unit tests"))
+        }
+    }
+
+    fn platform(dir: &Path) -> (Platform, Arc<FakeControl>, Arc<JsonLinesJournal>) {
+        let control = Arc::new(FakeControl::default());
+        let journal = Arc::new(JsonLinesJournal::new(dir.join("changes.jsonl")));
+        let platform = Platform {
+            network: Arc::new(Fixed),
+            devices: Arc::new(NoDevices),
+            device_control: control.clone(),
+            driver_control: Arc::new(NoDrivers),
+            windows_update: Arc::new(NoUpdates),
+            deny_policy: Arc::new(NoPolicy),
+            audio_services: Arc::new(NoAudioServices),
+            sharing_backend: Arc::new(NoSharing),
+            sharing_handlers: vec![],
+            hosts: Arc::new(sharing::Hosts::new()),
+            revert_handlers: vec![],
+            tools: Arc::new(NoTools),
+            backup_root: dir.join("driver-backups"),
+            journal: journal.clone(),
+        };
+        (platform, control, journal)
     }
     impl NetworkInventory for Fixed {
         fn collect(&self) -> Result<NetworkSnapshot> {
@@ -208,10 +415,30 @@ mod tests {
 
     #[test]
     fn allowlist_contains_exactly_the_registered_operations() {
-        let (d, _) = build_dispatcher("0.7.0", &[APP], None, Fixed, NoDevices).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let (d, _) = build_dispatcher("0.7.0", &[APP], None, platform(dir.path()).0).unwrap();
         assert_eq!(
             d.registry().names(),
-            ["broker.events.poll", "broker.ping", "devices.inventory", "network.overview"]
+            [
+                "audio.restartServices",
+                "broker.events.poll",
+                "broker.ping",
+                "cleanup.apply",
+                "devices.action",
+                "devices.inventory",
+                "devices.rescan",
+                "drivers.compatible",
+                "drivers.deletePackage",
+                "drivers.denyInstall",
+                "drivers.install",
+                "drivers.rollback",
+                "drivers.windowsUpdateInstall",
+                "drivers.windowsUpdateSearch",
+                "journal.revert",
+                "network.overview",
+                "sharing.start",
+                "sharing.stop"
+            ]
         );
         let devices = d.dispatch(
             &BrokerRequest {
@@ -253,7 +480,10 @@ mod tests {
         assert_eq!(developer_directory(&f), None, "malformed means off");
         std::fs::write(&f, r#"{"enabled":true,"directory":"C:\\src\\bitBybit"}"#).unwrap();
         assert_eq!(developer_directory(&f).as_deref(), Some(r"C:\src\bitBybit"));
-        assert!(build_dispatcher("0.7.0", &[APP], Some(r"C:\"), Fixed, NoDevices).is_err(), "a drive root is refused");
+        assert!(
+            build_dispatcher("0.7.0", &[APP], Some(r"C:\"), platform(dir.path()).0).is_err(),
+            "a drive root is refused"
+        );
     }
 
     struct Handler;
@@ -286,5 +516,67 @@ mod tests {
         assert_eq!(outcomes.len(), 1);
         assert_eq!(journal.get(known_id).unwrap().unwrap().status, ChangeStatus::Reverted);
         assert_eq!(journal.get(unknown_id).unwrap().unwrap().status, ChangeStatus::Applied);
+    }
+
+    #[test]
+    fn device_actions_need_an_elevated_client_a_confirmed_plan_and_respect_the_guard() {
+        let dir = tempfile::tempdir().unwrap();
+        let (platform, control, journal) = platform(dir.path());
+        let (d, _) = build_dispatcher("0.7.0", &[APP], None, platform).unwrap();
+        let request = |id: &str, token: Option<String>| BrokerRequest {
+            protocol_version: 1,
+            request_id: uuid::Uuid::new_v4(),
+            operation: "devices.action".into(),
+            parameters: serde_json::json!({ "instanceId": id, "action": "Disable" }),
+            confirmation_token: token,
+        };
+        let nic = r"PCI\VEN_10EC&DEV_8168\01";
+        let stop = || Arc::new(AtomicBool::new(false));
+        let elevated = ClientIdentity { is_elevated: true, integrity: IntegrityLevel::High, ..client(APP) };
+
+        assert_eq!(d.dispatch(&request(nic, None), &client(APP), stop()).status, ResponseStatus::Error, "not elevated");
+
+        let first = d.dispatch(&request(nic, None), &elevated, stop());
+        assert_eq!(first.status, ResponseStatus::ConfirmationRequired);
+        let plan = first.plan.unwrap();
+        assert!(plan.may_interrupt_connectivity && plan.steps.len() == 2);
+        assert!(control.0.lock().unwrap().is_empty(), "nothing happens before confirmation");
+
+        let done = d.dispatch(&request(nic, first.confirmation_token), &elevated, stop());
+        assert_eq!(done.status, ResponseStatus::Ok, "{:?}", done.error);
+        assert_eq!(done.result.unwrap()["verified"], true);
+        assert_eq!(control.0.lock().unwrap().as_slice(), [format!("disable {nic}")]);
+        assert_eq!(journal.all().unwrap()[0].target_kind, "device.enabledState");
+
+        let keyboard = d.dispatch(&request(r"HID\VID_046D&PID_C52B\7", None), &elevated, stop());
+        assert_eq!(keyboard.status, ResponseStatus::Error);
+        assert!(keyboard.error.unwrap().user_text.is_some(), "the guard's reason reaches the user");
+    }
+
+    #[test]
+    fn packages_in_use_are_refused_in_the_plan_and_windows_packages_at_validation() {
+        let dir = tempfile::tempdir().unwrap();
+        let (d, _) = build_dispatcher("0.7.0", &[APP], None, platform(dir.path()).0).unwrap();
+        let elevated = ClientIdentity { is_elevated: true, integrity: IntegrityLevel::High, ..client(APP) };
+        let call = |inf: &str| {
+            d.dispatch(
+                &BrokerRequest {
+                    protocol_version: 1,
+                    request_id: uuid::Uuid::new_v4(),
+                    operation: "drivers.deletePackage".into(),
+                    parameters: serde_json::json!({ "infName": inf }),
+                    confirmation_token: None,
+                },
+                &elevated,
+                Arc::new(AtomicBool::new(false)),
+            )
+        };
+        let busy = call("oem45.inf");
+        assert_eq!(busy.status, ResponseStatus::Error);
+        assert!(busy.error.unwrap().user_text.is_some_and(|t| t.args.iter().any(|a| a.contains("Realtek"))));
+        assert_eq!(call("hdaudio.inf").status, ResponseStatus::Error);
+        let free = call("oem12.inf");
+        assert_eq!(free.status, ResponseStatus::ConfirmationRequired);
+        assert_eq!(free.plan.unwrap().risk, bitbybit_core::RiskLevel::Medium);
     }
 }
