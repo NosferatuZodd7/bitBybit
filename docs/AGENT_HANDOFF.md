@@ -7,7 +7,7 @@ Rewrite bitBybit in Rust + Slint (master prompt of 2026-11-11). C# under `src/` 
 stays until `docs/RUST_MIGRATION_MATRIX.md` is complete (Phase N).
 
 ## Current phase
-A–D, F1, G1, K1 and H1 (all platform-neutral logic) done; next E/F2/G2 (`bitbybit-platform-windows`).
+A–D, F1, G1, K1, H1 done; E/F2/G2 and H2 in progress (platform-windows + service).
 
 ## Done
 * Phase A: `docs/RUST_REWRITE_AUDIT.md`, `docs/RUST_MIGRATION_MATRIX.md` (99 rows, ids stable).
@@ -33,7 +33,16 @@ A–D, F1, G1, K1 and H1 (all platform-neutral logic) done; next E/F2/G2 (`bitby
   (frozen), authorization by tier + client image (+developer dir), HMAC two-phase confirmation bound to
   params/client/plan (single use), category gate, redacted audit, event hub, ping/poll, per-connection server with 8
   in flight, client with confirm callback; end-to-end tests over OS pipes. Service name `bitBybitService`,
-  exe `bitbybit-service.exe`, pipe `bitBybit.broker.v1` (protocol v1, unchanged). Workspace: 250 tests.
+  exe `bitbybit-service.exe`, pipe `bitBybit.broker.v1` (protocol v1, unchanged).
+* `bitbybit-platform-windows` (cfg(windows)): `net::inventory` (IP Helper: interfaces, addresses, settings, routes)
+  and `pipe` (overlapped named pipe, SDDL, client identity, server-is-SYSTEM check) — both **run on the Windows CI
+  runner** (`tests/net_inventory.rs`, `tests/pipe_transport.rs`). `audio::CoreAudio` (MMDevice + undocumented
+  IPolicyConfig, verified writes) — integration test is read-only.
+* `bitbybit-service`: lib (allowlist ping/events.poll/network.overview, developer-mode config, recovery limited to
+  known kinds; 3 tests) + bin (SCM `bitBybitService` or `--console`). CI starts the console broker and runs
+  `tests/smoke.rs` over the real pipe (developer mode for target\debug, CI only).
+* Fixes found on the Windows runner: signed fixtures need `.gitattributes` binary (CRLF), log pruning must never
+  delete the active file. Workspace: 253 tests (Linux) + Windows integration tests.
 * CI: `.github/workflows/rust.yml` (Linux fmt/clippy/test + Windows type-check; Windows clippy/test/release build).
   `preview.yml` (C#) now runs only when C# paths change, so Rust pushes do not republish the C# app.
 
@@ -55,14 +64,16 @@ cargo check --workspace --target x86_64-pc-windows-msvc
 ```
 
 ## Next concrete task
-`bitbybit-platform-windows` (windows 0.62): start with read-only inventory that CI can exercise — network
-(`GetAdaptersAddresses`, `GetIfTable2`, `GetIpForwardTable2`, NLM connectivity, RAS) → `bitbybit_network::model`,
-audio endpoints (MMDevice API + `IPolicyConfig`, labelled undocumented) → `bitbybit_audio::changes::AudioDevices`,
-devices/drivers (SetupAPI/CfgMgr32) → `bitbybit_domain::snapshot`. Then the named-pipe transport for `bitbybit-ipc`
-(DACL: SYSTEM + interactive users, `GetNamedPipeClientProcessId`, token integrity/elevation → `ClientIdentity`),
-then WFP/WinNAT/ICS/firewall/hotspot mutators behind the sharing `SharingBackend` trait. Every Windows-only path is
-"compiled only" until the Windows CI job runs it.
+1. Check the latest `rust` run: the console-broker smoke step must be green (it is the first full app→pipe→
+   dispatcher→IP Helper run). If it fails, read the broker log printed by the step.
+2. Platform: driver facts for network adapters (SetupAPI by `InterfaceGuid`), NLM connectivity, RAS; then devices and
+   drivers inventory (SetupAPI/CfgMgr32) for `bitbybit_domain::snapshot`; then the sharing mutators (WFP, WinNAT, ICS,
+   firewall, hotspot) behind `bitbybit_network::session::SharingBackend` with revert handlers.
+3. Service: register those operations (mutating ones with plans) and revert handlers in `recover_at_start`.
+4. UI (Slint, pt-PT) talking to the broker through `bitbybit_ipc::client::BrokerClient` over `platform::pipe::connect`.
 
 ## Known problems
 * The session worker restarts often: commit and push after every crate.
-* Windows code cannot run here; only `cargo check --target x86_64-pc-windows-msvc` and the Windows CI job.
+* Windows code cannot run here; only `cargo clippy --target x86_64-pc-windows-msvc` locally and the Windows CI job
+  (GitHub MCP: `actions_list` / `get_job_logs` on workflow `rust.yml`). Windows tests run with `--no-fail-fast`.
+* `.gitignore` ignores `*.pem`; public keys need the explicit exception (see the updates crate).
