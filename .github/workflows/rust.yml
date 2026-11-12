@@ -50,3 +50,19 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
       - run: cargo build --workspace --release --locked
+      - name: Broker smoke test (console broker, developer mode for the test binaries)
+        shell: pwsh
+        run: |
+          $config = Join-Path $env:ProgramData 'bitBybit\config'
+          New-Item -ItemType Directory -Force $config | Out-Null
+          $dir = (Resolve-Path target\debug).Path
+          @{ enabled = $true; directory = $dir } | ConvertTo-Json | Set-Content -Encoding utf8NoBOM (Join-Path $config 'broker-developer-mode.json')
+          cargo build -p bitbybit-service --locked
+          $broker = Start-Process -FilePath target\debug\bitbybit-service.exe -ArgumentList '--console' -PassThru
+          try {
+            $env:BITBYBIT_SERVICE_SMOKE = '1'
+            cargo test -p bitbybit-service --test smoke --locked -- --nocapture
+          } finally {
+            Stop-Process -Id $broker.Id -Force
+            Get-Content (Join-Path $env:ProgramData 'bitBybit\logs\*') -ErrorAction SilentlyContinue | Select-Object -Last 40
+          }
