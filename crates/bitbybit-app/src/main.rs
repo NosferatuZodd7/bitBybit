@@ -87,6 +87,17 @@ fn main() -> Result<(), slint::PlatformError> {
         let weak = ui.as_weak();
         move || check_app_update(weak.clone())
     });
+    ui.on_dismiss_update({
+        let weak = ui.as_weak();
+        move || {
+            if let Some(ui) = weak.upgrade() {
+                ui.set_update_dialog_visible(false);
+            }
+        }
+    });
+    if settings_page::auto_check_due() {
+        check_app_update(ui.as_weak());
+    }
     ui.on_install_app_update({
         let weak = ui.as_weak();
         move || install_app_update(weak.clone())
@@ -405,15 +416,21 @@ thread_local! {
     static OFFER: std::cell::RefCell<Option<bitbybit_updates::check::Offer>> = const { std::cell::RefCell::new(None) };
 }
 
-fn update_text(ui: &AppWindow, t: LocalizedText, can_install: bool) {
+/// `state`: 0 idle/up to date, 1 working, 2 a version is available, 3 failed.
+fn update_status(ui: &AppWindow, t: LocalizedText, state: i32) {
     ui.set_app_update_text(TextCatalog::default_catalog().resolve(&t).into());
-    ui.set_app_update_available(can_install);
+    ui.set_app_update_available(state == 2);
+    ui.set_app_update_state(state);
 }
 
-/// Checks this repository's releases (signed manifest, fail closed) off the UI thread.
+/// Checks this repository's releases (signed manifest, fail closed) off the UI thread. A found version opens the
+/// update dialog; installing still waits for the user's click.
 fn check_app_update(weak: slint::Weak<AppWindow>) {
     if let Some(ui) = weak.upgrade() {
-        update_text(&ui, text!("app.update.checking", "Checking for a new version…"), false);
+        if ui.get_app_update_state() == 1 {
+            return;
+        }
+        update_status(&ui, text!("app.update.checking", "Checking for a new version…"), 1);
     }
     std::thread::spawn(move || {
         let result = updater::check();
@@ -422,20 +439,27 @@ fn check_app_update(weak: slint::Weak<AppWindow>) {
             match result {
                 Ok(Some(offer)) => {
                     let version = offer.manifest.version.clone();
+                    ui.set_update_version(version.clone().into());
+                    ui.set_update_notes(offer.release.notes.trim().to_owned().into());
+                    ui.set_update_dialog_visible(true);
                     OFFER.with(|o| *o.borrow_mut() = Some(offer));
-                    update_text(
+                    update_status(
                         &ui,
                         text!("app.update.available", "Version {0} is available (signature verified).", version),
-                        true,
+                        2,
                     );
                 }
-                Ok(None) => update_text(&ui, text!("app.update.upToDate", "bitBybit is up to date."), false),
-                Err(e) => update_text(
+                Ok(None) => update_status(
+                    &ui,
+                    text!("app.update.upToDate", "You have the newest version ({0}).", version().to_owned()),
+                    0,
+                ),
+                Err(e) => update_status(
                     &ui,
                     e.user_text.unwrap_or_else(|| {
                         text!("app.update.failed", "The update could not be checked: {0}", e.message)
                     }),
-                    false,
+                    3,
                 ),
             }
         });
@@ -446,7 +470,7 @@ fn check_app_update(weak: slint::Weak<AppWindow>) {
 fn install_app_update(weak: slint::Weak<AppWindow>) {
     let Some(offer) = OFFER.with(|o| o.borrow().clone()) else { return };
     if let Some(ui) = weak.upgrade() {
-        update_text(&ui, text!("app.update.installing", "Downloading and verifying the update…"), false);
+        update_status(&ui, text!("app.update.installing", "Downloading and verifying the update…"), 1);
     }
     std::thread::spawn(move || {
         let result = updater::install(&offer);
@@ -457,13 +481,13 @@ fn install_app_update(weak: slint::Weak<AppWindow>) {
                     if std::process::Command::new(&exe).arg(updater::AFTER_UPDATE_FLAG).spawn().is_ok() {
                         let _ = slint::quit_event_loop();
                     } else {
-                        update_text(&ui, text!("app.update.restart", "Updated. Close and open bitBybit again."), false);
+                        update_status(&ui, text!("app.update.restart", "Updated. Close and open bitBybit again."), 0);
                     }
                 }
-                Err(e) => update_text(
+                Err(e) => update_status(
                     &ui,
                     text!("app.update.failed", "The update could not be installed: {0}", e.message),
-                    false,
+                    3,
                 ),
             }
         });

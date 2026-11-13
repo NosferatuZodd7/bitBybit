@@ -35,6 +35,7 @@ fn collect(ui: &AppWindow, s: &mut AppSettings) -> bool {
     s.appearance.theme = pick(&LOOKS, ui.get_theme_index());
     s.appearance.custom_base = pick(&BASES, ui.get_custom_base());
     s.updates.channel = pick(&CHANNELS, ui.get_update_channel());
+    s.updates.automatic_check = ui.get_update_auto();
     let accent = ui.get_custom_accent().trim().to_uppercase();
     if accent.is_empty() {
         s.appearance.custom_colors.remove("accent");
@@ -47,12 +48,34 @@ fn collect(ui: &AppWindow, s: &mut AppSettings) -> bool {
     true
 }
 
+/// Whether the automatic check at start is on and the last one is older than the interval; records this one.
+/// A read-only check of the GitHub releases: nothing is downloaded or installed without the user's click.
+pub fn auto_check_due() -> bool {
+    let path = AppPaths::from_environment().user_settings_file();
+    let mut s: AppSettings = fsio::read_json(&path).unwrap_or_default();
+    let now = time::OffsetDateTime::now_utc();
+    if !due(&s, now) {
+        return false;
+    }
+    s.updates.last_check = Some(now);
+    if let Err(e) = fsio::write_json(&path, &s) {
+        log::warn!("The update check time was not saved: {e}");
+    }
+    true
+}
+
+fn due(s: &AppSettings, now: time::OffsetDateTime) -> bool {
+    let interval = time::Duration::hours(i64::from(s.updates.check_interval_hours.max(1)));
+    s.updates.automatic_check && s.updates.last_check.is_none_or(|last| now - last >= interval)
+}
+
 pub fn wire(ui: &AppWindow) {
     let s = load();
     ui.set_theme_index(index(&LOOKS, &s.appearance.theme));
     ui.set_custom_base(index(&BASES, &s.appearance.custom_base));
     ui.set_custom_accent(s.appearance.custom_colors.get("accent").cloned().unwrap_or_default().into());
     ui.set_update_channel(index(&CHANNELS, &s.updates.channel));
+    ui.set_update_auto(s.updates.automatic_check);
     theme::apply(ui, &theme::resolve(&s.appearance), reduce_motion());
 
     let weak = ui.as_weak();
@@ -80,6 +103,19 @@ pub fn wire(ui: &AppWindow) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_automatic_check_waits_for_the_interval() {
+        let now = time::OffsetDateTime::UNIX_EPOCH + time::Duration::days(100);
+        let mut s = AppSettings::default();
+        assert!(due(&s, now), "never checked");
+        s.updates.last_check = Some(now - time::Duration::hours(1));
+        assert!(!due(&s, now), "checked an hour ago, interval 6 h");
+        s.updates.last_check = Some(now - time::Duration::hours(7));
+        assert!(due(&s, now));
+        s.updates.automatic_check = false;
+        assert!(!due(&s, now), "turned off");
+    }
 
     #[test]
     fn unknown_values_fall_back_to_the_first_choice() {

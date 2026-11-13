@@ -131,6 +131,14 @@ pub fn fill(ui: &AppWindow, mode: &str) {
         },
         None,
     );
+    if mode == "update" {
+        ui.set_update_version("0.7.0-dev.36 (demo)".into());
+        ui.set_update_notes("Hotspot Wi-Fi com nome e palavra-passe editáveis.\nBotões já não esticam.".into());
+        ui.set_app_update_text("Há uma versão nova: 0.7.0-dev.36 (demo).".into());
+        ui.set_app_update_available(true);
+        ui.set_app_update_state(2);
+        ui.set_update_dialog_visible(true);
+    }
     if mode == "adapter" {
         ui.set_share_mode(1);
     }

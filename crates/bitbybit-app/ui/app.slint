@@ -387,6 +387,13 @@ export component AppWindow inherits Window {
     callback stop-sharing();
     in property <string> app-update-text;
     in property <bool> app-update-available;
+    // 0 idle/up to date, 1 working, 2 a version is available, 3 failed.
+    in property <int> app-update-state;
+    in-out property <bool> update-dialog-visible;
+    in property <string> update-version;
+    in property <string> update-notes;
+    callback dismiss-update();
+    in-out property <bool> update-auto: true;
     callback check-app-update();
     callback install-app-update();
     callback refresh-drivers();
@@ -494,6 +501,23 @@ export component AppWindow inherits Window {
                 NavItem { icon: @image-url("assets/icons/monitor.svg"); label: Tr.t("app.page.displays.title"); selected: root.page == 5; clicked => { root.page = 5; } }
                 NavItem { icon: @image-url("assets/icons/history.svg"); label: Tr.t("app.tab.changes"); selected: root.page == 3; clicked => { root.page = 3; } }
                 Rectangle { }
+                // Always at hand, as in OrbisLink: looks for a new version now and says how it went.
+                Rectangle { height: 1px; background: Theme.edge; }
+                NavItem {
+                    icon: @image-url("assets/icons/refresh-cw.svg");
+                    label: root.app-update-state == 1 ? Tr.t("app.update.checkingShort") : (root.app-update-available ? Tr.t("app.update.navAvailable") : Tr.t("app.update.navCheck"));
+                    selected: false;
+                    clicked => { if (root.app-update-available) { root.update-dialog-visible = true; } else { root.check-app-update(); } }
+                }
+                if root.app-update-text != "": Text {
+                    text: root.app-update-text;
+                    wrap: word-wrap;
+                    font-size: 11px;
+                    color: root.app-update-state == 3 ? Theme.error : root.app-update-state == 2 ? Theme.ok : Theme.text-secondary;
+                    x: 14px;
+                    width: parent.width - 28px;
+                }
+                Rectangle { height: 1px; background: Theme.edge; }
                 NavItem { icon: @image-url("assets/icons/settings.svg"); label: Tr.t("app.settings.title"); selected: root.page == 9; clicked => { root.page = 9; } }
                 NavItem { icon: @image-url("assets/icons/info.svg"); label: Tr.t("app.about.title"); selected: root.page == 4; clicked => { root.page = 4; } }
             }
@@ -909,7 +933,16 @@ export component AppWindow inherits Window {
                                     Rectangle { }
                                 }
                                 Secondary { text: Tr.t("app.update.channelHint"); }
+                                Switch { text: Tr.t("app.update.auto"); checked <=> root.update-auto; toggled => { root.settings-changed(); } }
                                 Secondary { text: Tr.t("app.update.securityHint"); }
+                                HorizontalLayout {
+                                    spacing: Theme.space-s;
+                                    alignment: start;
+                                    padding-top: 4px;
+                                    PillButton { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.update.check"); clicked => { root.check-app-update(); } }
+                                    if root.app-update-available: PillButton { text: Tr.t("app.update.install"); kind: 1; clicked => { root.install-app-update(); } }
+                                }
+                                if root.app-update-text != "": Body { text: root.app-update-text; }
                             }
                         }
                         if root.settings-message != "": StatusBanner { kind: 2; message: root.settings-message; }
@@ -935,7 +968,7 @@ export component AppWindow inherits Window {
                             spacing: Theme.space-s;
                             alignment: start;
                             padding-top: 4px;
-                            PillButton { text: Tr.t("app.update.check"); clicked => { root.check-app-update(); } }
+                            PillButton { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.update.check"); clicked => { root.check-app-update(); } }
                             if root.app-update-available: PillButton { text: Tr.t("app.update.install"); kind: 1; clicked => { root.install-app-update(); } }
                         }
                         if root.app-update-text != "": Body { text: root.app-update-text; }
@@ -1016,6 +1049,63 @@ export component AppWindow inherits Window {
                         kind: root.dialog-level >= 2 ? 2 : 1;
                         clicked => { root.dialog-answer(true); }
                     }
+                }
+            }
+        }
+    }
+
+    // A new version: which, what changed, and a button to install. Nothing happens by itself: the download only
+    // starts on request, and the signature and SHA-256 are checked before the swap.
+    if root.update-dialog-visible && !root.dialog-visible: Rectangle {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        background: Theme.scrim;
+        TouchArea { }
+        Glass {
+            strong: true;
+            width: min(root.width - 48px, 620px);
+            height: min(root.height - 48px, updlg-box.preferred-height);
+            border-radius: Theme.radius-xl;
+            accessible-role: groupbox;
+            accessible-label: Tr.t("app.update.dialogTitle") + " " + root.update-version;
+            updlg-box := VerticalLayout {
+                padding: Theme.space-xl;
+                spacing: Theme.space-m;
+                HorizontalLayout {
+                    spacing: Theme.space-s;
+                    Text { text: Tr.t("app.update.dialogTitle") + " " + root.update-version; font-size: 18px; font-weight: 650; color: Theme.text; wrap: word-wrap; horizontal-stretch: 1; }
+                    Secondary { text: Tr.t("app.update.youHave") + " " + root.version; vertical-alignment: center; horizontal-stretch: 0; wrap: no-wrap; }
+                }
+                Rectangle {
+                    border-radius: Theme.radius-m;
+                    background: Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.edge;
+                    min-height: 80px;
+                    preferred-height: 200px;
+                    ScrollView {
+                        x: Theme.space-m;
+                        y: Theme.space-s;
+                        width: parent.width - 2 * Theme.space-m;
+                        height: parent.height - 2 * Theme.space-s;
+                        VerticalLayout {
+                            alignment: start;
+                            Body { text: root.update-notes != "" ? root.update-notes : Tr.t("app.update.noNotes"); font-size: Theme.font-caption; }
+                        }
+                    }
+                }
+                if root.app-update-state == 1 || root.app-update-state == 3: StatusBanner {
+                    kind: root.app-update-state == 3 ? 2 : 0;
+                    message: root.app-update-text;
+                }
+                Secondary { text: Tr.t("app.update.securityHint"); }
+                HorizontalLayout {
+                    spacing: Theme.space-s;
+                    alignment: end;
+                    PillButton { text: Tr.t("app.update.later"); enabled: root.app-update-state != 1; clicked => { root.dismiss-update(); } }
+                    PillButton { text: Tr.t("app.update.install"); kind: 1; enabled: root.app-update-state == 2; clicked => { root.install-app-update(); } }
                 }
             }
         }
