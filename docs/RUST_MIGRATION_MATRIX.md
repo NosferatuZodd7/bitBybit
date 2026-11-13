@@ -84,7 +84,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | NET-12 | DHCP server | new | `bitbybit-network::dhcp` | Built | codec, leases, loopback sockets | DISCOVER…RELEASE, conflicts, ranges |
 | NET-13 | DNS forwarder + cache | new | `bitbybit-network::dns` | Built | codec, cache, loop guard, loopback sockets | fail closed without upstream |
 | NET-14 | Firewall rules (group bitBybit only) | new | `bitbybit-network::firewall`, `platform-windows::net::firewall` | CI | model + opt-in | never disables the firewall |
-| NET-15 | Clients (leases + neighbours + hotspot) | new | `bitbybit-network::clients`, `platform-windows::net::neighbors` | Limited | merge tests | IP, MAC, state, interface |
+| NET-15 | Clients (leases + neighbours + hotspot) | new | `bitbybit-network::clients`, `client_policy`, service `sharing.status`/`sharing.client` | Built | unit tests; compiled only | per-device rules: Internet, this PC/home network (WFP), gaming ports PSN/Xbox (WinNAT static mappings), fixed IP (DHCP reservation); no data counters; Nintendo refused (port range) |
 | NET-16 | Bridge / repeater detection | new | `bitbybit-network::capability` | Logic | unit | detection only |
 | NET-17 | Diagnostics tools (ping, trace, DNS, gateway) | `INetworkDiagnostics.cs` (types) | `bitbybit-network::diag`, `platform-windows::net::diag` | Limited | validation tests | bounded, cancellable |
 | NET-18 | Sharing session orchestration | new | `bitbybit-network::session` | Built | fakes: rollback, stop, recovery | every step journaled, reverse-order stop |

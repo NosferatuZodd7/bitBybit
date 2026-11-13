@@ -22,6 +22,8 @@ pub enum WfpLayer {
     /// `FWPM_LAYER_ALE_AUTH_CONNECT_V4`: outbound connections of local applications (the DNS forwarder).
     AleAuthConnectV4,
     AleAuthConnectV6,
+    /// `FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4`: inbound connections to this PC.
+    AleAuthRecvAcceptV4,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -37,7 +39,18 @@ pub enum WfpCondition {
     OwnApplication,
     /// `FWPM_CONDITION_IP_REMOTE_PORT`.
     RemotePort(u16),
+    /// `FWPM_CONDITION_IP_SOURCE_ADDRESS` (forward layer): the device that sent the packet.
+    SourceAddressV4(std::net::Ipv4Addr),
+    /// `FWPM_CONDITION_IP_DESTINATION_ADDRESS` with a mask (forward layer).
+    DestinationPrefixV4 { address: std::net::Ipv4Addr, prefix_len: u8 },
+    /// `FWPM_CONDITION_IP_REMOTE_ADDRESS` (ALE layers).
+    RemoteAddressV4(std::net::Ipv4Addr),
+    /// `FWPM_CONDITION_IP_LOCAL_PORT` (ALE layers).
+    LocalPort(u16),
 }
+
+/// Name prefix of the leak guard's filters (the per-device rules use [`crate::client_policy::FILTER_PREFIX`]).
+pub const LEAK_FILTER_PREFIX: &str = "bitBybit-leak-";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum WfpAction {

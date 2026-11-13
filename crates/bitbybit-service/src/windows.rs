@@ -51,6 +51,8 @@ pub fn setup(paths: &AppPaths) -> Setup {
     let platform_sharing: Vec<Arc<dyn RevertHandler>> = vec![
         Arc::new(sharing::HotspotRevert),
         Arc::new(sharing::AccessPointRevert),
+        Arc::new(sharing::ClientFiltersRevert),
+        Arc::new(sharing::PortMappingsRevert),
         Arc::new(sharing::LanAddressRevert),
         Arc::new(sharing::ForwardingRevert),
         Arc::new(sharing::NatRevert),

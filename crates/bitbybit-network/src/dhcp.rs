@@ -229,6 +229,8 @@ pub struct DhcpServer {
     leases: BTreeMap<[u8; 6], Lease>,
     /// Addresses a client declined (in use by someone else) until the given time.
     conflicts: BTreeMap<Ipv4Addr, OffsetDateTime>,
+    /// Fixed addresses by client MAC (the user's "IP fixo").
+    reservations: BTreeMap<[u8; 6], Ipv4Addr>,
 }
 
 fn sanitize_host_name(raw: &[u8]) -> Option<String> {
@@ -247,7 +249,19 @@ impl DhcpServer {
             .filter_map(|l| Some((parse_mac(&l.mac)?, l)))
             .filter(|(_, l)| config.in_pool(l.ip))
             .collect();
-        Self { config, leases, conflicts: BTreeMap::new() }
+        Self { config, leases, conflicts: BTreeMap::new(), reservations: BTreeMap::new() }
+    }
+
+    /// Fixed addresses (`AA:BB:CC:DD:EE:FF` → address in the LAN, not the server's). Invalid entries are skipped.
+    /// A client holding another address is refused it at its next renewal and gets the fixed one.
+    pub fn set_reservations(&mut self, fixed: &BTreeMap<String, Ipv4Addr>) {
+        self.reservations = fixed
+            .iter()
+            .filter(|(_, ip)| self.config.lan.contains(IpAddr::V4(**ip)) && **ip != self.config.server)
+            .filter_map(|(mac, ip)| Some((parse_mac(mac)?, *ip)))
+            .collect();
+        let reservations = self.reservations.clone();
+        self.leases.retain(|mac, l| reservations.get(mac).is_none_or(|ip| *ip == l.ip));
     }
 
     pub fn config(&self) -> &PoolConfig {
@@ -269,13 +283,22 @@ impl DhcpServer {
     }
 
     fn is_free_for(&self, ip: Ipv4Addr, mac: &[u8; 6]) -> bool {
+        if let Some(fixed) = self.reservations.get(mac) {
+            return *fixed == ip
+                && !self.conflicts.contains_key(&ip)
+                && self.leases.iter().all(|(m, l)| l.ip != ip || m == mac);
+        }
         self.config.in_pool(ip)
             && ip != self.config.server
+            && !self.reservations.values().any(|r| *r == ip)
             && !self.conflicts.contains_key(&ip)
             && self.leases.iter().all(|(m, l)| l.ip != ip || m == mac)
     }
 
     fn pick(&self, mac: &[u8; 6], requested: Option<Ipv4Addr>) -> Option<Ipv4Addr> {
+        if let Some(fixed) = self.reservations.get(mac) {
+            return self.is_free_for(*fixed, mac).then_some(*fixed);
+        }
         if let Some(l) = self.leases.get(mac) {
             return Some(l.ip);
         }
@@ -489,6 +512,23 @@ mod tests {
             (lease.state, lease.host_name.as_deref(), lease.mac.as_str()),
             (LeaseState::Bound, Some("phonescript"), "02:00:00:00:00:0A")
         );
+    }
+
+    #[test]
+    fn a_fixed_address_goes_to_its_device_only() {
+        let lan = IpPrefix::parse("192.168.137.0/24", true).unwrap();
+        let mut s = DhcpServer::new(PoolConfig::for_lan(lan, 3600).unwrap(), vec![]);
+        let fixed = Ipv4Addr::new(192, 168, 137, 24);
+        let mut map = BTreeMap::new();
+        map.insert("AA:BB:CC:00:00:01".to_string(), fixed);
+        s.set_reservations(&map);
+        let a = [0xAA, 0xBB, 0xCC, 0, 0, 1];
+        let b = [0xAA, 0xBB, 0xCC, 0, 0, 2];
+        assert_eq!(s.pick(&a, None), Some(fixed), "outside the .10+ pool but in the LAN");
+        assert_eq!(s.pick(&b, Some(fixed)), Some(Ipv4Addr::new(192, 168, 137, 10)), "never given to another device");
+        map.insert("AA:BB:CC:00:00:03".to_string(), Ipv4Addr::new(192, 168, 137, 1));
+        s.set_reservations(&map);
+        assert!(!s.reservations.contains_key(&[0xAA, 0xBB, 0xCC, 0, 0, 3]), "the server's own address is refused");
     }
 
     #[test]

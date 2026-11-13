@@ -135,6 +135,19 @@ pub fn fill(ui: &AppWindow, mode: &str) {
         None,
     );
     if mode == "share" {
+        crate::sharing_page::apply_cards(
+            ui,
+            &[crate::view::ClientCard {
+                mac: "A4:5E:60:12:7B:C3".into(),
+                title: "PlayStation 5 (demo)".into(),
+                since: "Ligado há 48 min".into(),
+                ip: "192.168.50.24".into(),
+                allow_internet: true,
+                allow_local: true,
+                gaming: 1,
+                fixed: String::new(),
+            }],
+        );
         ui.set_share_tab(1);
         ui.set_share_name("Casa-bitBybit".into());
         ui.set_share_password("segredo-123".into());

@@ -3,6 +3,7 @@
 
 pub mod bridge;
 pub mod classify;
+pub mod client_policy;
 pub mod clients;
 pub mod connectivity;
 pub mod dhcp;

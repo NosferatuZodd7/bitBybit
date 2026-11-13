@@ -193,6 +193,7 @@ pub fn build_dispatcher(
         neighbors: platform.neighbors.clone(),
         hosts: platform.hosts.clone(),
         active: Arc::default(),
+        devices: Arc::default(),
         backend: Arc::new(sharing::ServiceSharing {
             platform: platform.sharing_backend.clone(),
             hosts: platform.hosts.clone(),
@@ -225,6 +226,7 @@ pub fn build_dispatcher(
         .register(ops::audio::RestartAudioServicesOperation::new(platform.audio_services))?
         .register(ops::sharing::StartOperation::new(sharing_context.clone()))?
         .register(ops::sharing::StatusOperation::new(sharing_context.clone()))?
+        .register(ops::sharing::ClientOperation::new(sharing_context.clone()))?
         .register(ops::sharing::StopOperation::new(sharing_context))?
         .register(ops::journal::RevertOperation::new(revert_journal, revert_handlers))?
         .freeze();
@@ -447,6 +449,7 @@ mod tests {
                 "drivers.windowsUpdateSearch",
                 "journal.revert",
                 "network.overview",
+                "sharing.client",
                 "sharing.start",
                 "sharing.status",
                 "sharing.stop"

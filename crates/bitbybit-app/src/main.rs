@@ -85,7 +85,7 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     ui.on_check_app_update({
         let weak = ui.as_weak();
-        move || check_app_update(weak.clone())
+        move || check_app_update(weak.clone(), false)
     });
     ui.on_dismiss_update({
         let weak = ui.as_weak();
@@ -96,7 +96,7 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
     if settings_page::auto_check_due() {
-        check_app_update(ui.as_weak());
+        check_app_update(ui.as_weak(), true);
     }
     ui.on_install_app_update({
         let weak = ui.as_weak();
@@ -460,7 +460,7 @@ fn update_status(ui: &AppWindow, t: LocalizedText, state: i32) {
 
 /// Checks this repository's releases (signed manifest, fail closed) off the UI thread. A found version opens the
 /// update dialog; installing still waits for the user's click.
-fn check_app_update(weak: slint::Weak<AppWindow>) {
+fn check_app_update(weak: slint::Weak<AppWindow>, silent: bool) {
     if let Some(ui) = weak.upgrade() {
         if ui.get_app_update_state() == 1 {
             return;
@@ -483,6 +483,11 @@ fn check_app_update(weak: slint::Weak<AppWindow>) {
                         text!("app.update.available", "Version {0} is available (signature verified).", version),
                         2,
                     );
+                }
+                // The automatic check at start stays quiet unless it finds a version.
+                Ok(None) | Err(_) if silent => {
+                    ui.set_app_update_text("".into());
+                    ui.set_app_update_state(0);
                 }
                 Ok(None) => update_status(
                     &ui,
@@ -684,7 +689,7 @@ mod broker {
                             bitbybit_network::session::SharingSessions::new(journal.as_ref(), &backend, &refs);
                         bitbybit_service::sharing::leak_watchdog_tick(
                             journal.as_ref(),
-                            &bitbybit_platform_windows::net::wfp::installed,
+                            &bitbybit_platform_windows::net::wfp::installed_leak_guard,
                             &|s| sessions.stop(s).map(|_| ()),
                         );
                         std::thread::sleep(Duration::from_secs(15));

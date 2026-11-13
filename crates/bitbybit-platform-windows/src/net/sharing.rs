@@ -225,6 +225,106 @@ mod nat {
         unsafe { s.DeleteInstance(&BSTR::from(path), Default::default(), None, None) }
             .map_err(|e| failed("DeleteInstance", &e))
     }
+    fn int_variant(value: i32) -> VARIANT {
+        VARIANT {
+            Anonymous: VARIANT_0 {
+                Anonymous: ManuallyDrop::new(VARIANT_0_0 {
+                    vt: windows::Win32::System::Variant::VT_I4,
+                    Anonymous: VARIANT_0_0_0 { lVal: value },
+                    ..Default::default()
+                }),
+            },
+        }
+    }
+
+    /// Paths of the static mappings of bitBybit's NAT `name` to `internal` (validated name, formatted address).
+    fn mapping_paths(s: &IWbemServices, name: &str, internal: std::net::Ipv4Addr) -> Result<Vec<String>> {
+        if !is_owned_name(name) {
+            return Err(Error::invalid("Only bitBybit NAT instances are looked up."));
+        }
+        let mut out = Vec::new();
+        // SAFETY: WQL with a validated name and a formatted IPv4 address; results enumerated once.
+        unsafe {
+            let e = s
+                .ExecQuery(
+                    &BSTR::from("WQL"),
+                    &BSTR::from(format!(
+                        "SELECT * FROM MSFT_NetNatStaticMapping WHERE NatName='{name}' AND InternalIPAddress='{internal}'"
+                    )),
+                    WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
+                    None,
+                )
+                .map_err(|e| failed("ExecQuery", &e))?;
+            for _ in 0..256 {
+                let mut objects: [Option<IWbemClassObject>; 1] = [None];
+                let mut returned = 0u32;
+                let _ = e.Next(10_000, &mut objects, &mut returned);
+                let Some(object) = objects[0].take().filter(|_| returned == 1) else { break };
+                let mut value = VARIANT::default();
+                object
+                    .Get(&HSTRING::from("__PATH"), 0, &mut value, None, None)
+                    .map_err(|e| failed("Get(__PATH)", &e))?;
+                let inner = &value.Anonymous.Anonymous;
+                if inner.vt == VT_BSTR {
+                    out.push(inner.Anonymous.bstrVal.to_string());
+                }
+                let _ = VariantClear(&mut value);
+            }
+        }
+        Ok(out)
+    }
+
+    pub fn mapping_count(name: &str, internal: std::net::Ipv4Addr) -> Result<usize> {
+        Ok(mapping_paths(&services()?, name, internal)?.len())
+    }
+
+    /// Forwards `protocol`/`port` arriving on any external address to the same port of `internal`.
+    pub fn add_mapping(name: &str, protocol: u8, port: u16, internal: std::net::Ipv4Addr) -> Result<()> {
+        if !is_owned_name(name) {
+            return Err(Error::invalid("Only bitBybit NAT instances get port mappings."));
+        }
+        let s = services()?;
+        // SAFETY: spawn an instance, set its properties, create only (never overwrite another mapping).
+        unsafe {
+            let mut class = None;
+            s.GetObject(
+                &BSTR::from("MSFT_NetNatStaticMapping"),
+                WBEM_FLAG_RETURN_WBEM_COMPLETE,
+                None,
+                Some(&mut class),
+                None,
+            )
+            .map_err(|e| failed("GetObject(MSFT_NetNatStaticMapping)", &e))?;
+            let class: IWbemClassObject =
+                class.ok_or_else(|| Error::not_found("MSFT_NetNatStaticMapping is not available."))?;
+            let instance = class.SpawnInstance(0).map_err(|e| failed("SpawnInstance", &e))?;
+            let mut values = [
+                ("NatName", string_variant(name)),
+                ("Protocol", int_variant(i32::from(protocol))),
+                ("ExternalIPAddress", string_variant("0.0.0.0/24")),
+                ("ExternalPort", int_variant(i32::from(port))),
+                ("InternalIPAddress", string_variant(&internal.to_string())),
+                ("InternalPort", int_variant(i32::from(port))),
+            ];
+            for (property, v) in &mut values {
+                let r = instance.Put(&HSTRING::from(*property), 0, &*v, 0);
+                let _ = VariantClear(v);
+                r.map_err(|e| failed("Put", &e))?;
+            }
+            s.PutInstance(&instance, WBEM_GENERIC_FLAG_TYPE(WBEM_FLAG_CREATE_ONLY.0), None, None)
+                .map_err(|e| failed("PutInstance(MSFT_NetNatStaticMapping)", &e))
+        }
+    }
+
+    pub fn delete_mappings(name: &str, internal: std::net::Ipv4Addr) -> Result<()> {
+        let s = services()?;
+        for path in mapping_paths(&s, name, internal)? {
+            // SAFETY: deletes exactly the instances found under bitBybit's NAT for this device.
+            unsafe { s.DeleteInstance(&BSTR::from(path), Default::default(), None, None) }
+                .map_err(|e| failed("DeleteInstance", &e))?;
+        }
+        Ok(())
+    }
 }
 
 // ---------- Mobile Hotspot (WinRT) ----------
@@ -324,7 +424,7 @@ fn not_here(step: &StepAction) -> Error {
 /// Filters read back match the plan exactly (state Protected or fail-closed BlockedVpnDown).
 pub fn leak_guard_verified(plan: &[FilterSpec]) -> bool {
     let observed = LeakGuardObservation {
-        installed: crate::net::wfp::installed().ok(),
+        installed: crate::net::wfp::installed_leak_guard().ok(),
         vpn_up: true,
         vpn_index_current: true,
         forwarding_enabled_on_downstream: true,
@@ -338,6 +438,18 @@ pub struct WindowsSharing;
 impl SharingBackend for WindowsSharing {
     fn prepare(&self, step: &StepAction) -> Result<StepStates> {
         Ok(match step {
+            StepAction::ClientFilters { mac, .. } => {
+                if !crate::net::wfp::installed_named(&client_prefix(mac))?.is_empty() {
+                    return Err(Error::new(ErrorCode::Conflict, "This device already has bitBybit rules."));
+                }
+                StepStates { previous: None, applied: json(step)? }
+            }
+            StepAction::PortMappings { nat: name, internal, .. } => {
+                if nat::mapping_count(name, *internal)? > 0 {
+                    return Err(Error::new(ErrorCode::Conflict, "This device already has forwarded ports."));
+                }
+                StepStates { previous: None, applied: json(step)? }
+            }
             StepAction::StartAccessPoint { provider, .. } => {
                 let before = crate::net::ap::before(*provider)?;
                 StepStates { previous: json(&before)?, applied: json(provider)? }
@@ -379,7 +491,7 @@ impl SharingBackend for WindowsSharing {
                 }
             }
             StepAction::InstallLeakGuard { filters } => {
-                if !crate::net::wfp::installed()?.is_empty() {
+                if !crate::net::wfp::installed_leak_guard()?.is_empty() {
                     return Err(Error::new(ErrorCode::Conflict, "bitBybit leak guard filters are already installed."));
                 }
                 StepStates { previous: None, applied: json(&LeakGuard { filters: filters.clone() })? }
@@ -402,6 +514,10 @@ impl SharingBackend for WindowsSharing {
         match step {
             StepAction::StartAccessPoint { provider, ssid, passphrase } => {
                 crate::net::ap::start(*provider, ssid, &passphrase.0)
+            }
+            StepAction::ClientFilters { filters, .. } => crate::net::wfp::install(filters).map(|_| ()),
+            StepAction::PortMappings { nat: name, internal, mappings, .. } => {
+                mappings.iter().try_for_each(|m| nat::add_mapping(name, m.protocol, m.port, *internal))
             }
             StepAction::StartHotspot { source_luid, ssid, passphrase } => {
                 // Restart so the new name, password and source take effect.
@@ -430,6 +546,20 @@ impl SharingBackend for WindowsSharing {
     fn verify(&self, step: &StepAction) -> Result<bool> {
         Ok(match step {
             StepAction::StartAccessPoint { provider, .. } => crate::net::ap::running(*provider)?,
+            StepAction::ClientFilters { mac, filters } => {
+                let mut want: Vec<_> = filters.iter().map(|f| f.name.clone()).collect();
+                let mut have: Vec<_> = crate::net::wfp::installed_named(&client_prefix(mac))?
+                    .into_iter()
+                    .filter(|f| !f.conditions.is_empty())
+                    .map(|f| f.name)
+                    .collect();
+                want.sort();
+                have.sort();
+                want == have
+            }
+            StepAction::PortMappings { nat: name, internal, mappings, .. } => {
+                nat::mapping_count(name, *internal)? == mappings.len()
+            }
             StepAction::StartHotspot { source_luid, ssid, .. } => {
                 hotspot::is_on(*source_luid)? && hotspot::ssid(*source_luid)? == *ssid
             }
@@ -562,13 +692,61 @@ impl RevertHandler for LeakGuardRevert {
         "sharing.leakGuard"
     }
     fn compare(&self, _: &ChangeRecord) -> Result<LiveState> {
-        Ok(match crate::net::wfp::installed() {
+        Ok(match crate::net::wfp::installed_leak_guard() {
             Ok(f) if f.is_empty() => LiveState::Gone,
             Ok(_) => LiveState::MatchesApplied,
             Err(_) => LiveState::Unknown,
         })
     }
     fn revert(&self, _: &ChangeRecord) -> Result<()> {
-        crate::net::wfp::remove_owned().map(|_| ())
+        crate::net::wfp::remove_named(bitbybit_network::leak::LEAK_FILTER_PREFIX).map(|_| ())
+    }
+}
+
+fn client_prefix(mac: &str) -> String {
+    bitbybit_network::client_policy::filter_name(mac, "")
+}
+
+/// Removes one device's rules (filters named `bitBybit-client-<mac>-*`).
+pub struct ClientFiltersRevert;
+impl RevertHandler for ClientFiltersRevert {
+    fn target_kind(&self) -> &str {
+        "sharing.clientFilters"
+    }
+    fn compare(&self, record: &ChangeRecord) -> Result<LiveState> {
+        Ok(match crate::net::wfp::installed_named(&client_prefix(&record.target_id)) {
+            Ok(f) if f.is_empty() => LiveState::Gone,
+            Ok(_) => LiveState::MatchesApplied,
+            Err(_) => LiveState::Unknown,
+        })
+    }
+    fn revert(&self, record: &ChangeRecord) -> Result<()> {
+        crate::net::wfp::remove_named(&client_prefix(&record.target_id)).map(|_| ())
+    }
+}
+
+/// Removes a device's console port mappings from bitBybit's NAT.
+pub struct PortMappingsRevert;
+impl RevertHandler for PortMappingsRevert {
+    fn target_kind(&self) -> &str {
+        "sharing.portMappings"
+    }
+    fn compare(&self, record: &ChangeRecord) -> Result<LiveState> {
+        let Some(StepAction::PortMappings { nat, internal, .. }) = read::<StepAction>(record.applied_state.as_deref())
+        else {
+            return Ok(LiveState::Unknown);
+        };
+        Ok(match nat::mapping_count(&nat, internal) {
+            Ok(0) => LiveState::Gone,
+            Ok(_) => LiveState::MatchesApplied,
+            Err(_) => LiveState::Unknown,
+        })
+    }
+    fn revert(&self, record: &ChangeRecord) -> Result<()> {
+        let Some(StepAction::PortMappings { nat, internal, .. }) = read::<StepAction>(record.applied_state.as_deref())
+        else {
+            return Err(Error::invalid("The port mapping record has no applied state."));
+        };
+        nat::delete_mappings(&nat, internal)
     }
 }

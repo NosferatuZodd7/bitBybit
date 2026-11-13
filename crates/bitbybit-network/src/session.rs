@@ -64,6 +64,18 @@ pub enum ApProvider {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum StepAction {
+    /// One device's rules (`client_policy::filters`), named `bitBybit-client-<mac>-*`.
+    ClientFilters {
+        mac: String,
+        filters: Vec<FilterSpec>,
+    },
+    /// Console ports forwarded through bitBybit's NAT to one device (WinNAT static mappings on `nat`).
+    PortMappings {
+        nat: String,
+        mac: String,
+        internal: Ipv4Addr,
+        mappings: Vec<crate::client_policy::PortMapping>,
+    },
     /// An access point of bitBybit's own (no Windows Mobile Hotspot, no ICS); the platform records what it replaced.
     StartAccessPoint {
         provider: ApProvider,
@@ -121,6 +133,8 @@ impl StepAction {
         match self {
             Self::StartHotspot { .. } => "sharing.hotspot",
             Self::StartAccessPoint { .. } => "sharing.accessPoint",
+            Self::ClientFilters { .. } => "sharing.clientFilters",
+            Self::PortMappings { .. } => "sharing.portMappings",
             Self::SetLanAddress { .. } => "sharing.lanAddress",
             Self::InstallLeakGuard { .. } => "sharing.leakGuard",
             Self::AddFirewallRules { .. } => "sharing.firewallRules",
@@ -134,7 +148,7 @@ impl StepAction {
 
     fn category(&self) -> ChangeCategory {
         match self {
-            Self::InstallLeakGuard { .. } => ChangeCategory::PacketFilter,
+            Self::InstallLeakGuard { .. } | Self::ClientFilters { .. } => ChangeCategory::PacketFilter,
             Self::AddFirewallRules { .. } => ChangeCategory::Firewall,
             _ => ChangeCategory::Network,
         }
@@ -153,6 +167,7 @@ impl StepAction {
     fn target_id(&self) -> String {
         match self {
             Self::SetLanAddress { luid, .. } => luid.to_string(),
+            Self::ClientFilters { mac, .. } | Self::PortMappings { mac, .. } => mac.clone(),
             Self::CreateNat { name, .. } => name.clone(),
             Self::EnableIcs { public_luid, private_luid } => format!("{public_luid}->{private_luid}"),
             Self::EnableForwarding { luids } => luids.iter().map(u64::to_string).collect::<Vec<_>>().join(","),
@@ -320,6 +335,12 @@ impl<'a> SharingSessions<'a> {
                 Err(e)
             }
         }
+    }
+
+    /// Reverts one kind of step for one target inside a session (a device's previous rules), newest first.
+    pub fn revert_target(&self, session: Uuid, kind: &str, target_id: &str) -> Result<Vec<RevertOutcome>> {
+        RecoveryCoordinator::new(self.journal, &self.handlers)
+            .revert(|r| r.correlation_id == Some(session) && r.target_kind == kind && r.target_id == target_id, false)
     }
 
     /// Reverts the session, newest step first.

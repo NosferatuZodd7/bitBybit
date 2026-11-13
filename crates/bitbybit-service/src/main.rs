@@ -86,7 +86,7 @@ mod broker {
                     let sessions = bitbybit_network::session::SharingSessions::new(journal.as_ref(), &backend, &refs);
                     bitbybit_service::sharing::leak_watchdog_tick(
                         journal.as_ref(),
-                        &bitbybit_platform_windows::net::wfp::installed,
+                        &bitbybit_platform_windows::net::wfp::installed_leak_guard,
                         &|s| sessions.stop(s).map(|_| ()),
                     );
                     std::thread::sleep(Duration::from_secs(15));

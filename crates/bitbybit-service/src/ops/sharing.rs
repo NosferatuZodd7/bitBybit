@@ -8,6 +8,7 @@ use bitbybit_ipc::operation::{BrokerOperation, CallContext, Category, Descriptor
 use bitbybit_ipc::plan::OperationPlan;
 use bitbybit_journal::Journal;
 use bitbybit_network::classify::{Classification, InterfaceKind, classify};
+use bitbybit_network::client_policy::{self, ClientPolicy, GamingMode};
 use bitbybit_network::clients::{Client, NeighborEntry};
 use bitbybit_network::dhcp::PoolConfig;
 use bitbybit_network::leak::{self, LeakGuardInput};
@@ -34,6 +35,8 @@ pub struct SharingContext {
     pub hosts: Arc<crate::sharing::Hosts>,
     /// The share this service started (gone after a restart: start-up recovery reverts dead sessions).
     pub active: Arc<std::sync::Mutex<Option<ActiveShare>>>,
+    /// Per-device rules and when each device was first seen, for the active share.
+    pub devices: Arc<std::sync::Mutex<DeviceBook>>,
     pub backend: Arc<dyn SharingBackend>,
     pub handlers: Vec<Arc<dyn RevertHandler>>,
     pub journal: Arc<dyn Journal>,
@@ -89,6 +92,19 @@ pub struct Started {
 
 fn step_text(step: &StepAction) -> LocalizedText {
     match step {
+        StepAction::ClientFilters { mac, .. } => {
+            text!(
+                "sharing.step.clientFilters",
+                "Apply this device's rules with bitBybit packet filters ({0})",
+                mac.clone()
+            )
+        }
+        StepAction::PortMappings { mappings, internal, .. } => text!(
+            "sharing.step.portMappings",
+            "Forward {0} console ports to {1} through bitBybit's NAT",
+            mappings.len().to_string(),
+            internal.to_string()
+        ),
         StepAction::StartAccessPoint { ssid, .. } => {
             text!(
                 "sharing.step.accessPoint",
@@ -345,6 +361,7 @@ impl BrokerOperation for StartOperation {
                 mode: "adapter".into(),
                 ssid: None,
                 leak_protection: r.leak_protection,
+                allow_internet: r.allow_internet,
             }),
         );
         Ok(Started { session_id, lan: lan.to_string() })
@@ -493,6 +510,7 @@ fn start_hotspot(
                         mode: "accessPoint".into(),
                         ssid: Some(hotspot.ssid.clone()),
                         leak_protection: r.leak_protection,
+                        allow_internet: r.allow_internet,
                     }),
                 );
                 Ok(Started { session_id: session, lan: lan.to_string() })
@@ -528,9 +546,31 @@ fn start_hotspot(
             mode: "windowsHotspot".into(),
             ssid: Some(ssid),
             leak_protection: false,
+            allow_internet: true,
         }),
     );
     Ok(Started { session_id, lan: WINDOWS_HOTSPOT_LAN.to_string() })
+}
+
+/// Rules and first sight of the devices on the active share (cleared when a share starts).
+#[derive(Debug, Default)]
+pub struct DeviceBook {
+    pub policies: std::collections::BTreeMap<String, ClientPolicy>,
+    pub first_seen: std::collections::BTreeMap<String, time::OffsetDateTime>,
+}
+
+fn book(context: &SharingContext) -> std::sync::MutexGuard<'_, DeviceBook> {
+    context.devices.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// One device as the card shows it: rules and how long it has been connected.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceDetail {
+    pub mac: String,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub connected_since: Option<time::OffsetDateTime>,
+    pub policy: ClientPolicy,
 }
 
 /// What is being shared right now: the diagram's chain.
@@ -546,6 +586,8 @@ pub struct ActiveShare {
     pub mode: String,
     pub ssid: Option<String>,
     pub leak_protection: bool,
+    #[serde(default = "yes")]
+    pub allow_internet: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -553,9 +595,12 @@ pub struct ActiveShare {
 pub struct ShareStatus {
     pub active: Option<ActiveShare>,
     pub clients: Vec<Client>,
+    #[serde(default)]
+    pub details: Vec<DeviceDetail>,
 }
 
 fn set_active(context: &SharingContext, share: Option<ActiveShare>) {
+    *book(context) = DeviceBook::default();
     *context.active.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = share;
 }
 
@@ -588,7 +633,9 @@ impl BrokerOperation for StatusOperation {
     }
     fn execute(&self, _: &Self::Request, _: &CallContext) -> Result<ShareStatus> {
         let active = self.1.active.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
-        let Some(share) = active else { return Ok(ShareStatus { active: None, clients: Vec::new() }) };
+        let Some(share) = active else {
+            return Ok(ShareStatus { active: None, clients: Vec::new(), details: Vec::new() });
+        };
         let mut downstream = share.downstream_luid;
         if downstream == 0 {
             let snapshot = self.1.network.collect()?;
@@ -601,7 +648,223 @@ impl BrokerOperation for StatusOperation {
         let lan = IpPrefix::parse(&share.lan, true).unwrap_or(WINDOWS_HOTSPOT_LAN);
         let clients =
             bitbybit_network::clients::merge(lan, downstream, &self.1.hosts.leases(), &(self.1.neighbors)(), &[]);
-        Ok(ShareStatus { active: Some(share), clients })
+        let now = time::OffsetDateTime::now_utc();
+        let mut b = book(&self.1);
+        let details = clients
+            .iter()
+            .map(|c| DeviceDetail {
+                mac: c.mac.clone(),
+                connected_since: Some(*b.first_seen.entry(c.mac.clone()).or_insert(now)),
+                policy: b.policies.get(&c.mac).cloned().unwrap_or_else(|| ClientPolicy::open(&c.mac)),
+            })
+            .collect();
+        Ok(ShareStatus { active: Some(share), clients, details })
+    }
+}
+
+/// `sharing.client`: one device's rules on the active share.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ClientRequest {
+    pub mac: String,
+    pub allow_internet: bool,
+    pub allow_local: bool,
+    #[serde(default)]
+    pub gaming: GamingMode,
+    #[serde(default)]
+    pub fixed_host: Option<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientApplied {
+    pub ip: String,
+}
+
+pub struct ClientOperation(Descriptor, SharingContext);
+
+impl ClientOperation {
+    pub fn new(context: SharingContext) -> Self {
+        Self(
+            Descriptor {
+                name: "sharing.client",
+                tier: RiskTier::Standard,
+                category: Category::NETWORK,
+                requires_confirmation: true,
+                timeout: Some(Duration::from_secs(120)),
+            },
+            context,
+        )
+    }
+
+    /// The device's address now (or its fixed one), the active share and the shared interface's index.
+    fn resolve(&self, r: &ClientRequest) -> Result<(ActiveShare, std::net::Ipv4Addr, u32, ClientPolicy)> {
+        let share = self
+            .1
+            .active
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+            .ok_or_else(|| Error::new(ErrorCode::PreconditionFailed, "No share is active."))?;
+        if share.mode == "windowsHotspot" {
+            return Err(Error::new(ErrorCode::NotSupported, "The Windows Mobile Hotspot has no per-device rules.")
+                .with_user_text(text!(
+                    "sharing.client.windowsHotspot",
+                    "Per-device rules need bitBybit's own network; this share runs on the Windows Mobile Hotspot."
+                )));
+        }
+        let mac = bitbybit_network::clients::normalize_mac(&r.mac).ok_or_else(|| Error::invalid("Invalid MAC."))?;
+        let lan = IpPrefix::parse(&share.lan, true).ok_or_else(|| Error::invalid("Invalid LAN."))?;
+        let ip = match r.fixed_host {
+            Some(h) => match lan.network() {
+                std::net::IpAddr::V4(n) if lan.prefix_len() >= 24 => {
+                    std::net::Ipv4Addr::from((u32::from(n) & !0xFF) | u32::from(h))
+                }
+                _ => return Err(Error::invalid("Fixed addresses need a /24 or smaller network.")),
+            },
+            None => {
+                let leases = self.1.hosts.leases();
+                bitbybit_network::clients::merge(lan, share.downstream_luid, &leases, &(self.1.neighbors)(), &[])
+                    .into_iter()
+                    .find(|c| c.mac == mac)
+                    .and_then(|c| match c.ip {
+                        Some(std::net::IpAddr::V4(ip)) => Some(ip),
+                        _ => None,
+                    })
+                    .ok_or_else(|| Error::not_found("The device has no address on the shared network now."))?
+            }
+        };
+        let gateway = match lan.first_host() {
+            Some(std::net::IpAddr::V4(g)) => g,
+            _ => return Err(Error::invalid("Invalid LAN.")),
+        };
+        if ip == gateway || !lan.contains(std::net::IpAddr::V4(ip)) {
+            return Err(Error::invalid("That address is not free for a device.").with_user_text(text!(
+                "sharing.client.badFixed",
+                "That address belongs to this PC or is outside the shared network."
+            )));
+        }
+        let index = self
+            .1
+            .network
+            .collect()?
+            .interface(share.downstream_luid)
+            .map(|i| i.index)
+            .ok_or_else(|| Error::not_found("Shared interface not found."))?;
+        let policy = ClientPolicy {
+            mac,
+            allow_internet: r.allow_internet,
+            allow_local: r.allow_local,
+            gaming: r.gaming,
+            fixed_host: r.fixed_host,
+        };
+        Ok((share, ip, index, policy))
+    }
+}
+
+impl BrokerOperation for ClientOperation {
+    type Request = ClientRequest;
+    type Response = ClientApplied;
+    fn descriptor(&self) -> &Descriptor {
+        &self.0
+    }
+    fn validate(&self, r: &ClientRequest) -> Result<()> {
+        if bitbybit_network::clients::normalize_mac(&r.mac).is_none() {
+            return Err(Error::invalid("Invalid MAC."));
+        }
+        if r.fixed_host.is_some_and(|h| !(2..=254).contains(&h)) {
+            return Err(Error::invalid("The fixed address must end in 2 to 254."));
+        }
+        if r.gaming == GamingMode::Nintendo {
+            return Err(Error::new(ErrorCode::NotSupported, "Nintendo needs a port range.").with_user_text(text!(
+                "sharing.client.nintendo",
+                "Nintendo consoles need thousands of UDP ports open; the Windows NAT bitBybit uses forwards single ports only."
+            )));
+        }
+        Ok(())
+    }
+    fn plan(&self, r: &ClientRequest, _: &CallContext) -> Result<Option<OperationPlan>> {
+        let (_, ip, _, policy) = self.resolve(r)?;
+        let mut steps = Vec::new();
+        steps.push(if policy.allow_internet {
+            text!("sharing.client.internetOn", "{0} can use the Internet", ip.to_string())
+        } else {
+            text!("sharing.client.internetOff", "Block the Internet for {0}", ip.to_string())
+        });
+        steps.push(if policy.allow_local {
+            text!("sharing.client.localOn", "{0} can reach this PC and the home network", ip.to_string())
+        } else {
+            text!(
+                "sharing.client.localOff",
+                "Block {0} from this PC and the home network (DNS and DHCP stay)",
+                ip.to_string()
+            )
+        });
+        if policy.gaming != GamingMode::Off {
+            steps.push(text!(
+                "sharing.client.gaming",
+                "Forward {0} console ports to {1}",
+                client_policy::console_ports(policy.gaming)?.len().to_string(),
+                ip.to_string()
+            ));
+        }
+        if policy.fixed_host.is_some() {
+            steps.push(text!(
+                "sharing.client.fixed",
+                "Always give this device {0} (it moves there when it renews or reconnects)",
+                ip.to_string()
+            ));
+        }
+        let mut plan = OperationPlan::new(
+            text!("sharing.client.summary", "Change the rules of the device {0}", policy.mac.clone()),
+            steps,
+            RiskLevel::Low,
+        );
+        plan.reversible = true;
+        Ok(Some(plan))
+    }
+    fn execute(&self, r: &ClientRequest, _: &CallContext) -> Result<ClientApplied> {
+        let (share, ip, index, policy) = self.resolve(r)?;
+        let ports = client_policy::console_ports(policy.gaming)?;
+        if !ports.is_empty() {
+            if !share.allow_internet {
+                return Err(Error::new(ErrorCode::PreconditionFailed, "Gaming mode needs Internet sharing."));
+            }
+            let taken = book(&self.1).policies.values().any(|p| p.mac != policy.mac && p.gaming == policy.gaming);
+            if taken {
+                return Err(Error::new(ErrorCode::Conflict, "Another device already uses that gaming mode.").with_user_text(
+                    text!(
+                        "sharing.client.gamingTaken",
+                        "Another console already has this gaming mode: the same ports can be forwarded to one device only."
+                    ),
+                ));
+            }
+        }
+        let handlers: Vec<&dyn RevertHandler> =
+            self.1.handlers.iter().map(|h| h.as_ref() as &dyn RevertHandler).collect();
+        let sessions = self.1.sessions(&handlers);
+        // The device's previous rules go first (journaled reverts), then the new ones.
+        sessions.revert_target(share.session_id, "sharing.portMappings", &policy.mac)?;
+        sessions.revert_target(share.session_id, "sharing.clientFilters", &policy.mac)?;
+        let mut steps = Vec::new();
+        let filters = client_policy::filters(&policy, ip, index);
+        if !filters.is_empty() {
+            steps.push(StepAction::ClientFilters { mac: policy.mac.clone(), filters });
+        }
+        if !ports.is_empty() {
+            steps.push(StepAction::PortMappings {
+                nat: format!("{}share", bitbybit_security::ownership::OWNED_NAME_PREFIX),
+                mac: policy.mac.clone(),
+                internal: ip,
+                mappings: ports,
+            });
+        }
+        if !steps.is_empty() {
+            sessions.extend(share.session_id, &steps, time::OffsetDateTime::now_utc()).map_err(|f| failure(&f))?;
+        }
+        self.1.hosts.set_reservation(&policy.mac, policy.fixed_host.map(|_| ip));
+        book(&self.1).policies.insert(policy.mac.clone(), policy);
+        Ok(ClientApplied { ip: ip.to_string() })
     }
 }
 

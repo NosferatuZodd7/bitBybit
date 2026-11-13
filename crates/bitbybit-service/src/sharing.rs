@@ -34,6 +34,8 @@ pub struct Hosts {
     dns: Mutex<Option<Running>>,
     /// Leases of the running DHCP server (for the list of connected devices).
     leases: Arc<Mutex<Vec<Lease>>>,
+    /// Fixed addresses ("IP fixo") the running DHCP server honours, by MAC.
+    reservations: Arc<Mutex<std::collections::BTreeMap<String, Ipv4Addr>>>,
     /// Ports, so tests can avoid the privileged 67/53.
     pub dhcp_port: u16,
     pub dns_port: u16,
@@ -56,6 +58,15 @@ impl Hosts {
         lock(&self.leases).clone()
     }
 
+    /// Sets (`Some`) or clears one device's fixed address; the DHCP server applies it at its next request.
+    pub fn set_reservation(&self, mac: &str, ip: Option<Ipv4Addr>) {
+        let mut r = lock(&self.reservations);
+        match ip {
+            Some(ip) => r.insert(mac.to_owned(), ip),
+            None => r.remove(mac),
+        };
+    }
+
     pub fn dns_running(&self) -> bool {
         lock(&self.dns).as_ref().is_some_and(|r| !r.thread.is_finished())
     }
@@ -72,11 +83,14 @@ impl Hosts {
         let flag = stop.clone();
         let shared = self.leases.clone();
         lock(&shared).clear();
+        let reservations = self.reservations.clone();
+        lock(&reservations).clear();
         let thread = std::thread::spawn(move || {
             let mut server = DhcpServer::new(pool, vec![]);
             let mut buf = [0u8; 1500];
             while !flag.load(Ordering::SeqCst) {
                 let Ok((n, _)) = socket.recv_from(&mut buf) else { continue };
+                server.set_reservations(&lock(&reservations));
                 let reply = server.handle(&buf[..n], OffsetDateTime::now_utc());
                 *lock(&shared) = server.leases().cloned().collect();
                 if let Some(reply) = reply {

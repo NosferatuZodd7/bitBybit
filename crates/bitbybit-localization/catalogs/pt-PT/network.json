@@ -71,5 +71,18 @@
   "sharing.step.apLeakGuard": "Instalar filtros de pacotes do bitBybit: os dispositivos do hotspot só podem usar a VPN; se ela cair, ficam bloqueados",
   "sharing.step.apFallback": "Se esta placa Wi-Fi não tiver ponto de acesso próprio, usar o Hotspot Móvel do Windows",
   "sharing.hotspot.needsOwnAp": "Esta placa Wi-Fi não oferece um ponto de acesso que o bitBybit consiga gerir, por isso a proteção contra fugas não é possível: o Hotspot Móvel do Windows não bloqueia o tráfego quando a VPN cai.",
+  "sharing.step.clientFilters": "Aplicar as regras deste dispositivo com filtros de pacotes do bitBybit ({0})",
+  "sharing.step.portMappings": "Encaminhar {0} portas de consola para {1} pelo NAT do bitBybit",
+  "sharing.client.windowsHotspot": "As regras por dispositivo precisam da rede própria do bitBybit; esta partilha usa o Hotspot Móvel do Windows.",
+  "sharing.client.badFixed": "Esse endereço é deste PC ou está fora da rede partilhada.",
+  "sharing.client.nintendo": "As consolas Nintendo precisam de milhares de portas UDP abertas; o NAT do Windows que o bitBybit usa só encaminha portas individuais.",
+  "sharing.client.gamingTaken": "Outra consola já tem este modo de jogo: as mesmas portas só podem ir para um dispositivo.",
+  "sharing.client.internetOn": "{0} pode usar a Internet",
+  "sharing.client.internetOff": "Bloquear a Internet a {0}",
+  "sharing.client.localOn": "{0} pode aceder a este PC e à rede de casa",
+  "sharing.client.localOff": "Impedir {0} de aceder a este PC e à rede de casa (DNS e DHCP continuam)",
+  "sharing.client.gaming": "Encaminhar {0} portas de consola para {1}",
+  "sharing.client.fixed": "Dar sempre {0} a este dispositivo (muda para lá quando renovar ou voltar a ligar-se)",
+  "sharing.client.summary": "Mudar as regras do dispositivo {0}",
   "sharing.plan.summary": "Partilhar a ligação à Internet na rede {0}"
 }

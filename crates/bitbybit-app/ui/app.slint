@@ -80,6 +80,9 @@ export struct CleanupItem { id: string, device: bool, title: string, detail: str
 export struct StoreItem { inf: string, title: string, detail: string, used-by: string }
 export struct UpdateItem { id: string, title: string, detail: string }
 export struct DashTile { title: string, value: string, state: int, page: int }
+// A device on the shared network with its rules (Connectify-style card).
+export struct ClientCard { mac: string, title: string, since: string, ip: string, allow-internet: bool, allow-local: bool, gaming: int, fixed: string }
+
 // One box of the sharing diagram. kind: 0 Internet carrier, 1 VPN, 2 where it is shared, 3 a device.
 export struct TopoNode { id: string, kind: int, title: string, detail: string, parent: int, x: length, y: length }
 
@@ -442,6 +445,80 @@ component FieldRow inherits HorizontalLayout {
     @children
 }
 
+// One device on the shared network: who it is and its rules. Edits stay local until "Aplicar" (with confirmation).
+component ClientCardView inherits Card {
+    in property <ClientCard> info;
+    callback apply(string, bool, bool, int, string);
+    property <bool> internet: root.info.allow-internet;
+    property <bool> local: root.info.allow-local;
+    property <int> gaming: root.info.gaming;
+    property <string> fixed: root.info.fixed;
+    height: layout.preferred-height;
+    layout := VerticalLayout {
+        padding: Theme.space-l;
+        spacing: Theme.space-s;
+        HorizontalLayout {
+            spacing: Theme.space-m;
+            Rectangle {
+                width: 44px;
+                height: 44px;
+                border-radius: 14px;
+                background: Theme.accent-soft;
+                Icon { width: 22px; height: 22px; tint: Theme.accent; source: @image-url("assets/icons/smartphone.svg"); }
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                Text { text: root.info.title; font-size: Theme.font-title + 2px; font-weight: 700; color: Theme.text; overflow: elide; }
+                Text { text: root.info.since; font-size: Theme.font-body; font-weight: 600; color: Theme.ok; }
+            }
+        }
+        HorizontalLayout {
+            spacing: Theme.space-xl;
+            VerticalLayout {
+                spacing: 2px;
+                Secondary { text: Tr.t("app.client.ip"); }
+                Text { text: root.info.ip; font-size: Theme.font-emphasis; color: Theme.text; }
+            }
+            VerticalLayout {
+                spacing: 2px;
+                Secondary { text: Tr.t("app.client.mac"); }
+                Text { text: root.info.mac; font-size: Theme.font-emphasis; color: Theme.text; }
+            }
+            Rectangle { }
+        }
+        Rectangle { height: 1px; background: Theme.edge; }
+        HorizontalLayout {
+            Body { text: Tr.t("app.client.internet"); vertical-alignment: center; }
+            Switch { checked <=> root.internet; horizontal-stretch: 0; }
+        }
+        HorizontalLayout {
+            Body { text: Tr.t("app.client.local"); vertical-alignment: center; }
+            Switch { checked <=> root.local; horizontal-stretch: 0; }
+        }
+        FieldRow {
+            label: Tr.t("app.client.gaming");
+            ComboBox {
+                model: [Tr.t("app.client.gaming.off"), Tr.t("app.client.gaming.psn"), Tr.t("app.client.gaming.xbox"), Tr.t("app.client.gaming.nintendo")];
+                current-index <=> root.gaming;
+            }
+        }
+        FieldRow {
+            label: Tr.t("app.client.fixed");
+            LineEdit { placeholder-text: Tr.t("app.client.fixedAuto") + " (2–254)"; text <=> root.fixed; input-type: number; }
+        }
+        HorizontalLayout {
+            alignment: end;
+            PillButton {
+                text: Tr.t("app.client.apply");
+                kind: 1;
+                clicked => { root.apply(root.info.mac, root.internet, root.local, root.gaming, root.fixed); }
+            }
+        }
+    }
+}
+
+
 export component AppWindow inherits Window {
     in property <string> version;
     in property <string> about-version;
@@ -509,6 +586,8 @@ export component AppWindow inherits Window {
     in-out property <string> new-card-text;
     callback use-suggestion();
     in property <[TopoNode]> topo-nodes;
+    in property <[ClientCard]> client-cards;
+    callback client-apply(string, bool, bool, int, string);
     in property <length> topo-height;
     in property <length> topo-width;
     callback topo-move(int, length, length);
@@ -897,6 +976,11 @@ export component AppWindow inherits Window {
                                         move(i, dx, dy) => { root.topo-move(i, dx, dy); }
                                     }
                                     if root.share-session != "": Secondary { text: Tr.t("app.topo.hint"); }
+                                    if root.share-session != "" && root.client-cards.length == 0: EmptyState { text: Tr.t("app.client.none"); }
+                                    for card in root.client-cards: ClientCardView {
+                                        info: card;
+                                        apply(mac, internet, local, gaming, fixed) => { root.client-apply(mac, internet, local, gaming, fixed); }
+                                    }
                                 }
                             }
                         }

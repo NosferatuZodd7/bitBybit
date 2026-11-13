@@ -794,6 +794,70 @@ pub struct ShareStatus {
     pub active: Option<ActiveShare>,
     #[serde(default)]
     pub clients: Vec<bitbybit_network::clients::Client>,
+    #[serde(default)]
+    pub details: Vec<DeviceDetail>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceDetail {
+    pub mac: String,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    pub connected_since: Option<time::OffsetDateTime>,
+    pub policy: bitbybit_network::client_policy::ClientPolicy,
+}
+
+/// One device card on the Clientes tab.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClientCard {
+    pub mac: String,
+    pub title: String,
+    pub since: String,
+    pub ip: String,
+    pub allow_internet: bool,
+    pub allow_local: bool,
+    /// 0 off, 1 PlayStation, 2 Xbox, 3 Nintendo.
+    pub gaming: i32,
+    pub fixed: String,
+}
+
+pub fn client_cards(status: &ShareStatus, now: time::OffsetDateTime, catalog: &TextCatalog) -> Vec<ClientCard> {
+    use bitbybit_network::client_policy::{ClientPolicy, GamingMode};
+    status
+        .clients
+        .iter()
+        .map(|c| {
+            let detail = status.details.iter().find(|d| d.mac == c.mac);
+            let policy = detail.map(|d| d.policy.clone()).unwrap_or_else(|| ClientPolicy::open(&c.mac));
+            let minutes = detail.and_then(|d| d.connected_since).map(|t| (now - t).whole_minutes().max(0));
+            ClientCard {
+                mac: c.mac.clone(),
+                title: c.host_name.clone().unwrap_or_else(|| catalog.resolve(&text!("app.topo.device", "Device"))),
+                since: match minutes {
+                    Some(m) if m < 60 => {
+                        catalog.resolve(&text!("app.client.sinceMin", "Connected for {0} min", m.to_string()))
+                    }
+                    Some(m) => catalog.resolve(&text!(
+                        "app.client.sinceHours",
+                        "Connected for {0} h {1} min",
+                        (m / 60).to_string(),
+                        (m % 60).to_string()
+                    )),
+                    None => String::new(),
+                },
+                ip: c.ip.map(|ip| ip.to_string()).unwrap_or_default(),
+                allow_internet: policy.allow_internet,
+                allow_local: policy.allow_local,
+                gaming: match policy.gaming {
+                    GamingMode::Off => 0,
+                    GamingMode::PlayStation => 1,
+                    GamingMode::Xbox => 2,
+                    GamingMode::Nintendo => 3,
+                },
+                fixed: policy.fixed_host.map(|h| h.to_string()).unwrap_or_default(),
+            }
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
@@ -1108,9 +1172,38 @@ mod tests {
     }
 
     #[test]
+    fn device_cards_show_rules_and_connected_time() {
+        let now = time::OffsetDateTime::UNIX_EPOCH + time::Duration::hours(10);
+        let mut policy = bitbybit_network::client_policy::ClientPolicy::open("A4:5E:60:12:7B:C3");
+        policy.gaming = bitbybit_network::client_policy::GamingMode::PlayStation;
+        policy.fixed_host = Some(24);
+        let status = ShareStatus {
+            active: None,
+            clients: vec![bitbybit_network::clients::Client {
+                mac: "A4:5E:60:12:7B:C3".into(),
+                ip: Some("192.168.137.24".parse().unwrap()),
+                host_name: Some("PS5".into()),
+                state: bitbybit_network::clients::ClientState::Active,
+                from_lease: true,
+                from_neighbors: false,
+                from_hotspot: false,
+            }],
+            details: vec![DeviceDetail {
+                mac: "A4:5E:60:12:7B:C3".into(),
+                connected_since: Some(now - time::Duration::minutes(48)),
+                policy,
+            }],
+        };
+        let cards = client_cards(&status, now, TextCatalog::default_catalog());
+        assert_eq!(cards[0].since, "Ligado há 48 min");
+        assert_eq!((cards[0].gaming, cards[0].fixed.as_str(), cards[0].allow_internet), (1, "24", true));
+    }
+
+    #[test]
     fn the_diagram_chains_the_carrier_the_share_and_its_devices() {
         let o = overview();
         let status = ShareStatus {
+            details: vec![],
             active: Some(ActiveShare {
                 session_id: "s".into(),
                 upstream_luid: 2,

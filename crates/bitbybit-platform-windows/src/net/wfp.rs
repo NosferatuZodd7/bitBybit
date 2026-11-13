@@ -14,12 +14,17 @@ const RPC_C_AUTHN_WINNT: u32 = 10;
 const ALREADY_EXISTS: u32 = 0x8032_0009;
 const PROVIDER: GUID = GUID::from_u128(WFP_PROVIDER_KEY);
 const SUBLAYER: GUID = GUID::from_u128(WFP_SUBLAYER_KEY);
-const LAYERS: [(WfpLayer, GUID); 4] = [
+const LAYERS: [(WfpLayer, GUID); 5] = [
     (WfpLayer::IpForwardV4, FWPM_LAYER_IPFORWARD_V4),
     (WfpLayer::IpForwardV6, FWPM_LAYER_IPFORWARD_V6),
     (WfpLayer::AleAuthConnectV4, FWPM_LAYER_ALE_AUTH_CONNECT_V4),
     (WfpLayer::AleAuthConnectV6, FWPM_LAYER_ALE_AUTH_CONNECT_V6),
+    (WfpLayer::AleAuthRecvAcceptV4, FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4),
 ];
+
+fn mask_of(prefix_len: u8) -> u32 {
+    if prefix_len == 0 { 0 } else { u32::MAX << (32 - u32::from(prefix_len.min(32))) }
+}
 
 fn check(api: &str, code: u32) -> Result<()> {
     if code == 0 { Ok(()) } else { Err(Error::platform(format!("{api} failed (0x{code:08X})"), code as i32)) }
@@ -98,6 +103,8 @@ struct NativeFilter {
     // Boxed so the addresses handed to WFP stay put while the vector grows.
     #[allow(clippy::vec_box)]
     _u64s: Vec<Box<u64>>,
+    #[allow(clippy::vec_box)]
+    _masks: Vec<Box<FWP_V4_ADDR_AND_MASK>>,
     conditions: Vec<FWPM_FILTER_CONDITION0>,
     filter: FWPM_FILTER0,
 }
@@ -108,6 +115,7 @@ fn native(spec: &FilterSpec, app: &AppId, provider_key: *mut GUID) -> Result<Box
     }
     let layer = LAYERS.iter().find(|(l, _)| *l == spec.layer).map(|(_, g)| *g).unwrap_or_default();
     let mut u64s = Vec::new();
+    let mut masks = Vec::new();
     let mut conditions = Vec::new();
     for c in &spec.conditions {
         let (field, value) = match *c {
@@ -139,6 +147,31 @@ fn native(spec: &FilterSpec, app: &AppId, provider_key: *mut GUID) -> Result<Box
                 FWPM_CONDITION_IP_REMOTE_PORT,
                 FWP_CONDITION_VALUE0 { r#type: FWP_UINT16, Anonymous: FWP_CONDITION_VALUE0_0 { uint16: p } },
             ),
+            WfpCondition::LocalPort(p) => (
+                FWPM_CONDITION_IP_LOCAL_PORT,
+                FWP_CONDITION_VALUE0 { r#type: FWP_UINT16, Anonymous: FWP_CONDITION_VALUE0_0 { uint16: p } },
+            ),
+            // IPv4 addresses are host byte order in FWP_UINT32 / FWP_V4_ADDR_AND_MASK.
+            WfpCondition::SourceAddressV4(a) => (
+                FWPM_CONDITION_IP_SOURCE_ADDRESS,
+                FWP_CONDITION_VALUE0 { r#type: FWP_UINT32, Anonymous: FWP_CONDITION_VALUE0_0 { uint32: u32::from(a) } },
+            ),
+            WfpCondition::RemoteAddressV4(a) => (
+                FWPM_CONDITION_IP_REMOTE_ADDRESS,
+                FWP_CONDITION_VALUE0 { r#type: FWP_UINT32, Anonymous: FWP_CONDITION_VALUE0_0 { uint32: u32::from(a) } },
+            ),
+            WfpCondition::DestinationPrefixV4 { address, prefix_len } => {
+                let mut boxed = Box::new(FWP_V4_ADDR_AND_MASK { addr: u32::from(address), mask: mask_of(prefix_len) });
+                let ptr: *mut FWP_V4_ADDR_AND_MASK = &mut *boxed;
+                masks.push(boxed);
+                (
+                    FWPM_CONDITION_IP_DESTINATION_ADDRESS,
+                    FWP_CONDITION_VALUE0 {
+                        r#type: FWP_V4_ADDR_MASK,
+                        Anonymous: FWP_CONDITION_VALUE0_0 { v4AddrMask: ptr },
+                    },
+                )
+            }
         };
         conditions.push(FWPM_FILTER_CONDITION0 { fieldKey: field, matchType: FWP_MATCH_EQUAL, conditionValue: value });
     }
@@ -159,6 +192,7 @@ fn native(spec: &FilterSpec, app: &AppId, provider_key: *mut GUID) -> Result<Box
         },
         _name: name,
         _u64s: u64s,
+        _masks: masks,
         conditions,
     });
     out.filter.numFilterConditions = out.conditions.len() as u32;
@@ -244,6 +278,24 @@ fn read_with_ids(engine: &Engine) -> Result<Vec<(u64, FilterSpec)>> {
                             (k, FWP_UINT16) if k == FWPM_CONDITION_IP_REMOTE_PORT => {
                                 Some(WfpCondition::RemotePort(v.Anonymous.uint16))
                             }
+                            (k, FWP_UINT16) if k == FWPM_CONDITION_IP_LOCAL_PORT => {
+                                Some(WfpCondition::LocalPort(v.Anonymous.uint16))
+                            }
+                            (k, FWP_UINT32) if k == FWPM_CONDITION_IP_SOURCE_ADDRESS => {
+                                Some(WfpCondition::SourceAddressV4(v.Anonymous.uint32.into()))
+                            }
+                            (k, FWP_UINT32) if k == FWPM_CONDITION_IP_REMOTE_ADDRESS => {
+                                Some(WfpCondition::RemoteAddressV4(v.Anonymous.uint32.into()))
+                            }
+                            (k, FWP_V4_ADDR_MASK)
+                                if k == FWPM_CONDITION_IP_DESTINATION_ADDRESS && !v.Anonymous.v4AddrMask.is_null() =>
+                            {
+                                let m = &*v.Anonymous.v4AddrMask;
+                                Some(WfpCondition::DestinationPrefixV4 {
+                                    address: m.addr.into(),
+                                    prefix_len: m.mask.count_ones() as u8,
+                                })
+                            }
                             (k, FWP_BYTE_BLOB_TYPE)
                                 if k == FWPM_CONDITION_ALE_APP_ID && !v.Anonymous.byteBlob.is_null() =>
                             {
@@ -280,10 +332,29 @@ pub fn installed() -> Result<Vec<FilterSpec>> {
     Ok(read_with_ids(&open()?)?.into_iter().map(|(_, f)| f).collect())
 }
 
+/// The leak guard's filters only (per-device rules are not part of it).
+pub fn installed_leak_guard() -> Result<Vec<FilterSpec>> {
+    installed_named(bitbybit_network::leak::LEAK_FILTER_PREFIX)
+}
+
+/// bitBybit's filters whose name starts with `prefix` (the leak guard's, or one device's rules).
+pub fn installed_named(prefix: &str) -> Result<Vec<FilterSpec>> {
+    Ok(installed()?.into_iter().filter(|f| f.name.starts_with(prefix)).collect())
+}
+
+/// Removes bitBybit's filters whose name starts with `prefix` (never another provider's), in one transaction.
+pub fn remove_named(prefix: &str) -> Result<usize> {
+    remove_where(|f| f.name.starts_with(prefix))
+}
+
 /// Removes every filter of bitBybit's provider (never another provider's), in one transaction.
 pub fn remove_owned() -> Result<usize> {
+    remove_where(|_| true)
+}
+
+fn remove_where(keep_out: impl Fn(&FilterSpec) -> bool) -> Result<usize> {
     let engine = open()?;
-    let filters = read_with_ids(&engine)?;
+    let filters: Vec<(u64, FilterSpec)> = read_with_ids(&engine)?.into_iter().filter(|(_, f)| keep_out(f)).collect();
     // SAFETY: transaction on our engine; aborted on any failure.
     unsafe {
         check("FwpmTransactionBegin0", FwpmTransactionBegin0(engine.0, 0))?;

@@ -127,13 +127,44 @@ pub fn apply_topology(ui: &AppWindow, nodes: &[crate::view::TopoNode]) {
     ui.set_topo_nodes(ModelRc::from(Rc::new(VecModel::from(rows))));
 }
 
+/// Shows the device cards. Same devices as before: rows are updated in place so an edit in progress is kept.
+pub fn apply_cards(ui: &AppWindow, cards: &[crate::view::ClientCard]) {
+    let rows: Vec<crate::ui::ClientCard> = cards
+        .iter()
+        .map(|c| crate::ui::ClientCard {
+            mac: c.mac.clone().into(),
+            title: c.title.clone().into(),
+            since: c.since.clone().into(),
+            ip: c.ip.clone().into(),
+            allow_internet: c.allow_internet,
+            allow_local: c.allow_local,
+            gaming: c.gaming,
+            fixed: c.fixed.clone().into(),
+        })
+        .collect();
+    let model = ui.get_client_cards();
+    let same = model.row_count() == rows.len()
+        && rows.iter().enumerate().all(|(i, r)| model.row_data(i).is_some_and(|m| m.mac == r.mac));
+    if same {
+        for (i, r) in rows.into_iter().enumerate() {
+            model.set_row_data(i, r);
+        }
+    } else {
+        ui.set_client_cards(ModelRc::from(Rc::new(VecModel::from(rows))));
+    }
+}
+
 /// Reads the active share and its devices off the UI thread and redraws the diagram.
 fn refresh_status(weak: slint::Weak<AppWindow>) {
     std::thread::spawn(move || {
         let status = crate::broker::share_status();
         let _ = slint::invoke_from_event_loop(move || {
             let Some(ui) = weak.upgrade() else { return };
-            let Ok(status) = status else { return };
+            // No active share on the service's side: the next full load clears the panel.
+            let Ok(status) = status.map_err(|_| ()).and_then(|s| if s.active.is_some() { Ok(s) } else { Err(()) })
+            else {
+                return;
+            };
             let nodes = OVERVIEW.with(|o| {
                 o.borrow().as_ref().map(|o| crate::view::topology(o, &status, TextCatalog::default_catalog()))
             });
@@ -141,6 +172,9 @@ fn refresh_status(weak: slint::Weak<AppWindow>) {
             if let Some(nodes) = nodes {
                 apply_topology(&ui, &nodes);
             }
+            let cards =
+                crate::view::client_cards(&status, time::OffsetDateTime::now_utc(), TextCatalog::default_catalog());
+            apply_cards(&ui, &cards);
         });
     });
 }
@@ -171,6 +205,7 @@ pub fn show(
         } else {
             t.stop();
             apply_topology(ui, &[]);
+            apply_cards(ui, &[]);
         }
     });
     let suggestion = OVERVIEW.with(|o| {
@@ -228,6 +263,36 @@ fn mode_changed(ui: &AppWindow) {
 }
 
 pub fn wire(ui: &AppWindow) {
+    let weak = ui.as_weak();
+    ui.on_client_apply(move |mac, internet, local, gaming, fixed| {
+        let fixed = fixed.trim();
+        let fixed_host = match fixed {
+            "" => None,
+            t => match t.parse::<u8>() {
+                Ok(h) if (2..=254).contains(&h) => Some(h),
+                _ => {
+                    if let Some(ui) = weak.upgrade() {
+                        let message = TextCatalog::default_catalog().resolve(&text!(
+                            "app.client.badFixed",
+                            "The fixed address must be a number from 2 to 254."
+                        ));
+                        ui.set_op_state(3);
+                        ui.set_op_message(message.into());
+                    }
+                    return;
+                }
+            },
+        };
+        let gaming = ["Off", "PlayStation", "Xbox", "Nintendo"].get(gaming as usize).copied().unwrap_or("Off");
+        let params = serde_json::json!({
+            "mac": mac.as_str(),
+            "allowInternet": internet,
+            "allowLocal": local,
+            "gaming": gaming,
+            "fixedHost": fixed_host,
+        });
+        ops::run(weak.clone(), "sharing.client", params, |ui, _| refresh_status(ui.as_weak()));
+    });
     let weak = ui.as_weak();
     ui.on_share_mode_changed(move || {
         if let Some(ui) = weak.upgrade() {
