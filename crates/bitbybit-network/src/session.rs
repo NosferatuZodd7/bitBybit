@@ -183,6 +183,8 @@ pub struct PlanInput {
     pub firewall_rules: Vec<FirewallRule>,
     /// Present when sharing a VPN with leak protection.
     pub leak_filters: Option<Vec<FilterSpec>>,
+    /// false: a local network only (addresses for the devices, no DNS, forwarding or NAT to the Internet).
+    pub share_internet: bool,
 }
 
 /// Ordered steps. Leak guard first among the traffic-affecting steps; forwarding/NAT/ICS last.
@@ -195,7 +197,7 @@ pub fn build_plan(input: &PlanInput) -> Vec<StepAction> {
         }];
     }
     let mut steps = Vec::new();
-    if let Some(filters) = &input.leak_filters {
+    if let Some(filters) = input.leak_filters.as_ref().filter(|_| input.share_internet) {
         steps.push(StepAction::InstallLeakGuard { filters: filters.clone() });
     }
     match input.mode {
@@ -211,9 +213,11 @@ pub fn build_plan(input: &PlanInput) -> Vec<StepAction> {
             if let Some(pool) = &input.pool {
                 steps.push(StepAction::StartDhcp { pool: pool.clone() });
             }
-            steps.push(StepAction::StartDns { listen: input.gateway, upstreams: input.dns_upstreams.clone() });
-            steps.push(StepAction::EnableForwarding { luids: vec![input.upstream_luid, input.downstream_luid] });
-            steps.push(StepAction::CreateNat { name: format!("{OWNED_NAME_PREFIX}share"), internal: input.lan });
+            if input.share_internet {
+                steps.push(StepAction::StartDns { listen: input.gateway, upstreams: input.dns_upstreams.clone() });
+                steps.push(StepAction::EnableForwarding { luids: vec![input.upstream_luid, input.downstream_luid] });
+                steps.push(StepAction::CreateNat { name: format!("{OWNED_NAME_PREFIX}share"), internal: input.lan });
+            }
         }
         SharingMode::Ics => {
             steps.push(StepAction::EnableIcs { public_luid: input.upstream_luid, private_luid: input.downstream_luid })
@@ -396,6 +400,7 @@ mod tests {
         PlanInput {
             mode,
             hotspot: None,
+            share_internet: true,
             upstream_luid: 1,
             downstream_luid: 2,
             lan,
@@ -512,6 +517,13 @@ mod tests {
         let json = serde_json::to_string(&steps[0]).unwrap();
         assert!(!json.contains("segredo123"), "{json}");
         assert!(!format!("{:?}", steps[0]).contains("segredo123"));
+    }
+
+    #[test]
+    fn without_internet_access_the_devices_get_a_local_network_only() {
+        let steps = build_plan(&PlanInput { share_internet: false, ..input(SharingMode::WinNat) });
+        let kinds: Vec<&str> = steps.iter().map(StepAction::target_kind).collect();
+        assert_eq!(kinds, ["sharing.lanAddress", "sharing.firewallRules", "sharing.dhcp"]);
     }
 
     #[test]

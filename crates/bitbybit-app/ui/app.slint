@@ -438,7 +438,7 @@ component EmptyState inherits Card {
 component FieldRow inherits HorizontalLayout {
     in property <string> label;
     spacing: Theme.space-s;
-    Text { text: root.label; color: Theme.text; font-size: Theme.font-body; vertical-alignment: center; min-width: 140px; }
+    Text { text: root.label; color: Theme.text; font-size: Theme.font-body; vertical-alignment: center; width: 150px; horizontal-stretch: 0; }
     @children
 }
 
@@ -498,6 +498,12 @@ export component AppWindow inherits Window {
     in-out property <bool> share-leak;
     in property <bool> share-upstream-vpn;
     in property <string> share-session;
+    in-out property <bool> share-allow-internet: true;
+    in-out property <bool> share-show-password;
+    in-out property <int> share-tab;
+    in property <int> share-clients;
+    in property <string> share-sharing;
+    callback share-mode-changed();
     // Proposal from the cards present (Internet source and how to share it) and the "new card" alert.
     in property <string> share-suggestion;
     in-out property <string> new-card-text;
@@ -714,52 +720,183 @@ export component AppWindow inherits Window {
                             height: share-box.preferred-height;
                             share-box := VerticalLayout {
                                 padding: Theme.space-l;
-                                spacing: Theme.space-s;
-                                SectionTitle { text: Tr.t("app.share.title"); }
-                                if root.share-session != "": VerticalLayout {
+                                spacing: Theme.space-m;
+                                // Status header, as in Connectify: network name, password, what is shared, clients.
+                                HorizontalLayout {
+                                    spacing: Theme.space-m;
+                                    Rectangle {
+                                        width: 44px;
+                                        height: 44px;
+                                        y: 0;
+                                        border-radius: 14px;
+                                        background: root.share-session != "" ? Theme.ok.with-alpha(0.16) : Theme.accent-soft;
+                                        Icon {
+                                            width: 22px;
+                                            height: 22px;
+                                            tint: root.share-session != "" ? Theme.ok : Theme.accent;
+                                            source: root.share-mode == 1 ? @image-url("assets/icons/network.svg") : @image-url("assets/icons/wifi.svg");
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        spacing: 3px;
+                                        Text {
+                                            text: root.share-mode == 1 ? Tr.t("app.share.mode.adapter") : (root.share-name != "" ? root.share-name : Tr.t("app.share.mode.hotspot"));
+                                            font-size: Theme.font-title + 2px;
+                                            font-weight: 700;
+                                            color: Theme.text;
+                                            overflow: elide;
+                                        }
+                                        if root.share-mode != 1: HorizontalLayout {
+                                            spacing: 8px;
+                                            alignment: start;
+                                            Text {
+                                                text: root.share-show-password ? root.share-password : (root.share-password != "" ? "••••••••••" : Tr.t("app.share.passwordHint"));
+                                                font-size: Theme.font-body;
+                                                color: Theme.text-secondary;
+                                                vertical-alignment: center;
+                                            }
+                                            Text {
+                                                text: root.share-show-password ? Tr.t("app.share.hide") : Tr.t("app.share.show");
+                                                font-size: Theme.font-body;
+                                                color: Theme.accent;
+                                                vertical-alignment: center;
+                                                TouchArea { mouse-cursor: pointer; clicked => { root.share-show-password = !root.share-show-password; } }
+                                            }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            alignment: start;
+                                            Rectangle {
+                                                width: 8px;
+                                                height: 8px;
+                                                y: (parent.height - self.height) / 2;
+                                                border-radius: 4px;
+                                                background: root.share-session != "" ? Theme.ok : Theme.text-secondary;
+                                            }
+                                            Text {
+                                                text: root.share-session != "" ? Tr.t("app.share.sharingPrefix") + " " + root.share-sharing : Tr.t("app.share.off");
+                                                font-size: Theme.font-body;
+                                                font-weight: 600;
+                                                color: root.share-session != "" ? Theme.ok : Theme.text-secondary;
+                                            }
+                                        }
+                                    }
+                                    VerticalLayout {
+                                        alignment: start;
+                                        horizontal-stretch: 0;
+                                        Badge { text: root.share-clients + " " + Tr.t("app.share.clientsCount"); tone: root.share-clients > 0 ? 4 : 0; }
+                                    }
+                                }
+                                HorizontalLayout {
+                                    alignment: start;
+                                    Segmented {
+                                        items: [Tr.t("app.share.tab.settings"), Tr.t("app.share.tab.clients")];
+                                        selected <=> root.share-tab;
+                                    }
+                                }
+
+                                // ── Definições
+                                if root.share-tab == 0: VerticalLayout {
                                     spacing: Theme.space-s;
+                                    if root.share-suggestion != "" && root.share-session == "": StatusBanner {
+                                        kind: 0;
+                                        message: root.share-suggestion;
+                                        PillButton { text: Tr.t("app.share.useSuggestion"); clicked => { root.use-suggestion(); } }
+                                    }
+                                    SectionTitle { text: Tr.t("app.share.create"); }
                                     HorizontalLayout {
                                         spacing: Theme.space-s;
-                                        VerticalLayout { alignment: center; horizontal-stretch: 0; Badge { text: "●"; tone: 4; } }
-                                        Body { text: Tr.t("app.share.active"); vertical-alignment: center; }
-                                        PillButton { icon: @image-url("assets/icons/square-pen.svg"); text: Tr.t("app.topo.edit"); clicked => { root.stop-sharing(); } }
-                                        PillButton { icon: @image-url("assets/icons/power.svg"); text: Tr.t("app.share.stop"); kind: 2; clicked => { root.stop-sharing(); } }
+                                        for m[i] in [
+                                            { label: Tr.t("app.share.mode.hotspot"), icon: @image-url("assets/icons/wifi.svg") },
+                                            { label: Tr.t("app.share.mode.wired"), icon: @image-url("assets/icons/network.svg") },
+                                            { label: Tr.t("app.share.mode.repeater"), icon: @image-url("assets/icons/refresh-cw.svg") },
+                                        ]: Rectangle {
+                                            height: 56px;
+                                            border-radius: Theme.radius-m;
+                                            background: root.share-mode == i ? Theme.accent : (mode-touch.has-hover ? Theme.surface-hover : Theme.surface);
+                                            border-width: 1px;
+                                            border-color: root.share-mode == i ? Theme.accent : Theme.edge;
+                                            opacity: root.share-session != "" && root.share-mode != i ? 0.5 : 1;
+                                            accessible-role: tab;
+                                            accessible-label: m.label;
+                                            accessible-item-selected: root.share-mode == i;
+                                            accessible-action-default => { root.share-mode = i; root.share-mode-changed(); }
+                                            animate background { duration: Theme.quick; }
+                                            mode-touch := TouchArea {
+                                                enabled: root.share-session == "";
+                                                mouse-cursor: pointer;
+                                                clicked => { root.share-mode = i; root.share-mode-changed(); }
+                                            }
+                                            HorizontalLayout {
+                                                alignment: center;
+                                                spacing: 8px;
+                                                Icon { y: (parent.height - self.height) / 2; source: m.icon; tint: root.share-mode == i ? Theme.on-accent : Theme.text; }
+                                                Text { text: m.label; font-size: Theme.font-body; font-weight: 600; color: root.share-mode == i ? Theme.on-accent : Theme.text; vertical-alignment: center; }
+                                            }
+                                        }
                                     }
-                                    if root.topo-nodes.length > 0: ShareDiagram {
+                                    Secondary {
+                                        text: root.share-mode == 0 ? Tr.t("app.share.modeHint.hotspot") : root.share-mode == 1 ? Tr.t("app.share.modeHint.adapter") : Tr.t("app.share.modeHint.repeater");
+                                    }
+                                    if root.share-mode != 1 && !root.share-has-wifi: StatusBanner { kind: 3; message: Tr.t("app.share.noWifi"); }
+                                    FieldRow { label: Tr.t("app.share.internetToShare"); ComboBox { enabled: root.share-session == ""; model: root.share-labels; current-index <=> root.share-upstream; selected => { root.share-upstream-changed(); } } }
+                                    FieldRow { label: Tr.t("app.share.access"); Body { text: Tr.t("app.share.routed"); vertical-alignment: center; horizontal-alignment: left; } }
+                                    if root.share-mode != 1: FieldRow { label: Tr.t("app.share.name"); LineEdit { enabled: root.share-session == ""; text <=> root.share-name; } }
+                                    if root.share-mode != 1: FieldRow {
+                                        label: Tr.t("app.share.password");
+                                        LineEdit { enabled: root.share-session == ""; input-type: root.share-show-password ? InputType.text : InputType.password; placeholder-text: Tr.t("app.share.passwordHint"); text <=> root.share-password; }
+                                    }
+                                    if root.share-mode == 1: FieldRow { label: Tr.t("app.share.to"); ComboBox { enabled: root.share-session == ""; model: root.share-target-labels; current-index <=> root.share-downstream; } }
+                                    if root.share-mode == 1: FieldRow { label: Tr.t("app.share.subnet"); LineEdit { enabled: root.share-session == ""; placeholder-text: Tr.t("app.share.subnetAuto"); text <=> root.share-lan; } }
+                                    SectionTitle { text: Tr.t("app.share.firewall"); }
+                                    CheckBox { text: Tr.t("app.share.allowInternet"); checked <=> root.share-allow-internet; enabled: root.share-session == "" && root.share-upstream != 1; }
+                                    Switch { text: Tr.t("app.share.leak"); checked <=> root.share-leak; enabled: root.share-session == "" && root.share-upstream-vpn && root.share-allow-internet; }
+                                    if root.share-upstream-vpn && root.share-allow-internet && !root.share-leak: StatusBanner { kind: 3; message: Tr.t("app.share.leakOff"); }
+                                    Rectangle { height: 4px; }
+                                    // One big start/stop button, as in Connectify.
+                                    Rectangle {
+                                        height: 46px;
+                                        border-radius: 23px;
+                                        background: root.share-session != "" ? (big.has-hover ? Theme.error.with-alpha(0.3) : Theme.error.with-alpha(0.18)) : (big.has-hover ? Theme.accent-hover : Theme.accent);
+                                        border-width: root.share-session != "" ? 1px : 0px;
+                                        border-color: Theme.error.with-alpha(0.55);
+                                        accessible-role: button;
+                                        accessible-label: big-label.text;
+                                        accessible-action-default => { if (root.share-session != "") { root.stop-sharing(); } else { root.start-sharing(); } }
+                                        big := TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => { if (root.share-session != "") { root.stop-sharing(); } else { root.start-sharing(); } }
+                                        }
+                                        HorizontalLayout {
+                                            alignment: center;
+                                            spacing: 10px;
+                                            Icon {
+                                                y: (parent.height - self.height) / 2;
+                                                source: @image-url("assets/icons/power.svg");
+                                                tint: root.share-session != "" ? Theme.error : Theme.on-accent;
+                                            }
+                                            big-label := Text {
+                                                text: root.share-session != "" ? Tr.t("app.share.stopBig") : (root.share-mode == 1 ? Tr.t("app.share.startRouter") : root.share-mode == 2 ? Tr.t("app.share.startRepeater") : Tr.t("app.share.startHotspot"));
+                                                font-size: Theme.font-emphasis;
+                                                font-weight: 700;
+                                                color: root.share-session != "" ? Theme.error : Theme.on-accent;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // ── Clientes
+                                if root.share-tab == 1: VerticalLayout {
+                                    spacing: Theme.space-s;
+                                    if root.share-session == "": EmptyState { text: Tr.t("app.share.clientsOff"); }
+                                    if root.share-session != "" && root.topo-nodes.length > 0: ShareDiagram {
                                         nodes: root.topo-nodes;
                                         canvas-height: root.topo-height;
                                         canvas-width: root.topo-width;
                                         move(i, dx, dy) => { root.topo-move(i, dx, dy); }
                                     }
-                                    if root.topo-nodes.length > 0: Secondary { text: Tr.t("app.topo.hint"); }
-                                }
-                                if root.share-session == "": VerticalLayout {
-                                    spacing: Theme.space-s;
-                                    if root.share-suggestion != "": StatusBanner {
-                                        kind: 0;
-                                        message: root.share-suggestion;
-                                        PillButton { text: Tr.t("app.share.useSuggestion"); clicked => { root.use-suggestion(); } }
-                                    }
-                                    HorizontalLayout {
-                                        alignment: start;
-                                        Segmented {
-                                            items: [Tr.t("app.share.mode.hotspot"), Tr.t("app.share.mode.adapter")];
-                                            selected <=> root.share-mode;
-                                        }
-                                    }
-                                    Secondary { text: root.share-mode == 0 ? Tr.t("app.share.modeHint.hotspot") : Tr.t("app.share.modeHint.adapter"); }
-                                    if root.share-mode == 0 && !root.share-has-wifi: StatusBanner { kind: 3; message: Tr.t("app.share.noWifi"); }
-                                    FieldRow { label: Tr.t("app.share.from"); ComboBox { model: root.share-labels; current-index <=> root.share-upstream; selected => { root.share-upstream-changed(); } } }
-                                    if root.share-mode == 0: FieldRow { label: Tr.t("app.share.name"); LineEdit { text <=> root.share-name; } }
-                                    if root.share-mode == 0: FieldRow { label: Tr.t("app.share.password"); LineEdit { input-type: password; placeholder-text: Tr.t("app.share.passwordHint"); text <=> root.share-password; } }
-                                    if root.share-mode == 1: FieldRow { label: Tr.t("app.share.to"); ComboBox { model: root.share-target-labels; current-index <=> root.share-downstream; } }
-                                    if root.share-mode == 1: FieldRow { label: Tr.t("app.share.subnet"); LineEdit { placeholder-text: Tr.t("app.share.subnetAuto"); text <=> root.share-lan; } }
-                                    Switch { text: Tr.t("app.share.leak"); checked <=> root.share-leak; enabled: root.share-upstream-vpn; }
-                                    if root.share-upstream-vpn && !root.share-leak: StatusBanner { kind: 3; message: Tr.t("app.share.leakOff"); }
-                                    HorizontalLayout {
-                                        alignment: start;
-                                        PillButton { text: Tr.t("app.share.start"); kind: 1; clicked => { root.start-sharing(); } }
-                                    }
+                                    if root.share-session != "": Secondary { text: Tr.t("app.topo.hint"); }
                                 }
                             }
                         }

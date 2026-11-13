@@ -674,6 +674,8 @@ pub struct ShareChoice {
     pub luid: u64,
     pub label: String,
     pub vpn: bool,
+    /// A Wi-Fi card (the source of a Wi-Fi repeater).
+    pub wifi: bool,
 }
 
 /// What the sharing panel offers.
@@ -694,7 +696,12 @@ pub fn share_choices(o: &NetworkOverview, catalog: &TextCatalog) -> ShareChoices
     ShareChoices {
         sources: pairs()
             .filter(|(i, c)| i.is_up() && !hidden(c.kind))
-            .map(|(i, c)| ShareChoice { luid: i.luid, label: i.alias.clone(), vpn: c.is_vpn() })
+            .map(|(i, c)| ShareChoice {
+                luid: i.luid,
+                label: i.alias.clone(),
+                vpn: c.is_vpn(),
+                wifi: c.kind == InterfaceKind::PhysicalWifi,
+            })
             .collect(),
         targets: pairs()
             .filter(|(_, c)| physical(c.kind))
@@ -706,6 +713,7 @@ pub fn share_choices(o: &NetworkOverview, catalog: &TextCatalog) -> ShareChoices
                     catalog.resolve(&text!("app.share.notConnected", "{0} (not connected)", i.alias.clone()))
                 },
                 vpn: c.is_vpn(),
+                wifi: false,
             })
             .collect(),
         wifi: pairs().any(|(_, c)| c.kind == InterfaceKind::PhysicalWifi),

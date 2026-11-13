@@ -122,7 +122,8 @@ pub fn fill(ui: &AppWindow, mode: &str) {
         scope: "Máquina".into(),
         can_revert: true,
     }]));
-    let choice = |luid: u64, label: &str, vpn: bool| crate::view::ShareChoice { luid, label: label.into(), vpn };
+    let choice =
+        |luid: u64, label: &str, vpn: bool| crate::view::ShareChoice { luid, label: label.into(), vpn, wifi: false };
     crate::sharing_page::show(
         ui,
         crate::view::ShareChoices {
@@ -134,6 +135,9 @@ pub fn fill(ui: &AppWindow, mode: &str) {
         None,
     );
     if mode == "share" {
+        ui.set_share_tab(1);
+        ui.set_share_name("Casa-bitBybit".into());
+        ui.set_share_password("segredo-123".into());
         let node = |id: &str, kind, title: &str, detail: &str, parent, col, row| crate::view::TopoNode {
             id: id.into(),
             kind,
@@ -170,7 +174,8 @@ pub fn fill(ui: &AppWindow, mode: &str) {
             others: vec![("spk".into(), "Altifalantes (Realtek) (demo)".into())],
             unplugged: false,
         };
-        let v = crate::view::plan_view(&crate::view::force_plan(&f), bitbybit_localization::TextCatalog::default_catalog());
+        let v =
+            crate::view::plan_view(&crate::view::force_plan(&f), bitbybit_localization::TextCatalog::default_catalog());
         ui.set_dialog_summary(v.summary.into());
         ui.set_dialog_steps(strings(&v.steps.iter().map(String::as_str).collect::<Vec<_>>()));
         ui.set_dialog_warnings(strings(&v.warnings.iter().map(String::as_str).collect::<Vec<_>>()));

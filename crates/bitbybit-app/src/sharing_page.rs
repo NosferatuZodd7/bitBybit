@@ -28,10 +28,33 @@ thread_local! {
     static SUGGESTED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+/// "Internet a partilhar": 0 Automático (where the Internet comes in now), 1 no Internet sharing, then the sources.
+const AUTO: i32 = 0;
+const NO_INTERNET: i32 = 1;
+const FIRST_SOURCE: i32 = 2;
+
+/// The chosen source: `None` for "no Internet sharing", else (luid, is VPN).
+fn source_of(ui: &AppWindow) -> Option<(u64, bool)> {
+    let i = ui.get_share_upstream();
+    CHOICES.with(|c| {
+        let c = c.borrow();
+        let pick = |luid: u64| c.sources.iter().find(|s| s.luid == luid).map(|s| (s.luid, s.vpn));
+        match i {
+            NO_INTERNET => None,
+            AUTO => OVERVIEW
+                .with(|o| o.borrow().as_ref().and_then(|o| o.ipv4_default.as_ref().map(|d| d.interface_luid)))
+                .and_then(pick),
+            _ => c.sources.get((i - FIRST_SOURCE) as usize).map(|s| (s.luid, s.vpn)),
+        }
+    })
+}
+
 /// Fills the form from the suggestion (never starts anything).
 fn apply_suggestion(ui: &AppWindow) {
     let Some(sug) = SUGGESTION.with(|s| s.borrow().clone()) else { return };
-    ui.set_share_upstream(sug.source as i32);
+    // The suggestion's source is where the Internet comes in now, i.e. "Automático".
+    let _ = sug.source;
+    ui.set_share_upstream(AUTO);
     ui.set_share_mode(if sug.hotspot { 0 } else { 1 });
     if let Some(t) = sug.target {
         ui.set_share_downstream(t as i32);
@@ -96,6 +119,10 @@ pub fn apply_topology(ui: &AppWindow, nodes: &[crate::view::TopoNode]) {
     let width = rows.iter().map(|r| r.x).fold(0.0, f32::max) + NODE_W + 32.0;
     ui.set_topo_height(height);
     ui.set_topo_width(width);
+    ui.set_share_clients(nodes.iter().filter(|n| n.kind == 3).count() as i32);
+    // The header names what is shared: the VPN if any, else the carrier.
+    let shared = nodes.iter().rfind(|n| n.kind <= 1).map(|n| n.title.clone()).unwrap_or_default();
+    ui.set_share_sharing(shared.into());
     NODE_IDS.with(|ids| *ids.borrow_mut() = nodes.iter().map(|n| n.id.clone()).collect());
     ui.set_topo_nodes(ModelRc::from(Rc::new(VecModel::from(rows))));
 }
@@ -151,7 +178,13 @@ pub fn show(
     });
     ui.set_share_suggestion(suggestion.as_ref().map(|s| s.text.clone()).unwrap_or_default().into());
     SUGGESTION.with(|s| *s.borrow_mut() = suggestion);
-    ui.set_share_labels(labels(&choices.sources));
+    let catalog = TextCatalog::default_catalog();
+    let mut source_labels = vec![
+        SharedString::from(catalog.resolve(&text!("app.share.auto", "Automatic (where the Internet comes in now)"))),
+        SharedString::from(catalog.resolve(&text!("app.share.noInternet", "No Internet sharing (local network only)"))),
+    ];
+    source_labels.extend(choices.sources.iter().map(|c| SharedString::from(c.label.as_str())));
+    ui.set_share_labels(ModelRc::from(Rc::new(VecModel::from(source_labels))));
     ui.set_share_target_labels(labels(&choices.targets));
     ui.set_share_has_wifi(choices.wifi);
     if !choices.wifi {
@@ -166,25 +199,41 @@ pub fn show(
 }
 
 fn upstream_changed(ui: &AppWindow) {
-    let (vpn, source) = CHOICES.with(|c| {
-        let c = c.borrow();
-        let up = c.sources.get(ui.get_share_upstream() as usize);
-        (up.is_some_and(|x| x.vpn), up.map(|x| x.luid))
-    });
+    let source = source_of(ui);
+    let vpn = source.is_some_and(|s| s.1);
+    let luid = source.map(|s| s.0);
     // Offer a different card than the source by default.
-    let target = CHOICES.with(|c| c.borrow().targets.iter().position(|t| Some(t.luid) != source));
-    if CHOICES.with(|c| c.borrow().targets.get(ui.get_share_downstream() as usize).map(|t| t.luid)) == source
+    let target = CHOICES.with(|c| c.borrow().targets.iter().position(|t| Some(t.luid) != luid));
+    if CHOICES.with(|c| c.borrow().targets.get(ui.get_share_downstream() as usize).map(|t| t.luid)) == luid
         || ui.get_share_downstream() < 0
     {
         ui.set_share_downstream(target.unwrap_or(0) as i32);
     }
+    // "Sem partilha de Internet" unticks the Internet access; any source ticks it again.
+    ui.set_share_allow_internet(ui.get_share_upstream() != NO_INTERNET);
     ui.set_share_upstream_vpn(vpn);
     if !vpn {
         ui.set_share_leak(false);
     }
 }
 
+/// Wi-Fi repeater: the source is the Wi-Fi the PC is connected to.
+fn mode_changed(ui: &AppWindow) {
+    if ui.get_share_mode() == 2
+        && let Some(i) = CHOICES.with(|c| c.borrow().sources.iter().position(|s| s.wifi))
+    {
+        ui.set_share_upstream(FIRST_SOURCE + i as i32);
+    }
+    upstream_changed(ui);
+}
+
 pub fn wire(ui: &AppWindow) {
+    let weak = ui.as_weak();
+    ui.on_share_mode_changed(move || {
+        if let Some(ui) = weak.upgrade() {
+            mode_changed(&ui);
+        }
+    });
     let weak = ui.as_weak();
     ui.on_use_suggestion(move || {
         if let Some(ui) = weak.upgrade() {
@@ -226,13 +275,18 @@ pub fn wire(ui: &AppWindow) {
     let weak = ui.as_weak();
     ui.on_start_sharing(move || {
         let Some(ui) = weak.upgrade() else { return };
-        let (up, down) = CHOICES.with(|c| {
-            let c = c.borrow();
-            let get = |list: &[ShareChoice], i: i32| list.get(i as usize).map(|x| x.luid);
-            (get(&c.sources, ui.get_share_upstream()), get(&c.targets, ui.get_share_downstream()))
-        });
-        let Some(up) = up else { return };
-        let params = if ui.get_share_mode() == 0 {
+        let source = source_of(&ui);
+        let allow_internet = ui.get_share_allow_internet() && source.is_some();
+        if ui.get_share_upstream() == AUTO && source.is_none() {
+            let message = TextCatalog::default_catalog()
+                .resolve(&text!("app.share.noSource", "This PC has no Internet connection to share right now."));
+            ui.set_op_state(3);
+            ui.set_op_message(message.into());
+            return;
+        }
+        let up = source.map_or(0, |s| s.0);
+        let down = CHOICES.with(|c| c.borrow().targets.get(ui.get_share_downstream() as usize).map(|t| t.luid));
+        let params = if ui.get_share_mode() != 1 {
             let hotspot = HotspotSettings {
                 ssid: ui.get_share_name().trim().to_owned(),
                 passphrase: Passphrase(ui.get_share_password().to_string()),
@@ -250,7 +304,8 @@ pub fn wire(ui: &AppWindow) {
                 "upstreamLuid": up,
                 "hotspotName": hotspot.ssid,
                 "hotspotPassphrase": hotspot.passphrase.0,
-                "leakProtection": ui.get_share_leak(),
+                "leakProtection": ui.get_share_leak() && allow_internet,
+                "allowInternet": allow_internet,
             })
         } else {
             let Some(down) = down else { return };
@@ -259,7 +314,8 @@ pub fn wire(ui: &AppWindow) {
                 "upstreamLuid": up,
                 "downstreamLuid": down,
                 "lan": if lan.is_empty() { None } else { Some(lan) },
-                "leakProtection": ui.get_share_leak(),
+                "leakProtection": ui.get_share_leak() && allow_internet,
+                "allowInternet": allow_internet,
             })
         };
         ops::run(weak.clone(), "sharing.start", params, |ui, _| crate::reload(ui.as_weak()));

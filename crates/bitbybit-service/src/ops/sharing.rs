@@ -60,8 +60,15 @@ pub struct StartRequest {
     /// Never logged (the audit masks it) nor journaled.
     #[serde(default)]
     pub hotspot_passphrase: Option<String>,
-    /// Only for a VPN upstream in adapter mode: shared traffic may leave only through the VPN (WFP, fail closed).
+    /// Only for a VPN upstream: shared traffic may leave only through the VPN (WFP, fail closed).
     pub leak_protection: bool,
+    /// false ("no Internet sharing"): the devices get a local network only; `upstream_luid` may be 0.
+    #[serde(default = "yes")]
+    pub allow_internet: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl StartRequest {
@@ -132,6 +139,38 @@ fn step_text(step: &StepAction) -> LocalizedText {
 /// The fixed subnet Windows gives its Mobile Hotspot (it brings its own DHCP and NAT).
 const WINDOWS_HOTSPOT_LAN: IpPrefix = IpPrefix::v4_const([192, 168, 137, 0], 24);
 
+/// "No Internet sharing": a local network for the devices (address, firewall rules, DHCP), nothing forwarded.
+fn local_only(
+    snapshot: &bitbybit_network::model::NetworkSnapshot,
+    downstream_luid: u64,
+    lan_text: Option<&str>,
+) -> Result<(Vec<StepAction>, IpPrefix, Vec<LocalizedText>)> {
+    let downstream =
+        snapshot.interface(downstream_luid).ok_or_else(|| Error::not_found("Shared interface not found."))?;
+    let lan = match lan_text {
+        Some(text) => IpPrefix::parse(text, true).ok_or_else(|| Error::invalid("Invalid LAN subnet."))?,
+        None => topology::first_free_subnet(snapshot, downstream_luid)
+            .ok_or_else(|| Error::new(ErrorCode::PreconditionFailed, "No free LAN subnet."))?,
+    };
+    let Some(std::net::IpAddr::V4(gateway)) = lan.first_host() else {
+        return Err(Error::invalid("The shared network must be IPv4."));
+    };
+    let steps = build_plan(&PlanInput {
+        mode: SharingMode::WinNat,
+        hotspot: None,
+        upstream_luid: 0,
+        downstream_luid,
+        lan,
+        gateway,
+        pool: PoolConfig::for_lan(lan, 3600),
+        dns_upstreams: Vec::new(),
+        firewall_rules: bitbybit_network::firewall::sharing_rules(&downstream.alias, lan),
+        leak_filters: None,
+        share_internet: false,
+    });
+    Ok((steps, lan, Vec::new()))
+}
+
 /// The Windows Mobile Hotspot fallback: Windows shares the source itself (its own addresses and DHCP).
 fn windows_hotspot(r: &StartRequest, hotspot: HotspotSettings) -> Vec<StepAction> {
     build_plan(&PlanInput {
@@ -145,6 +184,7 @@ fn windows_hotspot(r: &StartRequest, hotspot: HotspotSettings) -> Vec<StepAction
         dns_upstreams: Vec::new(),
         firewall_rules: Vec::new(),
         leak_filters: None,
+        share_internet: true,
     })
 }
 
@@ -163,6 +203,9 @@ fn build_lan(
     let snapshot = context.network.collect()?;
     let classifications: Vec<Classification> =
         snapshot.interfaces.iter().map(|i| classify(i, snapshot.ras_connection(i))).collect();
+    if !r.allow_internet {
+        return local_only(&snapshot, downstream_luid, lan_text);
+    }
     let routes = bitbybit_network::routes::analyze(&snapshot, &classifications);
     let lan = match lan_text {
         Some(text) => Some(IpPrefix::parse(text, true).ok_or_else(|| Error::invalid("Invalid LAN subnet."))?),
@@ -217,6 +260,7 @@ fn build_lan(
         dns_upstreams,
         firewall_rules: bitbybit_network::firewall::sharing_rules(&downstream.alias, lan),
         leak_filters,
+        share_internet: true,
     });
     let warnings = report.issues.into_iter().filter(|i| i.severity == IssueSeverity::Warning).map(|i| i.text).collect();
     Ok((steps, lan, warnings))
@@ -246,8 +290,11 @@ impl BrokerOperation for StartOperation {
         &self.0
     }
     fn validate(&self, r: &StartRequest) -> Result<()> {
+        if !r.allow_internet && r.leak_protection {
+            return Err(Error::invalid("Leak protection needs Internet sharing."));
+        }
         if let Some(hotspot) = r.hotspot() {
-            if r.upstream_luid == 0 {
+            if r.upstream_luid == 0 && r.allow_internet {
                 return Err(Error::invalid("Choose the Internet source."));
             }
             return hotspot.validate();
@@ -255,7 +302,8 @@ impl BrokerOperation for StartOperation {
         if r.hotspot_passphrase.is_some() {
             return Err(Error::invalid("A hotspot password needs a hotspot name."));
         }
-        if r.upstream_luid == 0 || r.downstream_luid == 0 || r.upstream_luid == r.downstream_luid {
+        if (r.allow_internet && r.upstream_luid == 0) || r.downstream_luid == 0 || r.upstream_luid == r.downstream_luid
+        {
             return Err(Error::invalid("Choose two different interfaces."));
         }
         match &r.lan {
@@ -321,8 +369,11 @@ fn failure(f: &bitbybit_network::session::StartFailure) -> Error {
 /// Hotspot only as the fallback (never with leak protection, which needs bitBybit's own network).
 fn hotspot_plan(context: &SharingContext, r: &StartRequest, hotspot: &HotspotSettings) -> Result<OperationPlan> {
     let snapshot = context.network.collect()?;
-    let upstream = snapshot.interface(r.upstream_luid).ok_or_else(|| Error::not_found("Internet source not found."))?;
-    let vpn = classify(upstream, snapshot.ras_connection(upstream)).is_vpn();
+    let vpn = match snapshot.interface(r.upstream_luid) {
+        Some(upstream) => classify(upstream, snapshot.ras_connection(upstream)).is_vpn(),
+        None if !r.allow_internet => false,
+        None => return Err(Error::not_found("Internet source not found.")),
+    };
     if r.leak_protection && !vpn {
         return Err(Error::invalid("Leak protection needs a VPN as the Internet source.")
             .with_user_text(text!("sharing.leak.needsVpn", "Leak protection is only for sharing a VPN connection.")));
@@ -338,12 +389,18 @@ fn hotspot_plan(context: &SharingContext, r: &StartRequest, hotspot: &HotspotSet
             "Give connected devices addresses, DNS and Internet through bitBybit's own network (NAT, DHCP, firewall rules)"
         ),
     ];
-    if r.leak_protection {
+    if !r.allow_internet {
+        steps[1] = text!(
+            "sharing.step.apLocalOnly",
+            "Give connected devices addresses on a local network of their own, without Internet access"
+        );
+    } else if r.leak_protection {
         steps.push(text!(
             "sharing.step.apLeakGuard",
             "Install bitBybit packet filters: devices on the hotspot can only use the VPN; if it drops they are blocked"
         ));
-    } else {
+    }
+    if r.allow_internet && !r.leak_protection {
         steps.push(text!(
             "sharing.step.apFallback",
             "If this Wi-Fi card offers no access point of its own, use the Windows Mobile Hotspot instead"
@@ -445,6 +502,12 @@ fn start_hotspot(
                 Err(e)
             }
         };
+    }
+    if !r.allow_internet {
+        return Err(last.unwrap_or_else(|| Error::new(ErrorCode::NotSupported, "No access point of bitBybit's own.")).with_user_text(text!(
+            "sharing.hotspot.localNeedsOwnAp",
+            "This Wi-Fi card offers no access point bitBybit can run itself; the Windows Mobile Hotspot always shares the Internet, so a local-only network is not possible."
+        )));
     }
     if r.leak_protection {
         return Err(last.unwrap_or_else(|| Error::new(ErrorCode::NotSupported, "No access point of bitBybit's own.")).with_user_text(text!(
