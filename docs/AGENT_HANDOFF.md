@@ -149,9 +149,12 @@ cargo check --workspace --target x86_64-pc-windows-msvc
 ```
 
 ## Next concrete task
-The user authorized the final update after everything was finished ("Depois de terminares TUDO, lança esse novo
-update para a app"): commit, push the branch, watch `rust.yml` (Linux, Windows, publish). The publish job needs the
-`BITBYBIT_UPDATE_SIGNING_KEY` secret and fails closed without it. Remaining Limited items are listed in the matrix.
+Hotspot engines (docs/research/HOTSPOT_ENGINES.md): bitBybit's own AP (Wi-Fi Direct legacy AP, then Hosted Network)
+with its own NAT/DHCP/DNS/leak guard, Windows Mobile Hotspot as fallback. Compiled only: needs a Wi-Fi card to run.
+To validate on hardware: does the Wi-Fi Direct group owner already hand out 192.168.137.x by itself (then two DHCP
+servers would answer; fix by reusing its prefix)? Next UI work requested by the user: a draggable topology diagram
+(source → VPN → hotspot → devices) with per-node actions, which needs the client list (NET-15: our DHCP leases +
+neighbour table on the AP interface). No own kernel driver: not needed for any reachable feature and not signable here.
 
 ## Known problems
 * The session worker restarts often: commit and push after every crate.

@@ -338,6 +338,10 @@ pub struct WindowsSharing;
 impl SharingBackend for WindowsSharing {
     fn prepare(&self, step: &StepAction) -> Result<StepStates> {
         Ok(match step {
+            StepAction::StartAccessPoint { provider, .. } => {
+                let before = crate::net::ap::before(*provider)?;
+                StepStates { previous: json(&before)?, applied: json(provider)? }
+            }
             StepAction::StartHotspot { source_luid, .. } => {
                 let state = Hotspot { was_on: hotspot::is_on(*source_luid)?, source_luid: *source_luid };
                 StepStates { previous: json(&state)?, applied: None }
@@ -396,6 +400,9 @@ impl SharingBackend for WindowsSharing {
 
     fn apply(&self, step: &StepAction) -> Result<()> {
         match step {
+            StepAction::StartAccessPoint { provider, ssid, passphrase } => {
+                crate::net::ap::start(*provider, ssid, &passphrase.0)
+            }
             StepAction::StartHotspot { source_luid, ssid, passphrase } => {
                 // Restart so the new name, password and source take effect.
                 if hotspot::is_on(*source_luid)? {
@@ -422,6 +429,7 @@ impl SharingBackend for WindowsSharing {
 
     fn verify(&self, step: &StepAction) -> Result<bool> {
         Ok(match step {
+            StepAction::StartAccessPoint { provider, .. } => crate::net::ap::running(*provider)?,
             StepAction::StartHotspot { source_luid, ssid, .. } => {
                 hotspot::is_on(*source_luid)? && hotspot::ssid(*source_luid)? == *ssid
             }
@@ -436,6 +444,29 @@ impl SharingBackend for WindowsSharing {
 }
 
 // ---------- revert handlers ----------
+
+/// Stops a bitBybit access point and restores the (non-secret) Hosted Network settings it replaced.
+pub struct AccessPointRevert;
+impl RevertHandler for AccessPointRevert {
+    fn target_kind(&self) -> &str {
+        "sharing.accessPoint"
+    }
+    fn compare(&self, record: &ChangeRecord) -> Result<LiveState> {
+        let Some(before) = read::<crate::net::ap::ApBefore>(record.previous_state.as_deref()) else {
+            return Ok(LiveState::Unknown);
+        };
+        Ok(match crate::net::ap::running(before.provider) {
+            Ok(true) => LiveState::MatchesApplied,
+            Ok(false) => LiveState::Gone,
+            Err(_) => LiveState::Unknown,
+        })
+    }
+    fn revert(&self, record: &ChangeRecord) -> Result<()> {
+        let before = read::<crate::net::ap::ApBefore>(record.previous_state.as_deref())
+            .ok_or_else(|| Error::invalid("The access point record has no previous state."))?;
+        crate::net::ap::stop(&before)
+    }
+}
 
 pub struct HotspotRevert;
 impl RevertHandler for HotspotRevert {

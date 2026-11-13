@@ -66,5 +66,10 @@
   "sharing.plan.hotspotSummary": "Partilhar a ligação à Internet pelo hotspot Wi-Fi \"{0}\"",
   "sharing.hotspot.keepsSettings": "O nome e a palavra-passe passam a ser as definições do Hotspot Móvel do Windows; ao parar, o hotspot desliga-se e elas ficam.",
   "sharing.hotspot.noLeakGuard": "Com o hotspot não há proteção contra fugas: se a VPN cair, os dispositivos ligados ao hotspot usam a ligação normal.",
+  "sharing.step.accessPoint": "Criar a rede Wi-Fi \"{0}\" com o ponto de acesso próprio do bitBybit",
+  "sharing.step.apEngine": "Dar aos dispositivos ligados endereços, DNS e Internet pela rede própria do bitBybit (NAT, DHCP, regras de firewall)",
+  "sharing.step.apLeakGuard": "Instalar filtros de pacotes do bitBybit: os dispositivos do hotspot só podem usar a VPN; se ela cair, ficam bloqueados",
+  "sharing.step.apFallback": "Se esta placa Wi-Fi não tiver ponto de acesso próprio, usar o Hotspot Móvel do Windows",
+  "sharing.hotspot.needsOwnAp": "Esta placa Wi-Fi não oferece um ponto de acesso que o bitBybit consiga gerir, por isso a proteção contra fugas não é possível: o Hotspot Móvel do Windows não bloqueia o tráfego quando a VPN cai.",
   "sharing.plan.summary": "Partilhar a ligação à Internet na rede {0}"
 }

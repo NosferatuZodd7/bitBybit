@@ -31,7 +31,11 @@ windows-future = "0.3"
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.62"
 features = [
+    "Devices_Enumeration",
+    "Devices_WiFiDirect",
     "Foundation",
+    "Foundation_Collections",
+    "Security_Credentials",
     "Networking_Connectivity",
     "Networking_NetworkOperators",
     "Win32_Devices_DeviceAndDriverInstallation",
@@ -43,6 +47,7 @@ features = [
     "Win32_Media_Audio_Endpoints",
     "Win32_NetworkManagement_IpHelper",
     "Win32_NetworkManagement_Ndis",
+    "Win32_NetworkManagement_WiFi",
     "Win32_NetworkManagement_Rras",
     "Win32_NetworkManagement_WindowsFilteringPlatform",
     "Win32_NetworkManagement_WindowsFirewall",

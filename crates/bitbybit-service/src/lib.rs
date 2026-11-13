@@ -147,6 +147,8 @@ pub struct Platform {
     /// added by `build_dispatcher` from `hosts`.
     pub sharing_backend: Arc<dyn bitbybit_network::session::SharingBackend>,
     pub sharing_handlers: Vec<Arc<dyn RevertHandler>>,
+    /// Access points of bitBybit's own the Wi-Fi driver offers, best first (Windows: `net::ap`).
+    pub access_points: Arc<dyn Fn() -> Vec<bitbybit_network::session::ApProvider> + Send + Sync>,
     pub hosts: Arc<sharing::Hosts>,
     /// Every machine revert handler (devices, drivers, policy, firewall…) for `journal.revert`; the sharing
     /// handlers above are added automatically.
@@ -185,6 +187,7 @@ pub fn build_dispatcher(
     revert_handlers.extend(sharing_handlers.iter().cloned());
     let sharing_context = ops::sharing::SharingContext {
         network: platform.network.clone(),
+        access_points: platform.access_points.clone(),
         backend: Arc::new(sharing::ServiceSharing {
             platform: platform.sharing_backend.clone(),
             hosts: platform.hosts.clone(),
@@ -379,6 +382,7 @@ mod tests {
             audio_services: Arc::new(NoAudioServices),
             sharing_backend: Arc::new(NoSharing),
             sharing_handlers: vec![],
+            access_points: Arc::new(Vec::new),
             hosts: Arc::new(sharing::Hosts::new()),
             revert_handlers: vec![],
             tools: Arc::new(NoTools),

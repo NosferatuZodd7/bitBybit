@@ -52,9 +52,25 @@ impl HotspotSettings {
     }
 }
 
+/// Access points bitBybit runs itself; the interface they create is then shared by bitBybit's own engine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ApProvider {
+    /// Wi-Fi Direct group owner accepting ordinary (legacy) Wi-Fi clients: WDI/WiFiCx drivers.
+    WifiDirect,
+    /// Wireless Hosted Network (SoftAP): older Native 802.11 drivers that still offer it.
+    HostedNetwork,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum StepAction {
+    /// An access point of bitBybit's own (no Windows Mobile Hotspot, no ICS); the platform records what it replaced.
+    StartAccessPoint {
+        provider: ApProvider,
+        ssid: String,
+        #[serde(skip)]
+        passphrase: Passphrase,
+    },
     /// Windows Mobile Hotspot sharing the connection of `source_luid` under the given name and passphrase. Windows
     /// does the sharing itself (its own addresses and DHCP); the platform records whether it was already on. The
     /// name and passphrase are the user's Windows hotspot settings: applied, not reverted (no secret is journaled).
@@ -104,6 +120,7 @@ impl StepAction {
     pub fn target_kind(&self) -> &'static str {
         match self {
             Self::StartHotspot { .. } => "sharing.hotspot",
+            Self::StartAccessPoint { .. } => "sharing.accessPoint",
             Self::SetLanAddress { .. } => "sharing.lanAddress",
             Self::InstallLeakGuard { .. } => "sharing.leakGuard",
             Self::AddFirewallRules { .. } => "sharing.firewallRules",
@@ -243,6 +260,18 @@ impl<'a> SharingSessions<'a> {
     /// Runs the plan. On failure everything already applied is rolled back (reverse order) before returning.
     pub fn start(&self, steps: &[StepAction], now: OffsetDateTime) -> std::result::Result<Uuid, Box<StartFailure>> {
         let session = Uuid::new_v4();
+        self.extend(session, steps, now)?;
+        Ok(session)
+    }
+
+    /// Runs more steps in an existing session (a plan whose second half depends on what the first created, e.g.
+    /// the access point's interface). On failure the *whole* session is rolled back.
+    pub fn extend(
+        &self,
+        session: Uuid,
+        steps: &[StepAction],
+        now: OffsetDateTime,
+    ) -> std::result::Result<(), Box<StartFailure>> {
         for (n, step) in steps.iter().enumerate() {
             if let Err(error) = self.run_step(session, step, now) {
                 log::error!(
@@ -253,7 +282,7 @@ impl<'a> SharingSessions<'a> {
                 return Err(Box::new(StartFailure { failed_step: n, error, rollback }));
             }
         }
-        Ok(session)
+        Ok(())
     }
 
     fn run_step(&self, session: Uuid, step: &StepAction, now: OffsetDateTime) -> Result<()> {
@@ -349,7 +378,8 @@ mod tests {
         }
     }
 
-    const KINDS: [&str; 9] = [
+    const KINDS: [&str; 10] = [
+        "sharing.accessPoint",
         "sharing.hotspot",
         "sharing.lanAddress",
         "sharing.leakGuard",
@@ -493,5 +523,21 @@ mod tests {
         assert!(hotspot("Casa", &"x".repeat(64)).validate().is_err());
         assert!(hotspot("Casa", "palavra-passe\n").validate().is_err());
         assert!(hotspot("Casa\u{7}", "12345678").validate().is_err());
+    }
+
+    #[test]
+    fn a_failure_in_the_second_half_rolls_back_the_first_half_too() {
+        with(Fake { fail_on: Some("sharing.nat"), ..Fake::default() }, |sessions, journal, fake| {
+            let ap = StepAction::StartAccessPoint {
+                provider: ApProvider::WifiDirect,
+                ssid: "Casa".into(),
+                passphrase: Passphrase("segredo123".into()),
+            };
+            let session = sessions.start(std::slice::from_ref(&ap), NOW).unwrap();
+            let rest = build_plan(&PlanInput { leak_filters: None, ..input(SharingMode::WinNat) });
+            assert!(sessions.extend(session, &rest, NOW).is_err());
+            assert!(log(fake).contains(&"revert sharing.accessPoint".to_string()), "the access point is stopped too");
+            assert!(journal.active().unwrap().is_empty());
+        });
     }
 }

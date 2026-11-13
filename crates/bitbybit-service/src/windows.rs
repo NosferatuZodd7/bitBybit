@@ -50,6 +50,7 @@ pub fn setup(paths: &AppPaths) -> Setup {
     let hosts = Arc::new(Hosts::new());
     let platform_sharing: Vec<Arc<dyn RevertHandler>> = vec![
         Arc::new(sharing::HotspotRevert),
+        Arc::new(sharing::AccessPointRevert),
         Arc::new(sharing::LanAddressRevert),
         Arc::new(sharing::ForwardingRevert),
         Arc::new(sharing::NatRevert),
@@ -81,6 +82,10 @@ pub fn setup(paths: &AppPaths) -> Setup {
         audio_services: Arc::new(AudioServiceControl),
         sharing_backend: Arc::new(sharing::WindowsSharing),
         sharing_handlers: platform_sharing,
+        access_points: Arc::new(|| {
+            use bitbybit_platform_windows::net::ap;
+            ap::preferred(ap::capabilities())
+        }),
         hosts: hosts.clone(),
         revert_handlers,
         tools: Arc::new(SystemToolRunner),

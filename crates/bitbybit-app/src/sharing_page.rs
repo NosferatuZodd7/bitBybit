@@ -88,7 +88,7 @@ pub fn wire(ui: &AppWindow) {
                 "upstreamLuid": up,
                 "hotspotName": hotspot.ssid,
                 "hotspotPassphrase": hotspot.passphrase.0,
-                "leakProtection": false,
+                "leakProtection": ui.get_share_leak(),
             })
         } else {
             let Some(down) = down else { return };

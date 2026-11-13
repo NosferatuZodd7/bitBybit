@@ -12,7 +12,8 @@ use bitbybit_network::dhcp::PoolConfig;
 use bitbybit_network::leak::{self, LeakGuardInput};
 use bitbybit_network::prefix::IpPrefix;
 use bitbybit_network::session::{
-    HotspotSettings, Passphrase, PlanInput, SharingBackend, SharingMode, SharingSessions, StepAction, build_plan,
+    ApProvider, HotspotSettings, Passphrase, PlanInput, SharingBackend, SharingMode, SharingSessions, StepAction,
+    build_plan,
 };
 use bitbybit_network::topology::{self, IssueSeverity, SharingPlanInput};
 use bitbybit_recovery::RevertHandler;
@@ -24,6 +25,8 @@ use std::time::Duration;
 #[derive(Clone)]
 pub struct SharingContext {
     pub network: Arc<dyn NetworkInventory>,
+    /// Access points of bitBybit's own this PC's Wi-Fi driver may offer, best first (probed each time).
+    pub access_points: Arc<dyn Fn() -> Vec<ApProvider> + Send + Sync>,
     pub backend: Arc<dyn SharingBackend>,
     pub handlers: Vec<Arc<dyn RevertHandler>>,
     pub journal: Arc<dyn Journal>,
@@ -72,6 +75,13 @@ pub struct Started {
 
 fn step_text(step: &StepAction) -> LocalizedText {
     match step {
+        StepAction::StartAccessPoint { ssid, .. } => {
+            text!(
+                "sharing.step.accessPoint",
+                "Create the Wi-Fi network \"{0}\" with bitBybit's own access point",
+                ssid.clone()
+            )
+        }
         StepAction::StartHotspot { ssid, .. } => {
             text!("sharing.step.hotspot", "Turn on the Wi-Fi hotspot \"{0}\" (Windows Mobile Hotspot)", ssid.clone())
         }
@@ -115,47 +125,44 @@ fn step_text(step: &StepAction) -> LocalizedText {
 /// The fixed subnet Windows gives its Mobile Hotspot (it brings its own DHCP and NAT).
 const WINDOWS_HOTSPOT_LAN: IpPrefix = IpPrefix::v4_const([192, 168, 137, 0], 24);
 
+/// The Windows Mobile Hotspot fallback: Windows shares the source itself (its own addresses and DHCP).
+fn windows_hotspot(r: &StartRequest, hotspot: HotspotSettings) -> Vec<StepAction> {
+    build_plan(&PlanInput {
+        mode: SharingMode::WinNat,
+        hotspot: Some(hotspot),
+        upstream_luid: r.upstream_luid,
+        downstream_luid: 0,
+        lan: WINDOWS_HOTSPOT_LAN,
+        gateway: std::net::Ipv4Addr::new(192, 168, 137, 1),
+        pool: None,
+        dns_upstreams: Vec::new(),
+        firewall_rules: Vec::new(),
+        leak_filters: None,
+    })
+}
+
 /// Steps from the live state; refusals carry the reason shown to the user.
 fn build(context: &SharingContext, r: &StartRequest) -> Result<(Vec<StepAction>, IpPrefix, Vec<LocalizedText>)> {
+    build_lan(context, r, r.downstream_luid, r.lan.as_deref())
+}
+
+/// Adapter mode, or the network behind one of bitBybit's own access points (`downstream` = its interface).
+fn build_lan(
+    context: &SharingContext,
+    r: &StartRequest,
+    downstream_luid: u64,
+    lan_text: Option<&str>,
+) -> Result<(Vec<StepAction>, IpPrefix, Vec<LocalizedText>)> {
     let snapshot = context.network.collect()?;
     let classifications: Vec<Classification> =
         snapshot.interfaces.iter().map(|i| classify(i, snapshot.ras_connection(i))).collect();
-    if let Some(hotspot) = r.hotspot() {
-        let upstream =
-            snapshot.interface(r.upstream_luid).ok_or_else(|| Error::not_found("Internet source not found."))?;
-        let vpn =
-            classifications.iter().find(|c| c.interface_luid == r.upstream_luid).is_some_and(Classification::is_vpn);
-        let mut warnings = vec![text!(
-            "sharing.hotspot.keepsSettings",
-            "The name and password become the Windows Mobile Hotspot settings; stopping turns the hotspot off and keeps them."
-        )];
-        if vpn {
-            warnings.push(text!(
-                "sharing.hotspot.noLeakGuard",
-                "Leak protection is not available with the hotspot: if the VPN drops, devices on the hotspot use the normal connection."
-            ));
-        }
-        let steps = build_plan(&PlanInput {
-            mode: SharingMode::WinNat,
-            hotspot: Some(hotspot),
-            upstream_luid: upstream.luid,
-            downstream_luid: 0,
-            lan: WINDOWS_HOTSPOT_LAN,
-            gateway: std::net::Ipv4Addr::new(192, 168, 137, 1),
-            pool: None,
-            dns_upstreams: Vec::new(),
-            firewall_rules: Vec::new(),
-            leak_filters: None,
-        });
-        return Ok((steps, WINDOWS_HOTSPOT_LAN, warnings));
-    }
     let routes = bitbybit_network::routes::analyze(&snapshot, &classifications);
-    let lan = match &r.lan {
+    let lan = match lan_text {
         Some(text) => Some(IpPrefix::parse(text, true).ok_or_else(|| Error::invalid("Invalid LAN subnet."))?),
         None => None,
     };
     let report = topology::validate(
-        &SharingPlanInput { upstream_luid: r.upstream_luid, downstream_luid: r.downstream_luid, lan },
+        &SharingPlanInput { upstream_luid: r.upstream_luid, downstream_luid, lan },
         &snapshot,
         &classifications,
         &routes,
@@ -171,7 +178,7 @@ fn build(context: &SharingContext, r: &StartRequest) -> Result<(Vec<StepAction>,
     let upstream =
         snapshot.interface(r.upstream_luid).ok_or_else(|| Error::not_found("Upstream interface not found."))?;
     let downstream =
-        snapshot.interface(r.downstream_luid).ok_or_else(|| Error::not_found("Shared interface not found."))?;
+        snapshot.interface(downstream_luid).ok_or_else(|| Error::not_found("Shared interface not found."))?;
     let leak_filters = if r.leak_protection {
         let vpn =
             classifications.iter().find(|c| c.interface_luid == r.upstream_luid).is_some_and(Classification::is_vpn);
@@ -196,7 +203,7 @@ fn build(context: &SharingContext, r: &StartRequest) -> Result<(Vec<StepAction>,
         mode: SharingMode::WinNat,
         hotspot: None,
         upstream_luid: r.upstream_luid,
-        downstream_luid: r.downstream_luid,
+        downstream_luid,
         lan,
         gateway,
         pool: PoolConfig::for_lan(lan, 3600),
@@ -236,9 +243,6 @@ impl BrokerOperation for StartOperation {
             if r.upstream_luid == 0 {
                 return Err(Error::invalid("Choose the Internet source."));
             }
-            if r.leak_protection {
-                return Err(Error::invalid("Leak protection is not available with the hotspot."));
-            }
             return hotspot.validate();
         }
         if r.hotspot_passphrase.is_some() {
@@ -253,37 +257,174 @@ impl BrokerOperation for StartOperation {
         }
     }
     fn plan(&self, r: &StartRequest, _: &CallContext) -> Result<Option<OperationPlan>> {
+        if let Some(hotspot) = r.hotspot() {
+            return Ok(Some(hotspot_plan(&self.1, r, &hotspot)?));
+        }
         let (steps, lan, warnings) = build(&self.1, r)?;
-        let summary = match &r.hotspot_name {
-            Some(name) => text!(
-                "sharing.plan.hotspotSummary",
-                "Share the Internet connection through the Wi-Fi hotspot \"{0}\"",
-                name.clone()
-            ),
-            None => text!("sharing.plan.summary", "Share the Internet connection on the network {0}", lan.to_string()),
-        };
-        let mut plan = OperationPlan::new(summary, steps.iter().map(step_text).collect(), RiskLevel::Medium);
+        let mut plan = OperationPlan::new(
+            text!("sharing.plan.summary", "Share the Internet connection on the network {0}", lan.to_string()),
+            steps.iter().map(step_text).collect(),
+            RiskLevel::Medium,
+        );
         plan.may_interrupt_connectivity = true;
         plan.warnings = warnings;
         Ok(Some(plan))
     }
     fn execute(&self, r: &StartRequest, _: &CallContext) -> Result<Started> {
-        let (steps, lan, _) = build(&self.1, r)?;
         let handlers: Vec<&dyn RevertHandler> =
             self.1.handlers.iter().map(|h| h.as_ref() as &dyn RevertHandler).collect();
-        match self.1.sessions(&handlers).start(&steps, time::OffsetDateTime::now_utc()) {
-            Ok(session_id) => Ok(Started { session_id, lan: lan.to_string() }),
-            Err(failure) => Err(Error::new(
-                failure.error.code,
-                format!(
-                    "Step {} failed: {}; {} applied step(s) were rolled back.",
-                    failure.failed_step + 1,
-                    failure.error.message,
-                    failure.rollback.len()
-                ),
-            )),
+        let sessions = self.1.sessions(&handlers);
+        let now = time::OffsetDateTime::now_utc();
+        if let Some(hotspot) = r.hotspot() {
+            return start_hotspot(&self.1, &sessions, r, hotspot, now);
         }
+        let (steps, lan, _) = build(&self.1, r)?;
+        let session_id = sessions.start(&steps, now).map_err(|f| failure(&f))?;
+        Ok(Started { session_id, lan: lan.to_string() })
     }
+}
+
+fn failure(f: &bitbybit_network::session::StartFailure) -> Error {
+    let mut e = Error::new(
+        f.error.code,
+        format!(
+            "Step {} failed: {}; {} applied step(s) were rolled back.",
+            f.failed_step + 1,
+            f.error.message,
+            f.rollback.len()
+        ),
+    );
+    e.user_text.clone_from(&f.error.user_text);
+    e
+}
+
+/// What the confirmation shows for the hotspot: bitBybit's own access point and network first, the Windows Mobile
+/// Hotspot only as the fallback (never with leak protection, which needs bitBybit's own network).
+fn hotspot_plan(context: &SharingContext, r: &StartRequest, hotspot: &HotspotSettings) -> Result<OperationPlan> {
+    let snapshot = context.network.collect()?;
+    let upstream = snapshot.interface(r.upstream_luid).ok_or_else(|| Error::not_found("Internet source not found."))?;
+    let vpn = classify(upstream, snapshot.ras_connection(upstream)).is_vpn();
+    if r.leak_protection && !vpn {
+        return Err(Error::invalid("Leak protection needs a VPN as the Internet source.")
+            .with_user_text(text!("sharing.leak.needsVpn", "Leak protection is only for sharing a VPN connection.")));
+    }
+    let mut steps = vec![
+        text!(
+            "sharing.step.accessPoint",
+            "Create the Wi-Fi network \"{0}\" with bitBybit's own access point",
+            hotspot.ssid.clone()
+        ),
+        text!(
+            "sharing.step.apEngine",
+            "Give connected devices addresses, DNS and Internet through bitBybit's own network (NAT, DHCP, firewall rules)"
+        ),
+    ];
+    if r.leak_protection {
+        steps.push(text!(
+            "sharing.step.apLeakGuard",
+            "Install bitBybit packet filters: devices on the hotspot can only use the VPN; if it drops they are blocked"
+        ));
+    } else {
+        steps.push(text!(
+            "sharing.step.apFallback",
+            "If this Wi-Fi card offers no access point of its own, use the Windows Mobile Hotspot instead"
+        ));
+    }
+    let mut plan = OperationPlan::new(
+        text!(
+            "sharing.plan.hotspotSummary",
+            "Share the Internet connection through the Wi-Fi hotspot \"{0}\"",
+            hotspot.ssid.clone()
+        ),
+        steps,
+        RiskLevel::Medium,
+    );
+    plan.may_interrupt_connectivity = true;
+    plan.warnings.push(text!(
+        "sharing.hotspot.keepsSettings",
+        "The name and password become the Windows Mobile Hotspot settings; stopping turns the hotspot off and keeps them."
+    ));
+    if vpn && !r.leak_protection {
+        plan.warnings.push(text!(
+            "sharing.hotspot.noLeakGuard",
+            "Leak protection is not available with the hotspot: if the VPN drops, devices on the hotspot use the normal connection."
+        ));
+    }
+    Ok(plan)
+}
+
+/// The access point's interface once it is up (bounded wait: the virtual adapter appears a moment after start).
+fn ap_interface(context: &SharingContext) -> Result<u64> {
+    use bitbybit_network::classify::InterfaceKind;
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    loop {
+        let snapshot = context.network.collect()?;
+        let found = snapshot.interfaces.iter().find(|i| {
+            i.is_up()
+                && matches!(
+                    classify(i, snapshot.ras_connection(i)).kind,
+                    InterfaceKind::WifiDirectVirtual | InterfaceKind::HostedNetworkVirtual
+                )
+        });
+        if let Some(i) = found {
+            return Ok(i.luid);
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(Error::new(ErrorCode::Timeout, "The access point's network interface did not appear."));
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+}
+
+fn start_hotspot(
+    context: &SharingContext,
+    sessions: &SharingSessions<'_>,
+    r: &StartRequest,
+    hotspot: HotspotSettings,
+    now: time::OffsetDateTime,
+) -> Result<Started> {
+    let mut last = None;
+    for provider in (context.access_points)() {
+        let step = StepAction::StartAccessPoint {
+            provider,
+            ssid: hotspot.ssid.clone(),
+            passphrase: hotspot.passphrase.clone(),
+        };
+        let session = match sessions.start(std::slice::from_ref(&step), now) {
+            Ok(session) => session,
+            Err(f) => {
+                log::warn!("Access point {provider:?} did not start: {}", f.error.message);
+                last = Some(f.error);
+                continue;
+            }
+        };
+        // The network behind the AP; any failure from here rolls the whole session back (AP included).
+        let lan = ap_interface(context)
+            .and_then(|downstream| {
+                let request = StartRequest { downstream_luid: downstream, ..r.clone() };
+                build_lan(context, &request, downstream, None)
+            })
+            .and_then(|(steps, lan, _)| {
+                sessions.extend(session, &steps, now).map_err(|f| failure(&f))?;
+                Ok(lan)
+            });
+        return match lan {
+            Ok(lan) => Ok(Started { session_id: session, lan: lan.to_string() }),
+            Err(e) => {
+                let _ = sessions.stop(session);
+                Err(e)
+            }
+        };
+    }
+    if r.leak_protection {
+        return Err(last.unwrap_or_else(|| Error::new(ErrorCode::NotSupported, "No access point of bitBybit's own.")).with_user_text(text!(
+            "sharing.hotspot.needsOwnAp",
+            "This Wi-Fi card offers no access point bitBybit can run itself, so leak protection is not possible; the Windows Mobile Hotspot cannot block traffic when the VPN drops."
+        )));
+    }
+    let steps = windows_hotspot(r, hotspot);
+    let session_id = sessions.start(&steps, now).map_err(|f| failure(&f))?;
+    Ok(Started { session_id, lan: WINDOWS_HOTSPOT_LAN.to_string() })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

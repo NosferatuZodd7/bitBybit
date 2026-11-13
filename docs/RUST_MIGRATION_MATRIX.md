@@ -73,9 +73,9 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | NET-01 | Interface inventory | `Core/Network` models, collector | `bitbybit-domain::network`, `platform-windows::net::inventory` | CI | CI | LUID, type, flags, addresses, driver facts |
 | NET-02 | Interface classification / VPN detection | `AdapterSignatures.cs`, `Vpn/*` | `bitbybit-network::classify` | Logic | signature table tests | evidence-based, name hints are hypotheses |
 | NET-03 | Routes, default-route owner, connectivity | `RouteInfo`, `Connectivity.cs` | `bitbybit-network::routes` | Logic | unit | full/split tunnel detection |
-| NET-04 | Mobile Hotspot | new | `platform-windows::net::hotspot` | Built | CI probe | config, start/stop, clients, capability reasons |
-| NET-05 | Wi-Fi Direct legacy AP | new | same | Limited | CI probe | only when the driver supports it |
-| NET-06 | Hosted Network | new | same | Limited | CI probe | probed, never assumed |
+| NET-04 | Mobile Hotspot | new | `platform-windows::net::sharing` (hotspot) | Built | compiled only | name/password, source profile; fallback engine (Windows routes, no leak guard) |
+| NET-05 | Wi-Fi Direct legacy AP | new | `platform-windows::net::ap` + service engine | Built | session unit tests; compiled only | own AP + bitBybit NAT/DHCP/DNS/WFP leak guard; first choice when the driver offers it (docs/research/HOTSPOT_ENGINES.md) |
+| NET-06 | Hosted Network | new | `platform-windows::net::ap` + service engine | Built | compiled only | older Native 802.11 drivers; probed, never assumed; previous SSID/enable restored |
 | NET-07 | ICS | new | `platform-windows::net::ics` | Limited | opt-in | journaled, verified |
 | NET-08 | WinNAT (owned `bitBybit-*` only) | new | `platform-windows::net::nat` | Built | opt-in | never touches other NATs |
 | NET-09 | LAN address + forwarding | new | `platform-windows::net::ipconfig` | Built | opt-in | previous state journaled |

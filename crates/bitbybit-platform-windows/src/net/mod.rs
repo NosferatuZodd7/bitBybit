@@ -1,5 +1,6 @@
 //! Networking: IP Helper inventory and adapter driver facts (read-only).
 
+pub mod ap;
 pub mod drivers;
 pub mod firewall;
 pub mod inventory;

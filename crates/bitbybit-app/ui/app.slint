@@ -605,11 +605,10 @@ export component AppWindow inherits Window {
                                     FieldRow { label: Tr.t("app.share.from"); ComboBox { model: root.share-labels; current-index <=> root.share-upstream; selected => { root.share-upstream-changed(); } } }
                                     if root.share-mode == 0: FieldRow { label: Tr.t("app.share.name"); LineEdit { text <=> root.share-name; } }
                                     if root.share-mode == 0: FieldRow { label: Tr.t("app.share.password"); LineEdit { input-type: password; placeholder-text: Tr.t("app.share.passwordHint"); text <=> root.share-password; } }
-                                    if root.share-mode == 0 && root.share-upstream-vpn: StatusBanner { kind: 3; message: Tr.t("app.share.hotspotNoLeak"); }
                                     if root.share-mode == 1: FieldRow { label: Tr.t("app.share.to"); ComboBox { model: root.share-target-labels; current-index <=> root.share-downstream; } }
                                     if root.share-mode == 1: FieldRow { label: Tr.t("app.share.subnet"); LineEdit { placeholder-text: Tr.t("app.share.subnetAuto"); text <=> root.share-lan; } }
-                                    if root.share-mode == 1: Switch { text: Tr.t("app.share.leak"); checked <=> root.share-leak; enabled: root.share-upstream-vpn; }
-                                    if root.share-mode == 1 && root.share-upstream-vpn && !root.share-leak: StatusBanner { kind: 3; message: Tr.t("app.share.leakOff"); }
+                                    Switch { text: Tr.t("app.share.leak"); checked <=> root.share-leak; enabled: root.share-upstream-vpn; }
+                                    if root.share-upstream-vpn && !root.share-leak: StatusBanner { kind: 3; message: Tr.t("app.share.leakOff"); }
                                     HorizontalLayout {
                                         alignment: start;
                                         PillButton { text: Tr.t("app.share.start"); kind: 1; clicked => { root.start-sharing(); } }
