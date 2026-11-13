@@ -94,6 +94,7 @@ pub fn fill(ui: &AppWindow, mode: &str) {
         volume: 64,
         muted: false,
         can_prefer: true,
+        can_force: true,
     }]));
     ui.set_displays(model(vec![DisplayRow {
         name: "DELL U2723QE (demo)".into(),
@@ -161,6 +162,22 @@ pub fn fill(ui: &AppWindow, mode: &str) {
         ui.set_app_update_available(true);
         ui.set_app_update_state(2);
         ui.set_update_dialog_visible(true);
+    }
+    if mode == "force" {
+        let f = crate::view::ForceOutput {
+            target_id: "hdmi".into(),
+            target_name: "LG TV (Intel Display Audio) (demo)".into(),
+            others: vec![("spk".into(), "Altifalantes (Realtek) (demo)".into())],
+            unplugged: false,
+        };
+        let v = crate::view::plan_view(&crate::view::force_plan(&f), bitbybit_localization::TextCatalog::default_catalog());
+        ui.set_dialog_summary(v.summary.into());
+        ui.set_dialog_steps(strings(&v.steps.iter().map(String::as_str).collect::<Vec<_>>()));
+        ui.set_dialog_warnings(strings(&v.warnings.iter().map(String::as_str).collect::<Vec<_>>()));
+        ui.set_dialog_effects(strings(&v.effects.iter().map(String::as_str).collect::<Vec<_>>()));
+        ui.set_dialog_risk(v.risk.into());
+        ui.set_dialog_level(v.level);
+        ui.set_dialog_visible(true);
     }
     if mode == "newcard" {
         ui.set_new_card_text("Nova placa de rede detetada: «Wi-Fi 2 (Linksys AE1200)» (demo).".into());

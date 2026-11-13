@@ -170,6 +170,71 @@ pub struct AudioRow {
     pub muted: bool,
     /// HDMI/DisplayPort playback endpoint: can be remembered as the preferred default.
     pub can_prefer: bool,
+    /// Playback endpoint that can be forced (default for every role, other outputs turned off).
+    pub can_force: bool,
+}
+
+/// "Force this output": what changes, so the plan can show it before anything happens.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForceOutput {
+    pub target_id: String,
+    pub target_name: String,
+    /// Other active playback devices to turn off (id, name).
+    pub others: Vec<(String, String)>,
+    /// Windows reports nothing plugged in on this output (monitor off or without speakers).
+    pub unplugged: bool,
+}
+
+pub fn force_output(endpoints: &[AudioEndpoint], target_id: &str) -> Option<ForceOutput> {
+    let target = endpoints.iter().find(|e| e.id == target_id && e.flow == AudioDataFlow::Render)?;
+    Some(ForceOutput {
+        target_id: target.id.clone(),
+        target_name: target.display_name(),
+        others: endpoints
+            .iter()
+            .filter(|e| e.flow == AudioDataFlow::Render && e.state == EndpointStatus::Active && e.id != target.id)
+            .map(|e| (e.id.clone(), e.display_name()))
+            .collect(),
+        unplugged: target.state == EndpointStatus::Unplugged,
+    })
+}
+
+/// The confirmation shown for [`force_output`].
+pub fn force_plan(f: &ForceOutput) -> bitbybit_ipc::plan::OperationPlan {
+    let mut steps = vec![text!(
+        "app.audio.force.default",
+        "Make '{0}' the default output for every use (system, multimedia and communications)",
+        f.target_name.clone()
+    )];
+    for (_, name) in &f.others {
+        steps.push(text!(
+            "app.audio.force.disable",
+            "Turn off '{0}' so applications can only use the chosen output",
+            name.clone()
+        ));
+    }
+    steps.push(text!(
+        "app.audio.force.keep",
+        "Keep this choice: bitBybit puts it back if Windows changes the default (every 20 s while it runs)"
+    ));
+    let mut plan = bitbybit_ipc::plan::OperationPlan::new(
+        text!("app.audio.force.summary", "Force the sound out through '{0}'", f.target_name.clone()),
+        steps,
+        bitbybit_core::RiskLevel::Medium,
+    );
+    plan.may_interrupt_audio = true;
+    plan.reversible = true;
+    plan.warnings.push(text!(
+        "app.audio.force.revert",
+        "The turned-off outputs stay off until you revert them in \"Alterações do bitBybit\"."
+    ));
+    if f.unplugged {
+        plan.warnings.push(text!(
+            "app.audio.force.unplugged",
+            "Windows reports nothing connected on this output: the monitor or TV may be off, on another input, or without speakers. Windows cannot play sound there until it reports the output as connected."
+        ));
+    }
+    plan
 }
 
 /// Render before capture, active first, then by name; and the page subtitle.
@@ -206,6 +271,8 @@ pub fn audio_rows(endpoints: &[AudioEndpoint], catalog: &TextCatalog) -> (Vec<Au
                 muted: e.muted.unwrap_or(false),
                 can_prefer: e.flow == AudioDataFlow::Render
                     && e.form_factor == Some(bitbybit_audio::profile::FormFactor::DigitalAudioDisplayDevice),
+                can_force: e.flow == AudioDataFlow::Render
+                    && matches!(e.state, EndpointStatus::Active | EndpointStatus::Unplugged),
                 can_make_default: e.state == EndpointStatus::Active
                     && !AudioRoles::DEFAULT_DEVICE.covered_by(e.default_roles),
             }
@@ -1097,6 +1164,39 @@ mod tests {
         assert_eq!(rows[1].status, "A funcionar corretamente");
         assert_eq!(rows[1].driver, "Realtek · 6.0.9 · oem12.inf");
         assert_eq!(summary, "2 dispositivos ligados (1 com problema) · 1 ausentes · Plug and Play");
+    }
+
+    #[test]
+    fn forcing_an_output_turns_off_only_the_other_active_playback_devices() {
+        use bitbybit_audio::profile::{AudioDataFlow as F, EndpointStatus as S};
+        let e = |id: &str, flow, state| AudioEndpoint {
+            id: id.into(),
+            flow,
+            state,
+            friendly_name: Some(id.into()),
+            device_description: None,
+            interface_friendly_name: None,
+            form_factor: None,
+            jack: Default::default(),
+            container_id: None,
+            controller_hardware_id: None,
+            default_roles: AudioRoles::NONE,
+            volume: None,
+            muted: None,
+        };
+        let list = [
+            e("hdmi", F::Render, S::Unplugged),
+            e("speakers", F::Render, S::Active),
+            e("headset", F::Render, S::Disabled),
+            e("mic", F::Capture, S::Active),
+        ];
+        let f = force_output(&list, "hdmi").unwrap();
+        assert_eq!(f.others, [("speakers".to_string(), "speakers".to_string())]);
+        assert!(f.unplugged);
+        let plan = force_plan(&f);
+        assert_eq!(plan.steps.len(), 3, "default, turn off speakers, keep");
+        assert_eq!(plan.warnings.len(), 2, "revert note and unplugged warning");
+        assert!(force_output(&list, "mic").is_none(), "only playback devices");
     }
 
     #[test]

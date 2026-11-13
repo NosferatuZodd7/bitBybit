@@ -32,6 +32,33 @@ pub fn status(ui: &AppWindow, state: i32, message: &str) {
     ui.set_op_message(message.into());
 }
 
+/// Shows `plan` in the confirmation dialog and waits (off the UI thread) for the user's answer; false on timeout.
+pub fn ask(weak: &slint::Weak<AppWindow>, plan: &bitbybit_ipc::plan::OperationPlan) -> bool {
+    let catalog = TextCatalog::default_catalog();
+    let (tx, rx) = mpsc::channel();
+    *PENDING.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(tx);
+    let v = view::plan_view(plan, catalog);
+    let w = weak.clone();
+    let _ = slint::invoke_from_event_loop(move || {
+        let Some(ui) = w.upgrade() else { return answer(false) };
+        ui.set_dialog_summary(v.summary.into());
+        ui.set_dialog_steps(strings(v.steps));
+        ui.set_dialog_warnings(strings(v.warnings));
+        ui.set_dialog_effects(strings(v.effects));
+        ui.set_dialog_risk(v.risk.into());
+        ui.set_dialog_level(v.level);
+        ui.set_dialog_visible(true);
+    });
+    let ok = rx.recv_timeout(Duration::from_secs(600)).unwrap_or(false);
+    let w = weak.clone();
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(ui) = w.upgrade() {
+            ui.set_dialog_visible(false);
+        }
+    });
+    ok
+}
+
 /// Runs `operation`; `done` receives the result on the UI thread.
 pub fn run(
     weak: slint::Weak<AppWindow>,
@@ -47,21 +74,7 @@ pub fn run(
     std::thread::spawn(move || {
         let dialog = weak.clone();
         let confirm = move |plan: &bitbybit_ipc::plan::OperationPlan, _expires: Option<time::OffsetDateTime>| -> bool {
-            let (tx, rx) = mpsc::channel();
-            *PENDING.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(tx);
-            let v = view::plan_view(plan, catalog);
-            let w = dialog.clone();
-            let _ = slint::invoke_from_event_loop(move || {
-                let Some(ui) = w.upgrade() else { return answer(false) };
-                ui.set_dialog_summary(v.summary.into());
-                ui.set_dialog_steps(strings(v.steps));
-                ui.set_dialog_warnings(strings(v.warnings));
-                ui.set_dialog_effects(strings(v.effects));
-                ui.set_dialog_risk(v.risk.into());
-                ui.set_dialog_level(v.level);
-                ui.set_dialog_visible(true);
-            });
-            rx.recv_timeout(Duration::from_secs(600)).unwrap_or(false)
+            ask(&dialog, plan)
         };
         let result = crate::broker::invoke(operation, &params, &confirm);
         let _ = slint::invoke_from_event_loop(move || {

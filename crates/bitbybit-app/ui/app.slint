@@ -55,6 +55,7 @@ export struct AudioRow {
     volume: int,
     muted: bool,
     can-prefer: bool,
+    can-force: bool,
 }
 
 export struct DisplayRow {
@@ -130,6 +131,7 @@ component AudioCard inherits Card {
     callback set-volume(string, float);
     callback set-mute(string, bool);
     callback prefer(string);
+    callback force(string);
     height: layout.preferred-height;
     layout := HorizontalLayout {
         padding: Theme.space-m;
@@ -169,6 +171,11 @@ component AudioCard inherits Card {
             alignment: center;
             horizontal-stretch: 0;
             PillButton { text: Tr.t("app.audio.makeDefault"); kind: 1; clicked => { root.make-default(root.info.id); } }
+        }
+        if root.info.can-force: VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            PillButton { text: Tr.t("app.audio.force"); clicked => { root.force(root.info.id); } }
         }
     }
 }
@@ -522,6 +529,7 @@ export component AppWindow inherits Window {
     callback install-updates();
     callback prefer-endpoint(string);
     callback forget-profile();
+    callback force-output(string);
     in property <string> audio-profile;
     in-out property <int> page: 8;
     in property <[DashTile]> tiles;
@@ -946,6 +954,7 @@ export component AppWindow inherits Window {
                             set-volume(id, v) => { root.set-volume(id, v); }
                             set-mute(id, m) => { root.set-mute(id, m); }
                             prefer(id) => { root.prefer-endpoint(id); }
+                            force(id) => { root.force-output(id); }
                         }
                     }
                 }

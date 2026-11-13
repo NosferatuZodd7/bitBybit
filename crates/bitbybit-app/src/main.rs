@@ -110,6 +110,39 @@ fn main() -> Result<(), slint::PlatformError> {
         let weak = ui.as_weak();
         move |id, muted| audio_setting(weak.clone(), move || audio::set_mute(&id, muted))
     });
+    ui.on_force_output({
+        let weak = ui.as_weak();
+        move |id| {
+            let weak = weak.clone();
+            let id = id.to_string();
+            std::thread::spawn(move || {
+                let catalog = TextCatalog::default_catalog();
+                let plan = audio::endpoints().ok().and_then(|list| view::force_output(&list, &id));
+                let Some(f) = plan else { return };
+                if !ops::ask(&weak, &view::force_plan(&f)) {
+                    return;
+                }
+                let result = audio::force(&f);
+                let w = weak.clone();
+                let _ = slint::invoke_from_event_loop(move || {
+                    let Some(ui) = w.upgrade() else { return };
+                    match result {
+                        Ok(()) => ops::status(
+                            &ui,
+                            2,
+                            &catalog.resolve(&text!(
+                                "app.audio.force.done",
+                                "The sound now goes out through '{0}'. The other outputs are off; revert them in \"Alterações do bitBybit\".",
+                                f.target_name.clone()
+                            )),
+                        ),
+                        Err(problem) => ops::status(&ui, 3, &catalog.resolve(&problem)),
+                    }
+                    load(ui.as_weak());
+                });
+            });
+        }
+    });
     ui.on_prefer_endpoint({
         let weak = ui.as_weak();
         move |id| {
@@ -247,6 +280,7 @@ fn apply_audio(ui: &AppWindow, audio: Result<Vec<AudioEndpoint>, LocalizedText>,
                     can_make_default: r.can_make_default,
                     volume: r.volume,
                     can_prefer: r.can_prefer,
+                    can_force: r.can_force,
                     muted: r.muted,
                 })
                 .collect();
@@ -898,12 +932,13 @@ mod audio {
                 match profiles().load().filter(|p| p.enabled) {
                     None => current = None,
                     Some(p) => {
+                        let roles = p.roles;
                         let r = current.get_or_insert_with(|| Reconciler::new(p));
                         if let Ok(list) = CoreAudio.endpoints() {
                             let now = time::OffsetDateTime::now_utc();
                             let d = r.evaluate(trigger, &list, now, None);
                             if let (DecisionKind::SetDefault, Some(id)) = (d.kind, d.endpoint_id) {
-                                let ok = make_default(&id).is_ok();
+                                let ok = set_default(&id, roles).is_ok();
                                 log::info!("Audio profile applied {id}: verified={ok}");
                                 r.record_applied(&id, now, ok);
                             }
@@ -916,14 +951,44 @@ mod audio {
         });
     }
 
-    pub fn make_default(id: &str) -> Result<(), LocalizedText> {
+    /// Default for every role, the other active outputs turned off (journaled, revertible) and the choice kept by
+    /// the profile watcher. Off the UI thread; the plan was confirmed by the user.
+    pub fn force(f: &crate::view::ForceOutput) -> Result<(), LocalizedText> {
         let journal = JsonLinesJournal::new(AppPaths::from_environment().user_journal_file());
         let failed = |why: String| text!("app.audio.changeFailed", "The audio device could not be changed: {0}", why);
-        match JournaledAudioChanges::new(&CoreAudio, &journal).set_default(
-            id,
-            AudioRoles::DEFAULT_DEVICE,
+        let changes = JournaledAudioChanges::new(&CoreAudio, &journal);
+        let now = time::OffsetDateTime::now_utc();
+        // Turn the others off first: Windows then has no other output to fall back to.
+        for (id, name) in &f.others {
+            match changes.set_enabled(id, false, now) {
+                Ok(true) => {}
+                Ok(false) => return Err(failed(format!("'{name}' did not turn off"))),
+                Err(e) => return Err(failed(e.message)),
+            }
+        }
+        match changes.set_default(&f.target_id, AudioRoles::ALL, now) {
+            Ok(true) => {}
+            Ok(false) => return Err(failed("Windows did not report the new default device".into())),
+            Err(e) => return Err(failed(e.message)),
+        }
+        let endpoint =
+            endpoints()?.into_iter().find(|e| e.id == f.target_id).ok_or_else(|| failed("not found".into()))?;
+        let mut profile = bitbybit_audio::profile::AudioPreferenceProfile::for_display_port(
+            &endpoint,
             time::OffsetDateTime::now_utc(),
-        ) {
+        );
+        profile.roles = AudioRoles::ALL;
+        profiles().save(&profile).map_err(|e| failed(e.message))
+    }
+
+    pub fn make_default(id: &str) -> Result<(), LocalizedText> {
+        set_default(id, AudioRoles::DEFAULT_DEVICE)
+    }
+
+    fn set_default(id: &str, roles: AudioRoles) -> Result<(), LocalizedText> {
+        let journal = JsonLinesJournal::new(AppPaths::from_environment().user_journal_file());
+        let failed = |why: String| text!("app.audio.changeFailed", "The audio device could not be changed: {0}", why);
+        match JournaledAudioChanges::new(&CoreAudio, &journal).set_default(id, roles, time::OffsetDateTime::now_utc()) {
             Ok(true) => Ok(()),
             Ok(false) => Err(failed("Windows did not report the new default device".into())),
             Err(e) => Err(failed(e.message)),
@@ -967,6 +1032,10 @@ mod audio {
 
     pub fn revert(_id: &str) -> Result<bitbybit_journal::ChangeStatus, LocalizedText> {
         Err(text!("app.changes.notActive", "This change is no longer active."))
+    }
+
+    pub fn force(_f: &crate::view::ForceOutput) -> Result<(), LocalizedText> {
+        Err(text!("app.audio.unavailable", "Windows audio is not available: {0}", "Linux".to_owned()))
     }
 
     pub fn make_default(_id: &str) -> Result<(), LocalizedText> {
