@@ -160,10 +160,12 @@ component AudioCard inherits Card {
         Rectangle { }
         if root.info.can-prefer: VerticalLayout {
             alignment: center;
+            horizontal-stretch: 0;
             PillButton { text: Tr.t("app.audio.prefer"); clicked => { root.prefer(root.info.id); } }
         }
         if root.info.can-make-default: VerticalLayout {
             alignment: center;
+            horizontal-stretch: 0;
             PillButton { text: Tr.t("app.audio.makeDefault"); kind: 1; clicked => { root.make-default(root.info.id); } }
         }
     }
@@ -230,6 +232,7 @@ component ChangeCard inherits Card {
         Rectangle { }
         if root.info.can-revert: VerticalLayout {
             alignment: center;
+            horizontal-stretch: 0;
             PillButton { text: Tr.t("app.changes.revert"); clicked => { root.revert(root.info.id); } }
         }
     }
@@ -508,7 +511,7 @@ export component AppWindow inherits Window {
                 spacing: Theme.space-m;
                 PageHeader {
                     title: Tr.t("app.page.dashboard.title");
-                    VerticalLayout { alignment: start; PillButton { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
+                    VerticalLayout { alignment: start; horizontal-stretch: 0; PillButton { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
                 }
                 ScrollView {
                     VerticalLayout {
@@ -538,7 +541,7 @@ export component AppWindow inherits Window {
                 PageHeader {
                     title: Tr.t("app.page.network.title");
                     subtitle: Tr.t("app.network.intro");
-                    VerticalLayout { alignment: start; PillButton { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
+                    VerticalLayout { alignment: start; horizontal-stretch: 0; PillButton { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
                 }
                 ScrollView {
                     VerticalLayout {
@@ -603,7 +606,7 @@ export component AppWindow inherits Window {
                         spacing: Theme.space-s;
                         HorizontalLayout {
                             spacing: Theme.space-s;
-                            SectionTitle { text: Tr.t("app.drivers.chooser") + " " + root.driver-device-name; wrap: word-wrap; }
+                            SectionTitle { text: Tr.t("app.drivers.chooser") + " " + root.driver-device-name; wrap: word-wrap; horizontal-stretch: 1; }
                             PillButton { text: Tr.t("app.drivers.rollback"); clicked => { root.rollback-driver(root.driver-device-id); } }
                             PillButton { text: Tr.t("app.op.dismiss"); kind: 3; clicked => { root.close-drivers(); } }
                         }
@@ -619,7 +622,7 @@ export component AppWindow inherits Window {
                                     Text { text: choice.title + (choice.current ? " · " + Tr.t("app.drivers.current") : ""); font-size: Theme.font-body; font-weight: 600; color: Theme.text; wrap: word-wrap; }
                                     Secondary { text: choice.detail; }
                                 }
-                                if !choice.current: VerticalLayout { alignment: center; PillButton { text: Tr.t("app.drivers.install"); kind: 1; clicked => { root.install-driver(root.driver-device-id, choice.inf); } } }
+                                if !choice.current: VerticalLayout { alignment: center; horizontal-stretch: 0; PillButton { text: Tr.t("app.drivers.install"); kind: 1; clicked => { root.install-driver(root.driver-device-id, choice.inf); } } }
                             }
                         }
                     }
@@ -702,7 +705,7 @@ export component AppWindow inherits Window {
                                     Secondary { text: p.detail; }
                                     if p.used-by != "": Body { text: p.used-by; font-size: Theme.font-caption; }
                                 }
-                                if p.used-by == "": VerticalLayout { alignment: center; PillButton { text: Tr.t("app.store.remove"); kind: 2; clicked => { root.remove-package(p.inf); } } }
+                                if p.used-by == "": VerticalLayout { alignment: center; horizontal-stretch: 0; PillButton { text: Tr.t("app.store.remove"); kind: 2; clicked => { root.remove-package(p.inf); } } }
                             }
                         }
 
@@ -718,7 +721,7 @@ export component AppWindow inherits Window {
                 PageHeader {
                     title: Tr.t("app.page.case.title");
                     subtitle: root.diagnosis-summary;
-                    VerticalLayout { alignment: start; PillButton { text: Tr.t("app.diagnosis.run"); kind: 1; enabled: !root.diagnosis-running; clicked => { root.diagnose(); } } }
+                    VerticalLayout { alignment: start; horizontal-stretch: 0; PillButton { text: Tr.t("app.diagnosis.run"); kind: 1; enabled: !root.diagnosis-running; clicked => { root.diagnose(); } } }
                 }
                 ScrollView {
                     VerticalLayout {
@@ -775,7 +778,7 @@ export component AppWindow inherits Window {
                 PageHeader {
                     title: Tr.t("app.page.displays.title");
                     subtitle: root.displays-summary;
-                    VerticalLayout { alignment: start; PillButton { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
+                    VerticalLayout { alignment: start; horizontal-stretch: 0; PillButton { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
                 }
                 if root.displays.length == 0 && !root.displays-failed: EmptyState { text: Tr.t("app.displays.empty"); }
                 ScrollView {
@@ -793,7 +796,7 @@ export component AppWindow inherits Window {
                 PageHeader {
                     title: Tr.t("app.tab.changes");
                     subtitle: Tr.t("app.changes.intro");
-                    VerticalLayout { alignment: start; PillButton { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
+                    VerticalLayout { alignment: start; horizontal-stretch: 0; PillButton { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } } }
                 }
                 if root.changes-message != "": Body { text: root.changes-message; }
                 if root.changes.length == 0: EmptyState { text: Tr.t("app.changes.empty"); }

@@ -100,7 +100,9 @@ export component PillButton inherits Rectangle {
     property <bool> has-icon: root.icon.width > 0;
     property <color> fg: root.kind == 1 ? Theme.on-accent : root.kind == 2 ? Theme.error : Theme.text;
     height: Theme.control-height;
+    // A button is never wider than its label, whatever layout holds it.
     min-width: row.preferred-width;
+    max-width: row.preferred-width;
     horizontal-stretch: 0;
     vertical-stretch: 0;
     border-radius: self.height / 2;

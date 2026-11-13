@@ -1,7 +1,9 @@
 //! Debug builds only: `BITBYBIT_UI_DEMO=1` fills the pages with FAKE sample rows (and `=dialog` also opens a
 //! high-risk confirmation) so the layout can be checked where no Windows broker exists. Never in release builds.
 
-use crate::ui::{AppWindow, AudioRow, ChangeRow, DeviceRow, DisplayRow, FindingRow, InterfaceRow};
+use crate::ui::{
+    AppWindow, AudioRow, ChangeRow, DeviceRow, DisplayRow, DriverChoice, FindingRow, InterfaceRow, StoreItem,
+};
 use slint::{ModelRc, SharedString, VecModel};
 use std::rc::Rc;
 
@@ -31,6 +33,36 @@ pub fn fill(ui: &AppWindow, dialog: bool) {
         device("Realtek High Definition Audio (demo)", "MEDIA", "A funcionar", false),
         device("Monitor DisplayPort (demo)", "Monitor", "Código 43: o Windows parou o dispositivo", true),
         device("Intel Wi-Fi 6E AX211 (demo)", "Net", "A funcionar", false),
+    ]));
+    ui.set_driver_device_id("gpu".into());
+    ui.set_driver_device_name("Intel(R) HD Graphics (demo)".into());
+    ui.set_driver_choices(model(vec![
+        DriverChoice {
+            inf: "oem14.inf".into(),
+            title: "Intel(R) HD Graphics".into(),
+            detail: "Intel Corporation · 10.18.10.4252 · oem14.inf".into(),
+            current: true,
+        },
+        DriverChoice {
+            inf: "display.inf".into(),
+            title: "Placa Gráfica Básica da Microsoft".into(),
+            detail: "Microsoft · 10.0.19041.3636 · display.inf".into(),
+            current: false,
+        },
+    ]));
+    ui.set_store_items(model(vec![
+        StoreItem {
+            inf: "oem0.inf".into(),
+            title: "Microsoft · Printer (demo)".into(),
+            detail: "oem0.inf · 10.0.19041.3636 · 2006-06-21".into(),
+            used_by: String::new().into(),
+        },
+        StoreItem {
+            inf: "oem2.inf".into(),
+            title: "Linksys, LLC · Net (demo)".into(),
+            detail: "oem2.inf · 6.32.145.11 · 2014-12-31".into(),
+            used_by: "Em uso por: Linksys AE1200".into(),
+        },
     ]));
     ui.set_devices_summary("3 de 212 dispositivos · dados de demonstração".into());
     ui.set_interfaces(model(vec![
