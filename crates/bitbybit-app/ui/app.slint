@@ -79,6 +79,8 @@ export struct CleanupItem { id: string, device: bool, title: string, detail: str
 export struct StoreItem { inf: string, title: string, detail: string, used-by: string }
 export struct UpdateItem { id: string, title: string, detail: string }
 export struct DashTile { title: string, value: string, state: int, page: int }
+// One box of the sharing diagram. kind: 0 Internet carrier, 1 VPN, 2 where it is shared, 3 a device.
+export struct TopoNode { id: string, kind: int, title: string, detail: string, parent: int, x: length, y: length }
 
 export struct ChangeRow {
     id: string,
@@ -311,6 +313,113 @@ component DashTileCard inherits Card {
     }
 }
 
+// The live chain of the active share, as in a CI pipeline view: carrier → (VPN) → hotspot or card → devices.
+// Boxes can be dragged; the links follow.
+component ShareDiagram inherits Rectangle {
+    in property <[TopoNode]> nodes;
+    in property <length> canvas-height;
+    in property <length> canvas-width;
+    callback move(int, length, length);
+    property <length> node-w: 180px;
+    property <length> node-h: 64px;
+    height: max(120px, root.canvas-height);
+    border-radius: Theme.radius-m;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.edge;
+    clip: true;
+    accessible-role: groupbox;
+    accessible-label: Tr.t("app.topo.title");
+    // Wider than the page: a scroll bar (a mouse drag moves boxes, never the canvas).
+    ScrollView {
+        content-width: max(root.width - 2px, root.canvas-width);
+        content-height: root.height - 2px;
+    for n in root.nodes: Path {
+        visible: n.parent >= 0;
+        x: 0;
+        y: 0;
+        width: parent.content-width;
+        height: root.height;
+        viewbox-width: self.width / 1px;
+        viewbox-height: self.height / 1px;
+        stroke: n.kind == 3 ? Theme.text-secondary.with-alpha(0.45) : Theme.accent.with-alpha(0.7);
+        stroke-width: 2px;
+        fill: transparent;
+        MoveTo {
+            x: (root.nodes[n.parent].x + root.node-w) / 1px;
+            y: (root.nodes[n.parent].y + root.node-h / 2) / 1px;
+        }
+        CubicTo {
+            control-1-x: (root.nodes[n.parent].x + root.node-w + 24px) / 1px;
+            control-1-y: (root.nodes[n.parent].y + root.node-h / 2) / 1px;
+            control-2-x: (n.x - 24px) / 1px;
+            control-2-y: (n.y + root.node-h / 2) / 1px;
+            x: n.x / 1px;
+            y: (n.y + root.node-h / 2) / 1px;
+        }
+    }
+    for n[i] in root.nodes: Rectangle {
+        x: n.x;
+        y: n.y;
+        width: root.node-w;
+        height: root.node-h;
+        border-radius: Theme.radius-m;
+        background: drag.pressed ? Theme.surface-hover : Theme.glass-strong;
+        border-width: 1px;
+        border-color: drag.has-hover ? Theme.accent.with-alpha(0.6) : Theme.edge;
+        drop-shadow-color: Theme.shadow;
+        drop-shadow-blur: 12px;
+        drop-shadow-offset-y: 3px;
+        accessible-role: text;
+        accessible-label: n.title + ", " + n.detail;
+        drag := TouchArea {
+            mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+            moved => {
+                if (self.pressed) {
+                    root.move(i, self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                }
+            }
+        }
+        HorizontalLayout {
+            padding: 10px;
+            spacing: 10px;
+            Rectangle {
+                width: 30px;
+                height: 30px;
+                y: (parent.height - self.height) / 2;
+                border-radius: 9px;
+                background: n.kind == 1 ? Theme.ok.with-alpha(0.16) : n.kind == 3 ? Theme.surface-hover : Theme.accent-soft;
+                Icon {
+                    width: 16px;
+                    height: 16px;
+                    tint: n.kind == 1 ? Theme.ok : n.kind == 3 ? Theme.text-secondary : Theme.accent;
+                    source: n.kind == 0 ? @image-url("assets/icons/globe.svg")
+                        : n.kind == 1 ? @image-url("assets/icons/shield-check.svg")
+                        : n.kind == 2 ? @image-url("assets/icons/wifi.svg")
+                        : @image-url("assets/icons/smartphone.svg");
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                HorizontalLayout {
+                    spacing: 6px;
+                    Rectangle {
+                        width: 7px;
+                        height: 7px;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: 4px;
+                        background: Theme.ok;
+                    }
+                    Text { text: n.title; font-size: Theme.font-body; font-weight: 600; color: Theme.text; overflow: elide; }
+                }
+                Text { text: n.detail; font-size: 11px; color: Theme.text-secondary; overflow: elide; }
+            }
+        }
+    }
+    }
+}
+
 // Empty / not-yet states: a quiet card instead of a bare line of text.
 component EmptyState inherits Card {
     in property <string> text;
@@ -382,6 +491,10 @@ export component AppWindow inherits Window {
     in-out property <bool> share-leak;
     in property <bool> share-upstream-vpn;
     in property <string> share-session;
+    in property <[TopoNode]> topo-nodes;
+    in property <length> topo-height;
+    in property <length> topo-width;
+    callback topo-move(int, length, length);
     callback share-upstream-changed();
     callback start-sharing();
     callback stop-sharing();
@@ -585,11 +698,22 @@ export component AppWindow inherits Window {
                                 padding: Theme.space-l;
                                 spacing: Theme.space-s;
                                 SectionTitle { text: Tr.t("app.share.title"); }
-                                if root.share-session != "": HorizontalLayout {
+                                if root.share-session != "": VerticalLayout {
                                     spacing: Theme.space-s;
-                                    VerticalLayout { alignment: center; Badge { text: "●"; tone: 4; } }
-                                    Body { text: Tr.t("app.share.active"); vertical-alignment: center; }
-                                    PillButton { text: Tr.t("app.share.stop"); clicked => { root.stop-sharing(); } }
+                                    HorizontalLayout {
+                                        spacing: Theme.space-s;
+                                        VerticalLayout { alignment: center; horizontal-stretch: 0; Badge { text: "●"; tone: 4; } }
+                                        Body { text: Tr.t("app.share.active"); vertical-alignment: center; }
+                                        PillButton { icon: @image-url("assets/icons/square-pen.svg"); text: Tr.t("app.topo.edit"); clicked => { root.stop-sharing(); } }
+                                        PillButton { icon: @image-url("assets/icons/power.svg"); text: Tr.t("app.share.stop"); kind: 2; clicked => { root.stop-sharing(); } }
+                                    }
+                                    if root.topo-nodes.length > 0: ShareDiagram {
+                                        nodes: root.topo-nodes;
+                                        canvas-height: root.topo-height;
+                                        canvas-width: root.topo-width;
+                                        move(i, dx, dy) => { root.topo-move(i, dx, dy); }
+                                    }
+                                    if root.topo-nodes.length > 0: Secondary { text: Tr.t("app.topo.hint"); }
                                 }
                                 if root.share-session == "": VerticalLayout {
                                     spacing: Theme.space-s;
@@ -749,7 +873,8 @@ export component AppWindow inherits Window {
                         }
 
                         SectionTitle { text: Tr.t("app.page.backups.title"); }
-                        Secondary { text: root.backups-text; }
+                        if root.backups-text != "": Secondary { text: root.backups-text; }
+                        if root.backups-text == "": EmptyState { text: Tr.t("app.page.backups.empty"); }
                     }
                 }
             }

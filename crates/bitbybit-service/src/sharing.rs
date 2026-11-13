@@ -4,7 +4,7 @@
 
 use bitbybit_core::{Error, ErrorCode, Result};
 use bitbybit_journal::ChangeRecord;
-use bitbybit_network::dhcp::{Destination, DhcpServer, PoolConfig};
+use bitbybit_network::dhcp::{Destination, DhcpServer, Lease, PoolConfig};
 use bitbybit_network::dns::{Action, Forwarder};
 use bitbybit_network::session::{SharingBackend, StepAction, StepStates};
 use bitbybit_recovery::{LiveState, RevertHandler};
@@ -32,6 +32,8 @@ impl Running {
 pub struct Hosts {
     dhcp: Mutex<Option<Running>>,
     dns: Mutex<Option<Running>>,
+    /// Leases of the running DHCP server (for the list of connected devices).
+    leases: Arc<Mutex<Vec<Lease>>>,
     /// Ports, so tests can avoid the privileged 67/53.
     pub dhcp_port: u16,
     pub dns_port: u16,
@@ -50,6 +52,10 @@ impl Hosts {
         lock(&self.dhcp).as_ref().is_some_and(|r| !r.thread.is_finished())
     }
 
+    pub fn leases(&self) -> Vec<Lease> {
+        lock(&self.leases).clone()
+    }
+
     pub fn dns_running(&self) -> bool {
         lock(&self.dns).as_ref().is_some_and(|r| !r.thread.is_finished())
     }
@@ -64,12 +70,16 @@ impl Hosts {
         socket.set_read_timeout(Some(Duration::from_millis(300)))?;
         let stop = Arc::new(AtomicBool::new(false));
         let flag = stop.clone();
+        let shared = self.leases.clone();
+        lock(&shared).clear();
         let thread = std::thread::spawn(move || {
             let mut server = DhcpServer::new(pool, vec![]);
             let mut buf = [0u8; 1500];
             while !flag.load(Ordering::SeqCst) {
                 let Ok((n, _)) = socket.recv_from(&mut buf) else { continue };
-                if let Some(reply) = server.handle(&buf[..n], OffsetDateTime::now_utc()) {
+                let reply = server.handle(&buf[..n], OffsetDateTime::now_utc());
+                *lock(&shared) = server.leases().cloned().collect();
+                if let Some(reply) = reply {
                     let to = match reply.destination {
                         Destination::Broadcast => Ipv4Addr::BROADCAST,
                         Destination::Unicast(ip) => ip,

@@ -220,6 +220,7 @@ fn load(weak: slint::Weak<AppWindow>) {
                         &ui,
                         view::share_choices(&data.network, catalog),
                         view::active_sharing_session(&changes),
+                        Some(data.network.clone()),
                     );
                 }
                 Err(problem) => {
@@ -752,6 +753,11 @@ mod broker {
         Ok(list.devices)
     }
 
+    /// The active share and the devices on it (read-only).
+    pub fn share_status() -> bitbybit_core::Result<crate::view::ShareStatus> {
+        broker()?.call("sharing.status", &serde_json::json!({}), None)
+    }
+
     /// One operation; `confirm` is shown any plan the broker returns.
     pub fn invoke(
         operation: &str,
@@ -772,6 +778,10 @@ mod broker {
 
     pub fn devices() -> bitbybit_core::Result<Vec<DeviceSummary>> {
         Ok(vec![])
+    }
+
+    pub fn share_status() -> bitbybit_core::Result<crate::view::ShareStatus> {
+        Ok(crate::view::ShareStatus::default())
     }
 
     pub fn invoke(

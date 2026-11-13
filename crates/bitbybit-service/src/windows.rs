@@ -86,6 +86,7 @@ pub fn setup(paths: &AppPaths) -> Setup {
             use bitbybit_platform_windows::net::ap;
             ap::preferred(ap::capabilities())
         }),
+        neighbors: Arc::new(|| bitbybit_platform_windows::net::inventory::neighbors().unwrap_or_default()),
         hosts: hosts.clone(),
         revert_handlers,
         tools: Arc::new(SystemToolRunner),

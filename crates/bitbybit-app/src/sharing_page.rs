@@ -9,12 +9,69 @@ use crate::view::{ShareChoice, ShareChoices};
 use bitbybit_core::text;
 use bitbybit_localization::TextCatalog;
 use bitbybit_network::session::{HotspotSettings, Passphrase};
-use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use std::cell::RefCell;
 use std::rc::Rc;
 
 thread_local! {
     static CHOICES: RefCell<ShareChoices> = RefCell::new(ShareChoices::default());
+    static OVERVIEW: RefCell<Option<bitbybit_network::overview::NetworkOverview>> = const { RefCell::new(None) };
+    /// Where the user dragged each box (by node id), kept across refreshes.
+    static OFFSETS: RefCell<std::collections::HashMap<String, (f32, f32)>> = RefCell::new(Default::default());
+    static NODE_IDS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    static TIMER: slint::Timer = slint::Timer::default();
+}
+
+/// Diagram grid (logical pixels).
+const COL_W: f32 = 212.0;
+const NODE_W: f32 = 180.0;
+const ROW_H: f32 = 84.0;
+const NODE_H: f32 = 64.0;
+
+/// Shows the diagram rows: grid position plus the user's drag offset.
+pub fn apply_topology(ui: &AppWindow, nodes: &[crate::view::TopoNode]) {
+    let rows: Vec<crate::ui::TopoNode> = OFFSETS.with(|o| {
+        let o = o.borrow();
+        nodes
+            .iter()
+            .map(|n| {
+                let (dx, dy) = o.get(&n.id).copied().unwrap_or_default();
+                crate::ui::TopoNode {
+                    id: n.id.clone().into(),
+                    kind: n.kind,
+                    title: n.title.clone().into(),
+                    detail: n.detail.clone().into(),
+                    parent: n.parent,
+                    x: (16.0 + n.col as f32 * COL_W + dx).max(0.0),
+                    y: (16.0 + n.row as f32 * ROW_H + dy).max(0.0),
+                }
+            })
+            .collect()
+    });
+    let height = rows.iter().map(|r| r.y).fold(0.0, f32::max) + NODE_H + 32.0;
+    let width = rows.iter().map(|r| r.x).fold(0.0, f32::max) + NODE_W + 32.0;
+    ui.set_topo_height(height);
+    ui.set_topo_width(width);
+    NODE_IDS.with(|ids| *ids.borrow_mut() = nodes.iter().map(|n| n.id.clone()).collect());
+    ui.set_topo_nodes(ModelRc::from(Rc::new(VecModel::from(rows))));
+}
+
+/// Reads the active share and its devices off the UI thread and redraws the diagram.
+fn refresh_status(weak: slint::Weak<AppWindow>) {
+    std::thread::spawn(move || {
+        let status = crate::broker::share_status();
+        let _ = slint::invoke_from_event_loop(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let Ok(status) = status else { return };
+            let nodes = OVERVIEW.with(|o| {
+                o.borrow().as_ref().map(|o| crate::view::topology(o, &status, TextCatalog::default_catalog()))
+            });
+            // No network read yet: nothing to draw the chain from.
+            if let Some(nodes) = nodes {
+                apply_topology(&ui, &nodes);
+            }
+        });
+    });
 }
 
 fn labels(list: &[ShareChoice]) -> ModelRc<SharedString> {
@@ -23,7 +80,28 @@ fn labels(list: &[ShareChoice]) -> ModelRc<SharedString> {
     )))
 }
 
-pub fn show(ui: &AppWindow, choices: ShareChoices, session: Option<uuid::Uuid>) {
+pub fn show(
+    ui: &AppWindow,
+    choices: ShareChoices,
+    session: Option<uuid::Uuid>,
+    overview: Option<bitbybit_network::overview::NetworkOverview>,
+) {
+    if overview.is_some() {
+        OVERVIEW.with(|o| *o.borrow_mut() = overview);
+    }
+    // While a share is active, the diagram follows the devices joining and leaving (every 5 s).
+    let weak = ui.as_weak();
+    TIMER.with(|t| {
+        if session.is_some() {
+            refresh_status(weak.clone());
+            t.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(5), move || {
+                refresh_status(weak.clone())
+            });
+        } else {
+            t.stop();
+            apply_topology(ui, &[]);
+        }
+    });
     ui.set_share_labels(labels(&choices.sources));
     ui.set_share_target_labels(labels(&choices.targets));
     ui.set_share_has_wifi(choices.wifi);
@@ -55,6 +133,26 @@ fn upstream_changed(ui: &AppWindow) {
 }
 
 pub fn wire(ui: &AppWindow) {
+    let weak = ui.as_weak();
+    ui.on_topo_move(move |i, dx, dy| {
+        let Some(ui) = weak.upgrade() else { return };
+        let model = ui.get_topo_nodes();
+        let Some(mut row) = model.row_data(i as usize) else { return };
+        row.x = (row.x + dx).max(0.0);
+        row.y = (row.y + dy).max(0.0);
+        // The canvas grows with the boxes.
+        ui.set_topo_height(ui.get_topo_height().max(row.y + NODE_H + 32.0));
+        ui.set_topo_width(ui.get_topo_width().max(row.x + NODE_W + 32.0));
+        model.set_row_data(i as usize, row);
+        if let Some(id) = NODE_IDS.with(|ids| ids.borrow().get(i as usize).cloned()) {
+            OFFSETS.with(|o| {
+                let mut o = o.borrow_mut();
+                let e = o.entry(id).or_default();
+                e.0 += dx;
+                e.1 += dy;
+            });
+        }
+    });
     let weak = ui.as_weak();
     ui.on_share_upstream_changed(move || {
         if let Some(ui) = weak.upgrade() {

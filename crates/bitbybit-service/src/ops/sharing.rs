@@ -7,7 +7,8 @@ use bitbybit_core::{Error, ErrorCode, LocalizedText, Result, RiskLevel, text};
 use bitbybit_ipc::operation::{BrokerOperation, CallContext, Category, Descriptor, RiskTier};
 use bitbybit_ipc::plan::OperationPlan;
 use bitbybit_journal::Journal;
-use bitbybit_network::classify::{Classification, classify};
+use bitbybit_network::classify::{Classification, InterfaceKind, classify};
+use bitbybit_network::clients::{Client, NeighborEntry};
 use bitbybit_network::dhcp::PoolConfig;
 use bitbybit_network::leak::{self, LeakGuardInput};
 use bitbybit_network::prefix::IpPrefix;
@@ -27,6 +28,12 @@ pub struct SharingContext {
     pub network: Arc<dyn NetworkInventory>,
     /// Access points of bitBybit's own this PC's Wi-Fi driver may offer, best first (probed each time).
     pub access_points: Arc<dyn Fn() -> Vec<ApProvider> + Send + Sync>,
+    /// The IPv4 neighbour (ARP) table, for the devices on the shared network.
+    pub neighbors: Arc<dyn Fn() -> Vec<NeighborEntry> + Send + Sync>,
+    /// DHCP leases of the session's server.
+    pub hosts: Arc<crate::sharing::Hosts>,
+    /// The share this service started (gone after a restart: start-up recovery reverts dead sessions).
+    pub active: Arc<std::sync::Mutex<Option<ActiveShare>>>,
     pub backend: Arc<dyn SharingBackend>,
     pub handlers: Vec<Arc<dyn RevertHandler>>,
     pub journal: Arc<dyn Journal>,
@@ -280,6 +287,18 @@ impl BrokerOperation for StartOperation {
         }
         let (steps, lan, _) = build(&self.1, r)?;
         let session_id = sessions.start(&steps, now).map_err(|f| failure(&f))?;
+        set_active(
+            &self.1,
+            Some(ActiveShare {
+                session_id,
+                upstream_luid: r.upstream_luid,
+                downstream_luid: r.downstream_luid,
+                lan: lan.to_string(),
+                mode: "adapter".into(),
+                ssid: None,
+                leak_protection: r.leak_protection,
+            }),
+        );
         Ok(Started { session_id, lan: lan.to_string() })
     }
 }
@@ -399,17 +418,28 @@ fn start_hotspot(
             }
         };
         // The network behind the AP; any failure from here rolls the whole session back (AP included).
-        let lan = ap_interface(context)
-            .and_then(|downstream| {
-                let request = StartRequest { downstream_luid: downstream, ..r.clone() };
-                build_lan(context, &request, downstream, None)
-            })
-            .and_then(|(steps, lan, _)| {
-                sessions.extend(session, &steps, now).map_err(|f| failure(&f))?;
-                Ok(lan)
-            });
+        let lan = ap_interface(context).and_then(|downstream| {
+            let request = StartRequest { downstream_luid: downstream, ..r.clone() };
+            let (steps, lan, _) = build_lan(context, &request, downstream, None)?;
+            sessions.extend(session, &steps, now).map_err(|f| failure(&f))?;
+            Ok((lan, downstream))
+        });
         return match lan {
-            Ok(lan) => Ok(Started { session_id: session, lan: lan.to_string() }),
+            Ok((lan, downstream)) => {
+                set_active(
+                    context,
+                    Some(ActiveShare {
+                        session_id: session,
+                        upstream_luid: r.upstream_luid,
+                        downstream_luid: downstream,
+                        lan: lan.to_string(),
+                        mode: "accessPoint".into(),
+                        ssid: Some(hotspot.ssid.clone()),
+                        leak_protection: r.leak_protection,
+                    }),
+                );
+                Ok(Started { session_id: session, lan: lan.to_string() })
+            }
             Err(e) => {
                 let _ = sessions.stop(session);
                 Err(e)
@@ -422,9 +452,94 @@ fn start_hotspot(
             "This Wi-Fi card offers no access point bitBybit can run itself, so leak protection is not possible; the Windows Mobile Hotspot cannot block traffic when the VPN drops."
         )));
     }
+    let ssid = hotspot.ssid.clone();
     let steps = windows_hotspot(r, hotspot);
     let session_id = sessions.start(&steps, now).map_err(|f| failure(&f))?;
+    set_active(
+        context,
+        Some(ActiveShare {
+            session_id,
+            upstream_luid: r.upstream_luid,
+            downstream_luid: 0,
+            lan: WINDOWS_HOTSPOT_LAN.to_string(),
+            mode: "windowsHotspot".into(),
+            ssid: Some(ssid),
+            leak_protection: false,
+        }),
+    );
     Ok(Started { session_id, lan: WINDOWS_HOTSPOT_LAN.to_string() })
+}
+
+/// What is being shared right now: the diagram's chain.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveShare {
+    pub session_id: uuid::Uuid,
+    pub upstream_luid: u64,
+    /// Interface the devices are on (0: the Windows Mobile Hotspot's, found when asked).
+    pub downstream_luid: u64,
+    pub lan: String,
+    /// "accessPoint" (bitBybit's own AP), "windowsHotspot" or "adapter".
+    pub mode: String,
+    pub ssid: Option<String>,
+    pub leak_protection: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareStatus {
+    pub active: Option<ActiveShare>,
+    pub clients: Vec<Client>,
+}
+
+fn set_active(context: &SharingContext, share: Option<ActiveShare>) {
+    *context.active.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = share;
+}
+
+/// `sharing.status`: the active share and the devices on it (our DHCP leases + the neighbour table). Read-only.
+pub struct StatusOperation(Descriptor, SharingContext);
+
+impl StatusOperation {
+    pub fn new(context: SharingContext) -> Self {
+        Self(
+            Descriptor {
+                name: "sharing.status",
+                tier: RiskTier::ReadOnly,
+                category: Category::NONE,
+                requires_confirmation: false,
+                timeout: Some(Duration::from_secs(30)),
+            },
+            context,
+        )
+    }
+}
+
+impl BrokerOperation for StatusOperation {
+    type Request = crate::NoParameters;
+    type Response = ShareStatus;
+    fn descriptor(&self) -> &Descriptor {
+        &self.0
+    }
+    fn validate(&self, _: &Self::Request) -> Result<()> {
+        Ok(())
+    }
+    fn execute(&self, _: &Self::Request, _: &CallContext) -> Result<ShareStatus> {
+        let active = self.1.active.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+        let Some(share) = active else { return Ok(ShareStatus { active: None, clients: Vec::new() }) };
+        let mut downstream = share.downstream_luid;
+        if downstream == 0 {
+            let snapshot = self.1.network.collect()?;
+            downstream = snapshot
+                .interfaces
+                .iter()
+                .find(|i| classify(i, snapshot.ras_connection(i)).kind == InterfaceKind::WifiDirectVirtual)
+                .map_or(0, |i| i.luid);
+        }
+        let lan = IpPrefix::parse(&share.lan, true).unwrap_or(WINDOWS_HOTSPOT_LAN);
+        let clients =
+            bitbybit_network::clients::merge(lan, downstream, &self.1.hosts.leases(), &(self.1.neighbors)(), &[]);
+        Ok(ShareStatus { active: Some(share), clients })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -468,6 +583,11 @@ impl BrokerOperation for StopOperation {
     fn execute(&self, r: &StopRequest, _: &CallContext) -> Result<Stopped> {
         let handlers: Vec<&dyn RevertHandler> =
             self.1.handlers.iter().map(|h| h.as_ref() as &dyn RevertHandler).collect();
-        Ok(Stopped { reverted: self.1.sessions(&handlers).stop(r.session_id)?.len() })
+        let reverted = self.1.sessions(&handlers).stop(r.session_id)?.len();
+        let mut active = self.1.active.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if active.as_ref().is_some_and(|a| a.session_id == r.session_id) {
+            *active = None;
+        }
+        Ok(Stopped { reverted })
     }
 }

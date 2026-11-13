@@ -129,8 +129,31 @@ pub fn fill(ui: &AppWindow, mode: &str) {
             targets: vec![choice(1, "Ethernet (demo)", false), choice(2, "Ethernet 2 (não ligada) (demo)", false)],
             wifi: true,
         },
+        if mode == "share" { uuid::Uuid::from_u128(1).into() } else { None },
         None,
     );
+    if mode == "share" {
+        let node = |id: &str, kind, title: &str, detail: &str, parent, col, row| crate::view::TopoNode {
+            id: id.into(),
+            kind,
+            title: title.into(),
+            detail: detail.into(),
+            parent,
+            col,
+            row,
+        };
+        crate::sharing_page::apply_topology(
+            ui,
+            &[
+                node("e", 0, "Ethernet (demo)", "Ethernet (física)", -1, 0, 0),
+                node("v", 1, "WireGuard (demo)", "VPN · proteção contra fugas", 0, 1, 0),
+                node("s", 2, "Casa-bitBybit", "Hotspot Wi-Fi · ponto de acesso bitBybit · 192.168.50.0/24", 1, 2, 0),
+                node("a", 3, "telemovel-ana", "192.168.50.10 · 3A:1F:…", 2, 3, 0),
+                node("b", 3, "portatil-escola", "192.168.50.11 · 9C:B6:…", 2, 3, 1),
+                node("c", 3, "Dispositivo", "192.168.50.12 · F0:18:…", 2, 3, 2),
+            ],
+        );
+    }
     if mode == "update" {
         ui.set_update_version("0.7.0-dev.36 (demo)".into());
         ui.set_update_notes("Hotspot Wi-Fi com nome e palavra-passe editáveis.\nBotões já não esticam.".into());

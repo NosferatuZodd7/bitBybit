@@ -149,6 +149,8 @@ pub struct Platform {
     pub sharing_handlers: Vec<Arc<dyn RevertHandler>>,
     /// Access points of bitBybit's own the Wi-Fi driver offers, best first (Windows: `net::ap`).
     pub access_points: Arc<dyn Fn() -> Vec<bitbybit_network::session::ApProvider> + Send + Sync>,
+    /// The IPv4 neighbour table (Windows: IP Helper `GetIpNetTable2`).
+    pub neighbors: Arc<dyn Fn() -> Vec<bitbybit_network::clients::NeighborEntry> + Send + Sync>,
     pub hosts: Arc<sharing::Hosts>,
     /// Every machine revert handler (devices, drivers, policy, firewall…) for `journal.revert`; the sharing
     /// handlers above are added automatically.
@@ -188,6 +190,9 @@ pub fn build_dispatcher(
     let sharing_context = ops::sharing::SharingContext {
         network: platform.network.clone(),
         access_points: platform.access_points.clone(),
+        neighbors: platform.neighbors.clone(),
+        hosts: platform.hosts.clone(),
+        active: Arc::default(),
         backend: Arc::new(sharing::ServiceSharing {
             platform: platform.sharing_backend.clone(),
             hosts: platform.hosts.clone(),
@@ -219,6 +224,7 @@ pub fn build_dispatcher(
         .register(ops::drivers::DenyInstallOperation::new(platform.deny_policy, deny_journal))?
         .register(ops::audio::RestartAudioServicesOperation::new(platform.audio_services))?
         .register(ops::sharing::StartOperation::new(sharing_context.clone()))?
+        .register(ops::sharing::StatusOperation::new(sharing_context.clone()))?
         .register(ops::sharing::StopOperation::new(sharing_context))?
         .register(ops::journal::RevertOperation::new(revert_journal, revert_handlers))?
         .freeze();
@@ -383,6 +389,7 @@ mod tests {
             sharing_backend: Arc::new(NoSharing),
             sharing_handlers: vec![],
             access_points: Arc::new(Vec::new),
+            neighbors: Arc::new(Vec::new),
             hosts: Arc::new(sharing::Hosts::new()),
             revert_handlers: vec![],
             tools: Arc::new(NoTools),
@@ -441,6 +448,7 @@ mod tests {
                 "journal.revert",
                 "network.overview",
                 "sharing.start",
+                "sharing.status",
                 "sharing.stop"
             ]
         );

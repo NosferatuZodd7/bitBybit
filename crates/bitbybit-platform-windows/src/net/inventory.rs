@@ -305,3 +305,37 @@ pub fn collect() -> Result<NetworkSnapshot> {
         limitations: vec![],
     })
 }
+
+/// IPv4 neighbour (ARP) table: who answered on each interface (devices on a shared network). Read-only.
+pub fn neighbors() -> Result<Vec<bitbybit_network::clients::NeighborEntry>> {
+    use bitbybit_network::clients::{NeighborEntry, NeighborState};
+    use windows::Win32::NetworkManagement::IpHelper::{GetIpNetTable2, MIB_IPNET_TABLE2};
+    let mut table: *mut MIB_IPNET_TABLE2 = std::ptr::null_mut();
+    // SAFETY: out-pointer to a local; freed by MibTable.
+    check(unsafe { GetIpNetTable2(AF_INET, &mut table) }, "GetIpNetTable2")?;
+    let _guard = MibTable(table);
+    // SAFETY: on success the table holds NumEntries contiguous rows.
+    let rows = unsafe { std::slice::from_raw_parts((*table).Table.as_ptr(), (*table).NumEntries as usize) };
+    Ok(rows
+        .iter()
+        .filter_map(|r| {
+            // SAFETY: IPv4 table, plain unions.
+            let (ip, luid) = unsafe { (r.Address.Ipv4.sin_addr.S_un.S_addr, r.InterfaceLuid.Value) };
+            let len = (r.PhysicalAddressLength as usize).min(r.PhysicalAddress.len());
+            (len == 6).then(|| NeighborEntry {
+                ip: IpAddr::V4(Ipv4Addr::from(ip.to_ne_bytes())),
+                mac: r.PhysicalAddress[..6].iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(":"),
+                interface_luid: luid,
+                state: match r.State.0 {
+                    0 => NeighborState::Unreachable,
+                    1 => NeighborState::Incomplete,
+                    2 => NeighborState::Probe,
+                    3 => NeighborState::Delay,
+                    4 => NeighborState::Stale,
+                    5 => NeighborState::Reachable,
+                    _ => NeighborState::Permanent,
+                },
+            })
+        })
+        .collect())
+}

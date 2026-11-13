@@ -645,6 +645,111 @@ pub fn share_choices(o: &NetworkOverview, catalog: &TextCatalog) -> ShareChoices
     }
 }
 
+/// `sharing.status` as the app reads it (mirrors the service's JSON).
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareStatus {
+    pub active: Option<ActiveShare>,
+    #[serde(default)]
+    pub clients: Vec<bitbybit_network::clients::Client>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveShare {
+    pub session_id: String,
+    pub upstream_luid: u64,
+    pub downstream_luid: u64,
+    pub lan: String,
+    pub mode: String,
+    pub ssid: Option<String>,
+    #[serde(default)]
+    pub leak_protection: bool,
+}
+
+/// One box of the sharing diagram. kind: 0 Internet carrier, 1 VPN, 2 where it is shared, 3 a device.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TopoNode {
+    pub id: String,
+    pub kind: i32,
+    pub title: String,
+    pub detail: String,
+    /// Index of the box it hangs from (-1: none).
+    pub parent: i32,
+    pub col: i32,
+    pub row: i32,
+}
+
+/// The chain of the active share: carrier → (VPN) → hotspot or card → devices.
+pub fn topology(o: &NetworkOverview, status: &ShareStatus, catalog: &TextCatalog) -> Vec<TopoNode> {
+    let Some(share) = &status.active else { return Vec::new() };
+    let r = |t: bitbybit_core::LocalizedText| catalog.resolve(&t);
+    let pairs = || o.snapshot.interfaces.iter().zip(&o.classifications);
+    let source = pairs().find(|(i, _)| i.luid == share.upstream_luid);
+    let mut nodes = Vec::new();
+    let mut push = |kind, id: String, title: String, detail: String| {
+        let parent = nodes.len() as i32 - 1;
+        let col = nodes.len() as i32;
+        nodes.push(TopoNode { id, kind, title, detail, parent, col, row: 0 });
+    };
+    match source {
+        Some((i, c)) if c.is_vpn() => {
+            // The physical card that carries the tunnel: the one with a default route of its own.
+            let carrier = pairs().find(|(p, k)| {
+                p.is_up()
+                    && !k.is_vpn()
+                    && p.luid != share.downstream_luid
+                    && matches!(
+                        k.kind,
+                        InterfaceKind::PhysicalEthernet | InterfaceKind::PhysicalWifi | InterfaceKind::PhysicalOther
+                    )
+                    && o.snapshot.routes.iter().any(|rt| rt.interface_luid == p.luid && rt.destination.is_default())
+            });
+            if let Some((p, k)) = carrier {
+                push(0, format!("if:{}", p.luid), p.alias.clone(), r(k.kind.text()));
+            }
+            let detail = if share.leak_protection {
+                r(text!("app.topo.vpnGuarded", "VPN · leak protection on"))
+            } else {
+                r(text!("app.topo.vpn", "VPN"))
+            };
+            push(1, format!("if:{}", i.luid), i.alias.clone(), detail);
+        }
+        Some((i, c)) => push(0, format!("if:{}", i.luid), i.alias.clone(), r(c.kind.text())),
+        None => push(0, "source".into(), r(text!("app.topo.source", "Internet")), String::new()),
+    }
+    let (title, mode) = match share.mode.as_str() {
+        "accessPoint" => (
+            share.ssid.clone().unwrap_or_default(),
+            r(text!("app.topo.ownAp", "Wi-Fi hotspot · bitBybit access point")),
+        ),
+        "windowsHotspot" => (
+            share.ssid.clone().unwrap_or_default(),
+            r(text!("app.topo.windowsHotspot", "Wi-Fi hotspot · Windows Mobile Hotspot")),
+        ),
+        _ => (
+            pairs().find(|(i, _)| i.luid == share.downstream_luid).map(|(i, _)| i.alias.clone()).unwrap_or_default(),
+            r(text!("app.topo.adapter", "Network card")),
+        ),
+    };
+    push(2, "share".into(), title, format!("{mode} · {}", share.lan));
+    let hub = nodes.len() as i32 - 1;
+    let col = nodes.len() as i32;
+    for (row, c) in status.clients.iter().enumerate() {
+        let ip = c.ip.map(|ip| ip.to_string()).unwrap_or_default();
+        nodes.push(TopoNode {
+            id: format!("mac:{}", c.mac),
+            kind: 3,
+            title: c.host_name.clone().unwrap_or_else(|| r(text!("app.topo.device", "Device"))),
+            detail: [ip, c.mac.clone()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · "),
+            parent: hub,
+            col,
+            row: row as i32,
+        });
+    }
+    nodes
+}
+
 /// The newest sharing session still active in the machine journal.
 pub fn active_sharing_session(changes: &[ReportedChange]) -> Option<uuid::Uuid> {
     changes
@@ -844,6 +949,37 @@ mod tests {
         assert_eq!(c.sources.iter().map(|x| x.label.as_str()).collect::<Vec<_>>(), ["Ethernet"]);
         assert_eq!(c.targets.iter().map(|x| x.label.as_str()).collect::<Vec<_>>(), ["Ethernet"]);
         assert!(c.wifi, "a Wi-Fi card that is not connected still allows the hotspot");
+    }
+
+    #[test]
+    fn the_diagram_chains_the_carrier_the_share_and_its_devices() {
+        let o = overview();
+        let status = ShareStatus {
+            active: Some(ActiveShare {
+                session_id: "s".into(),
+                upstream_luid: 2,
+                downstream_luid: 1,
+                lan: "192.168.50.0/24".into(),
+                mode: "accessPoint".into(),
+                ssid: Some("Casa".into()),
+                leak_protection: false,
+            }),
+            clients: vec![bitbybit_network::clients::Client {
+                mac: "AA:BB:CC:00:00:01".into(),
+                ip: Some("192.168.50.10".parse().unwrap()),
+                host_name: Some("telemovel".into()),
+                state: bitbybit_network::clients::ClientState::Active,
+                from_lease: true,
+                from_neighbors: false,
+                from_hotspot: false,
+            }],
+        };
+        let nodes = topology(&o, &status, TextCatalog::default_catalog());
+        let titles: Vec<&str> = nodes.iter().map(|n| n.title.as_str()).collect();
+        assert_eq!(titles, ["Ethernet", "Casa", "telemovel"]);
+        assert_eq!(nodes.iter().map(|n| n.parent).collect::<Vec<_>>(), [-1, 0, 1]);
+        assert_eq!(nodes[2].detail, "192.168.50.10 · AA:BB:CC:00:00:01");
+        assert!(topology(&o, &ShareStatus::default(), TextCatalog::default_catalog()).is_empty());
     }
 
     #[test]
