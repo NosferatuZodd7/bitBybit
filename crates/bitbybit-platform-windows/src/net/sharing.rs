@@ -231,32 +231,65 @@ mod nat {
 
 mod hotspot {
     use super::*;
-    use windows::Networking::Connectivity::NetworkInformation;
+    use windows::Networking::Connectivity::{ConnectionProfile, NetworkInformation};
     use windows::Networking::NetworkOperators::{
         NetworkOperatorTetheringManager, TetheringOperationStatus, TetheringOperationalState,
     };
+    use windows::Win32::NetworkManagement::IpHelper::ConvertInterfaceLuidToGuid;
+    use windows::core::{GUID, HSTRING};
 
-    fn manager() -> Result<NetworkOperatorTetheringManager> {
-        let profile = NetworkInformation::GetInternetConnectionProfile()
-            .map_err(|_| Error::new(ErrorCode::PreconditionFailed, "There is no Internet connection to share."))?;
+    fn failed(e: &windows::core::Error) -> Error {
+        Error::platform(e.message(), e.code().0)
+    }
+
+    /// The connection profile of the interface `luid` (Ethernet, Wi-Fi or VPN), if Windows has one for it.
+    fn profile_of(luid: u64) -> Option<ConnectionProfile> {
+        let mut guid = GUID::zeroed();
+        // SAFETY: plain value in, one GUID out.
+        unsafe { ConvertInterfaceLuidToGuid(&NET_LUID_LH { Value: luid }, &mut guid) }.ok().ok()?;
+        let profiles = NetworkInformation::GetConnectionProfiles().ok()?;
+        (0..profiles.Size().ok()?)
+            .filter_map(|i| profiles.GetAt(i).ok())
+            .find(|p| p.NetworkAdapter().and_then(|a| a.NetworkAdapterId()).is_ok_and(|id| id == guid))
+    }
+
+    /// Tethering manager sharing `source` (0 or no profile of its own: the current Internet connection).
+    fn manager(source: u64) -> Result<NetworkOperatorTetheringManager> {
+        let profile = match (source != 0).then(|| profile_of(source)).flatten() {
+            Some(p) => p,
+            None => NetworkInformation::GetInternetConnectionProfile()
+                .map_err(|_| Error::new(ErrorCode::PreconditionFailed, "There is no Internet connection to share."))?,
+        };
         NetworkOperatorTetheringManager::CreateFromConnectionProfile(&profile)
             .map_err(|e| Error::platform(format!("Mobile Hotspot unavailable: {}", e.message()), e.code().0))
     }
 
-    pub fn is_on() -> Result<bool> {
-        Ok(manager()?.TetheringOperationalState().map_err(|e| Error::platform(e.message(), e.code().0))?
-            == TetheringOperationalState::On)
+    pub fn is_on(source: u64) -> Result<bool> {
+        Ok(manager(source)?.TetheringOperationalState().map_err(|e| failed(&e))? == TetheringOperationalState::On)
     }
 
-    pub fn set(on: bool) -> Result<()> {
-        let m = manager()?;
-        let op = if on { m.StartTetheringAsync() } else { m.StopTetheringAsync() }
-            .map_err(|e| Error::platform(e.message(), e.code().0))?;
-        let result = op.join().map_err(|e| Error::platform(e.message(), e.code().0))?;
+    /// Name and passphrase of the hotspot (the user's Windows setting; nothing is logged).
+    pub fn configure(source: u64, ssid: &str, passphrase: &str) -> Result<()> {
+        let m = manager(source)?;
+        let config = m.GetCurrentAccessPointConfiguration().map_err(|e| failed(&e))?;
+        config.SetSsid(&HSTRING::from(ssid)).map_err(|e| failed(&e))?;
+        config.SetPassphrase(&HSTRING::from(passphrase)).map_err(|e| failed(&e))?;
+        m.ConfigureAccessPointAsync(&config).map_err(|e| failed(&e))?.join().map_err(|e| failed(&e))
+    }
+
+    pub fn ssid(source: u64) -> Result<String> {
+        let config = manager(source)?.GetCurrentAccessPointConfiguration().map_err(|e| failed(&e))?;
+        Ok(config.Ssid().map_err(|e| failed(&e))?.to_string())
+    }
+
+    pub fn set(source: u64, on: bool) -> Result<()> {
+        let m = manager(source)?;
+        let op = if on { m.StartTetheringAsync() } else { m.StopTetheringAsync() }.map_err(|e| failed(&e))?;
+        let result = op.join().map_err(|e| failed(&e))?;
         match result.Status() {
             Ok(TetheringOperationStatus::Success) => Ok(()),
             Ok(status) => Err(Error::platform(format!("Mobile Hotspot refused ({})", status.0), status.0)),
-            Err(e) => Err(Error::platform(e.message(), e.code().0)),
+            Err(e) => Err(failed(&e)),
         }
     }
 }
@@ -267,6 +300,9 @@ mod hotspot {
 #[serde(rename_all = "camelCase")]
 struct Hotspot {
     was_on: bool,
+    /// Interface whose connection was shared (0 in records written before this field).
+    #[serde(default)]
+    source_luid: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -302,8 +338,9 @@ pub struct WindowsSharing;
 impl SharingBackend for WindowsSharing {
     fn prepare(&self, step: &StepAction) -> Result<StepStates> {
         Ok(match step {
-            StepAction::StartHotspot => {
-                StepStates { previous: json(&Hotspot { was_on: hotspot::is_on()? })?, applied: None }
+            StepAction::StartHotspot { source_luid, .. } => {
+                let state = Hotspot { was_on: hotspot::is_on(*source_luid)?, source_luid: *source_luid };
+                StepStates { previous: json(&state)?, applied: None }
             }
             StepAction::SetLanAddress { luid, address, prefix_len } => {
                 let state = LanAddress {
@@ -359,12 +396,13 @@ impl SharingBackend for WindowsSharing {
 
     fn apply(&self, step: &StepAction) -> Result<()> {
         match step {
-            StepAction::StartHotspot => {
-                if hotspot::is_on()? {
-                    Ok(())
-                } else {
-                    hotspot::set(true)
+            StepAction::StartHotspot { source_luid, ssid, passphrase } => {
+                // Restart so the new name, password and source take effect.
+                if hotspot::is_on(*source_luid)? {
+                    hotspot::set(*source_luid, false)?;
                 }
+                hotspot::configure(*source_luid, ssid, &passphrase.0)?;
+                hotspot::set(*source_luid, true)
             }
             StepAction::SetLanAddress { luid, address, prefix_len } => {
                 if address_present(*luid, *address) {
@@ -384,7 +422,9 @@ impl SharingBackend for WindowsSharing {
 
     fn verify(&self, step: &StepAction) -> Result<bool> {
         Ok(match step {
-            StepAction::StartHotspot => hotspot::is_on()?,
+            StepAction::StartHotspot { source_luid, ssid, .. } => {
+                hotspot::is_on(*source_luid)? && hotspot::ssid(*source_luid)? == *ssid
+            }
             StepAction::SetLanAddress { luid, address, .. } => address_present(*luid, *address),
             StepAction::EnableForwarding { luids } => luids.iter().all(|l| forwarding(*l).unwrap_or(false)),
             StepAction::CreateNat { name, .. } => nat::exists(name)?,
@@ -404,15 +444,16 @@ impl RevertHandler for HotspotRevert {
     }
     fn compare(&self, record: &ChangeRecord) -> Result<LiveState> {
         let Some(before) = read::<Hotspot>(record.previous_state.as_deref()) else { return Ok(LiveState::Unknown) };
-        Ok(match hotspot::is_on() {
+        Ok(match hotspot::is_on(before.source_luid) {
             _ if before.was_on => LiveState::Gone, // it was on before bitBybit: leave it on
             Ok(true) => LiveState::MatchesApplied,
             Ok(false) => LiveState::Gone,
             Err(_) => LiveState::Unknown,
         })
     }
-    fn revert(&self, _: &ChangeRecord) -> Result<()> {
-        hotspot::set(false)
+    fn revert(&self, record: &ChangeRecord) -> Result<()> {
+        let source = read::<Hotspot>(record.previous_state.as_deref()).map_or(0, |h| h.source_luid);
+        hotspot::set(source, false)
     }
 }
 

@@ -19,11 +19,51 @@ use std::net::{Ipv4Addr, SocketAddr};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+/// A Wi-Fi hotspot passphrase: never serialized (journal, plan, logs) and never printed.
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct Passphrase(pub String);
+
+impl std::fmt::Debug for Passphrase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Passphrase(***)")
+    }
+}
+
+/// Name and passphrase of the Windows Mobile Hotspot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HotspotSettings {
+    pub ssid: String,
+    pub passphrase: Passphrase,
+}
+
+impl HotspotSettings {
+    /// Wi-Fi limits: SSID 1–32 bytes without control characters; WPA2 passphrase 8–63 printable ASCII.
+    pub fn validate(&self) -> Result<()> {
+        let ssid_ok = !self.ssid.trim().is_empty() && self.ssid.len() <= 32 && !self.ssid.chars().any(char::is_control);
+        let pass = &self.passphrase.0;
+        let pass_ok = (8..=63).contains(&pass.len()) && pass.bytes().all(|b| (0x20..0x7f).contains(&b));
+        match (ssid_ok, pass_ok) {
+            (true, true) => Ok(()),
+            (false, _) => Err(Error::invalid("The hotspot name must have 1 to 32 characters.")),
+            (_, false) => {
+                Err(Error::invalid("The hotspot password must have 8 to 63 characters (letters, digits, symbols)."))
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum StepAction {
-    /// Mobile Hotspot (tethering manager); the platform records whether it was already on.
-    StartHotspot,
+    /// Windows Mobile Hotspot sharing the connection of `source_luid` under the given name and passphrase. Windows
+    /// does the sharing itself (its own addresses and DHCP); the platform records whether it was already on. The
+    /// name and passphrase are the user's Windows hotspot settings: applied, not reverted (no secret is journaled).
+    StartHotspot {
+        source_luid: u64,
+        ssid: String,
+        #[serde(skip)]
+        passphrase: Passphrase,
+    },
     /// Static address on the downstream interface (previous addresses journaled).
     SetLanAddress {
         luid: u64,
@@ -63,7 +103,7 @@ pub enum StepAction {
 impl StepAction {
     pub fn target_kind(&self) -> &'static str {
         match self {
-            Self::StartHotspot => "sharing.hotspot",
+            Self::StartHotspot { .. } => "sharing.hotspot",
             Self::SetLanAddress { .. } => "sharing.lanAddress",
             Self::InstallLeakGuard { .. } => "sharing.leakGuard",
             Self::AddFirewallRules { .. } => "sharing.firewallRules",
@@ -115,7 +155,8 @@ pub enum SharingMode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlanInput {
     pub mode: SharingMode,
-    pub use_hotspot: bool,
+    /// Hotspot mode: Windows Mobile Hotspot shares the upstream; no LAN steps of ours.
+    pub hotspot: Option<HotspotSettings>,
     pub upstream_luid: u64,
     pub downstream_luid: u64,
     pub lan: IpPrefix,
@@ -129,10 +170,14 @@ pub struct PlanInput {
 
 /// Ordered steps. Leak guard first among the traffic-affecting steps; forwarding/NAT/ICS last.
 pub fn build_plan(input: &PlanInput) -> Vec<StepAction> {
-    let mut steps = Vec::new();
-    if input.use_hotspot {
-        steps.push(StepAction::StartHotspot);
+    if let Some(h) = &input.hotspot {
+        return vec![StepAction::StartHotspot {
+            source_luid: input.upstream_luid,
+            ssid: h.ssid.clone(),
+            passphrase: h.passphrase.clone(),
+        }];
     }
+    let mut steps = Vec::new();
     if let Some(filters) = &input.leak_filters {
         steps.push(StepAction::InstallLeakGuard { filters: filters.clone() });
     }
@@ -320,7 +365,7 @@ mod tests {
         let lan = IpPrefix::parse("192.168.137.0/24", true).unwrap();
         PlanInput {
             mode,
-            use_hotspot: true,
+            hotspot: None,
             upstream_luid: 1,
             downstream_luid: 2,
             lan,
@@ -357,10 +402,7 @@ mod tests {
         assert!(at("sharing.leakGuard") < at("sharing.forwarding") && at("sharing.forwarding") < at("sharing.nat"));
         assert!(matches!(steps.last(), Some(StepAction::CreateNat { name, .. }) if name == "bitBybit-share"));
         let ics = build_plan(&input(SharingMode::Ics));
-        assert_eq!(
-            ics.iter().map(StepAction::target_kind).collect::<Vec<_>>(),
-            ["sharing.hotspot", "sharing.leakGuard", "sharing.ics"]
-        );
+        assert_eq!(ics.iter().map(StepAction::target_kind).collect::<Vec<_>>(), ["sharing.leakGuard", "sharing.ics"]);
     }
 
     #[test]
@@ -393,7 +435,11 @@ mod tests {
             let l = log(fake);
             let first_revert = l.iter().position(|e| e.starts_with("revert")).unwrap();
             assert_eq!(l[first_revert], "revert sharing.forwarding", "the partially applied step is examined first");
-            assert_eq!(l.last().map(String::as_str), Some("revert sharing.hotspot"));
+            assert_eq!(
+                l.last().map(String::as_str),
+                Some("revert sharing.leakGuard"),
+                "the first step is reverted last"
+            );
             assert!(!l.contains(&"apply sharing.nat".to_string()));
             assert!(journal.active().unwrap().is_empty());
         });
@@ -419,7 +465,33 @@ mod tests {
                 Some(ChangeStatus::DriftDetected)
             );
             assert!(!log(fake).contains(&"revert sharing.nat".to_string()));
-            assert!(log(fake).contains(&"revert sharing.hotspot".to_string()));
+            assert!(log(fake).contains(&"revert sharing.forwarding".to_string()));
         });
+    }
+
+    fn hotspot(ssid: &str, pass: &str) -> HotspotSettings {
+        HotspotSettings { ssid: ssid.into(), passphrase: Passphrase(pass.into()) }
+    }
+
+    #[test]
+    fn hotspot_mode_is_only_the_windows_hotspot_and_never_serializes_the_passphrase() {
+        let steps =
+            build_plan(&PlanInput { hotspot: Some(hotspot("Casa", "segredo123")), ..input(SharingMode::WinNat) });
+        assert_eq!(steps.len(), 1, "Windows shares the connection itself: no LAN steps of ours");
+        assert!(matches!(&steps[0], StepAction::StartHotspot { source_luid: 1, ssid, .. } if ssid == "Casa"));
+        let json = serde_json::to_string(&steps[0]).unwrap();
+        assert!(!json.contains("segredo123"), "{json}");
+        assert!(!format!("{:?}", steps[0]).contains("segredo123"));
+    }
+
+    #[test]
+    fn hotspot_settings_follow_wifi_limits() {
+        assert!(hotspot("Casa", "12345678").validate().is_ok());
+        assert!(hotspot("", "12345678").validate().is_err());
+        assert!(hotspot(&"x".repeat(33), "12345678").validate().is_err());
+        assert!(hotspot("Casa", "1234567").validate().is_err());
+        assert!(hotspot("Casa", &"x".repeat(64)).validate().is_err());
+        assert!(hotspot("Casa", "palavra-passe\n").validate().is_err());
+        assert!(hotspot("Casa\u{7}", "12345678").validate().is_err());
     }
 }

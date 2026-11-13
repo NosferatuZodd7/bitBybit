@@ -609,15 +609,40 @@ pub struct ShareChoice {
     pub vpn: bool,
 }
 
-/// Interfaces that are up and not technical (loopback, WAN miniports, IPv6 transition tunnels).
-pub fn share_choices(o: &NetworkOverview) -> Vec<ShareChoice> {
-    o.snapshot
-        .interfaces
-        .iter()
-        .zip(&o.classifications)
-        .filter(|(i, c)| i.is_up() && !hidden(c.kind))
-        .map(|(i, c)| ShareChoice { luid: i.luid, label: i.alias.clone(), vpn: c.is_vpn() })
-        .collect()
+/// What the sharing panel offers.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ShareChoices {
+    /// Internet sources: interfaces that are up and not technical (Ethernet, Wi-Fi, VPN, …).
+    pub sources: Vec<ShareChoice>,
+    /// Wired cards the connection can be shared on, connected or not. Wi-Fi goes through the hotspot mode (a Wi-Fi
+    /// card in client mode cannot take clients).
+    pub targets: Vec<ShareChoice>,
+    /// A Wi-Fi card exists, so the Windows Mobile Hotspot can be offered.
+    pub wifi: bool,
+}
+
+pub fn share_choices(o: &NetworkOverview, catalog: &TextCatalog) -> ShareChoices {
+    let pairs = || o.snapshot.interfaces.iter().zip(&o.classifications);
+    let physical = |k: InterfaceKind| matches!(k, InterfaceKind::PhysicalEthernet | InterfaceKind::PhysicalOther);
+    ShareChoices {
+        sources: pairs()
+            .filter(|(i, c)| i.is_up() && !hidden(c.kind))
+            .map(|(i, c)| ShareChoice { luid: i.luid, label: i.alias.clone(), vpn: c.is_vpn() })
+            .collect(),
+        targets: pairs()
+            .filter(|(_, c)| physical(c.kind))
+            .map(|(i, c)| ShareChoice {
+                luid: i.luid,
+                label: if i.is_up() {
+                    i.alias.clone()
+                } else {
+                    catalog.resolve(&text!("app.share.notConnected", "{0} (not connected)", i.alias.clone()))
+                },
+                vpn: c.is_vpn(),
+            })
+            .collect(),
+        wifi: pairs().any(|(_, c)| c.kind == InterfaceKind::PhysicalWifi),
+    }
 }
 
 /// The newest sharing session still active in the machine journal.
@@ -807,6 +832,18 @@ mod tests {
         assert_eq!(rows[1].addresses, "Sem endereço");
         assert_eq!(route_summary(&overview(), catalog), "O tráfego IPv4 para a Internet sai por «Ethernet».");
         assert!(hidden_text(1, catalog).starts_with("1 interfaces técnicas"));
+    }
+
+    #[test]
+    fn sharing_offers_connected_sources_cable_targets_and_the_hotspot_for_a_disconnected_wifi_card() {
+        let mut snapshot = overview().snapshot;
+        for i in snapshot.interfaces.iter_mut().filter(|i| i.alias != "Loopback Pseudo-Interface 1") {
+            i.flags = bitbybit_network::model::InterfaceFlags(bitbybit_network::model::InterfaceFlags::HARDWARE);
+        }
+        let c = share_choices(&NetworkOverview::of(snapshot), TextCatalog::default_catalog());
+        assert_eq!(c.sources.iter().map(|x| x.label.as_str()).collect::<Vec<_>>(), ["Ethernet"]);
+        assert_eq!(c.targets.iter().map(|x| x.label.as_str()).collect::<Vec<_>>(), ["Ethernet"]);
+        assert!(c.wifi, "a Wi-Fi card that is not connected still allows the hotspot");
     }
 
     #[test]

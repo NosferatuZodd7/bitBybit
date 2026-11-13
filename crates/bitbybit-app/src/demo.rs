@@ -1,5 +1,5 @@
 //! Debug builds only: `BITBYBIT_UI_DEMO=1` fills the pages with FAKE sample rows (and `=dialog` also opens a
-//! high-risk confirmation) so the layout can be checked where no Windows broker exists. Never in release builds.
+//! high-risk confirmation; `=adapter` shows the sharing panel in adapter mode) so the layout can be checked where no Windows broker exists. Never in release builds.
 
 use crate::ui::{
     AppWindow, AudioRow, ChangeRow, DeviceRow, DisplayRow, DriverChoice, FindingRow, InterfaceRow, StoreItem,
@@ -15,7 +15,8 @@ fn strings(items: &[&str]) -> ModelRc<SharedString> {
     model(items.iter().map(|s| SharedString::from(*s)).collect())
 }
 
-pub fn fill(ui: &AppWindow, dialog: bool) {
+pub fn fill(ui: &AppWindow, mode: &str) {
+    let dialog = mode == "dialog";
     let device = |name: &str, class: &str, status: &str, problem: bool| DeviceRow {
         id: name.into(),
         name: name.into(),
@@ -120,6 +121,19 @@ pub fn fill(ui: &AppWindow, dialog: bool) {
         scope: "Máquina".into(),
         can_revert: true,
     }]));
+    let choice = |luid: u64, label: &str, vpn: bool| crate::view::ShareChoice { luid, label: label.into(), vpn };
+    crate::sharing_page::show(
+        ui,
+        crate::view::ShareChoices {
+            sources: vec![choice(1, "Ethernet (demo)", false), choice(3, "WireGuard (demo)", true)],
+            targets: vec![choice(1, "Ethernet (demo)", false), choice(2, "Ethernet 2 (não ligada) (demo)", false)],
+            wifi: true,
+        },
+        None,
+    );
+    if mode == "adapter" {
+        ui.set_share_mode(1);
+    }
     if dialog {
         ui.set_dialog_summary("Desinstalar o dispositivo Monitor DisplayPort (demo)".into());
         ui.set_dialog_risk("Alto".into());

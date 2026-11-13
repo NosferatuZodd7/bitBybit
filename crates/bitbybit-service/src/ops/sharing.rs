@@ -11,7 +11,9 @@ use bitbybit_network::classify::{Classification, classify};
 use bitbybit_network::dhcp::PoolConfig;
 use bitbybit_network::leak::{self, LeakGuardInput};
 use bitbybit_network::prefix::IpPrefix;
-use bitbybit_network::session::{PlanInput, SharingBackend, SharingMode, SharingSessions, StepAction, build_plan};
+use bitbybit_network::session::{
+    HotspotSettings, Passphrase, PlanInput, SharingBackend, SharingMode, SharingSessions, StepAction, build_plan,
+};
 use bitbybit_network::topology::{self, IssueSeverity, SharingPlanInput};
 use bitbybit_recovery::RevertHandler;
 use serde::{Deserialize, Serialize};
@@ -37,12 +39,28 @@ impl SharingContext {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StartRequest {
     pub upstream_luid: u64,
+    /// Adapter mode: the interface the connection is shared on (unused in hotspot mode).
+    #[serde(default)]
     pub downstream_luid: u64,
-    /// e.g. "192.168.137.0/24"; none = the first free subnet.
+    /// e.g. "192.168.137.0/24"; none = the first free subnet (adapter mode).
     pub lan: Option<String>,
-    pub use_hotspot: bool,
-    /// Only for a VPN upstream: shared traffic may leave only through the VPN (WFP, fail closed).
+    /// Hotspot mode: the Windows Mobile Hotspot shares the upstream under this name and password.
+    #[serde(default)]
+    pub hotspot_name: Option<String>,
+    /// Never logged (the audit masks it) nor journaled.
+    #[serde(default)]
+    pub hotspot_passphrase: Option<String>,
+    /// Only for a VPN upstream in adapter mode: shared traffic may leave only through the VPN (WFP, fail closed).
     pub leak_protection: bool,
+}
+
+impl StartRequest {
+    fn hotspot(&self) -> Option<HotspotSettings> {
+        self.hotspot_name.as_ref().map(|ssid| HotspotSettings {
+            ssid: ssid.clone(),
+            passphrase: Passphrase(self.hotspot_passphrase.clone().unwrap_or_default()),
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,7 +72,9 @@ pub struct Started {
 
 fn step_text(step: &StepAction) -> LocalizedText {
     match step {
-        StepAction::StartHotspot => text!("sharing.step.hotspot", "Turn on the Mobile Hotspot"),
+        StepAction::StartHotspot { ssid, .. } => {
+            text!("sharing.step.hotspot", "Turn on the Wi-Fi hotspot \"{0}\" (Windows Mobile Hotspot)", ssid.clone())
+        }
         StepAction::SetLanAddress { address, prefix_len, .. } => {
             text!(
                 "sharing.step.lanAddress",
@@ -92,11 +112,43 @@ fn step_text(step: &StepAction) -> LocalizedText {
     }
 }
 
+/// The fixed subnet Windows gives its Mobile Hotspot (it brings its own DHCP and NAT).
+const WINDOWS_HOTSPOT_LAN: IpPrefix = IpPrefix::v4_const([192, 168, 137, 0], 24);
+
 /// Steps from the live state; refusals carry the reason shown to the user.
 fn build(context: &SharingContext, r: &StartRequest) -> Result<(Vec<StepAction>, IpPrefix, Vec<LocalizedText>)> {
     let snapshot = context.network.collect()?;
     let classifications: Vec<Classification> =
         snapshot.interfaces.iter().map(|i| classify(i, snapshot.ras_connection(i))).collect();
+    if let Some(hotspot) = r.hotspot() {
+        let upstream =
+            snapshot.interface(r.upstream_luid).ok_or_else(|| Error::not_found("Internet source not found."))?;
+        let vpn =
+            classifications.iter().find(|c| c.interface_luid == r.upstream_luid).is_some_and(Classification::is_vpn);
+        let mut warnings = vec![text!(
+            "sharing.hotspot.keepsSettings",
+            "The name and password become the Windows Mobile Hotspot settings; stopping turns the hotspot off and keeps them."
+        )];
+        if vpn {
+            warnings.push(text!(
+                "sharing.hotspot.noLeakGuard",
+                "Leak protection is not available with the hotspot: if the VPN drops, devices on the hotspot use the normal connection."
+            ));
+        }
+        let steps = build_plan(&PlanInput {
+            mode: SharingMode::WinNat,
+            hotspot: Some(hotspot),
+            upstream_luid: upstream.luid,
+            downstream_luid: 0,
+            lan: WINDOWS_HOTSPOT_LAN,
+            gateway: std::net::Ipv4Addr::new(192, 168, 137, 1),
+            pool: None,
+            dns_upstreams: Vec::new(),
+            firewall_rules: Vec::new(),
+            leak_filters: None,
+        });
+        return Ok((steps, WINDOWS_HOTSPOT_LAN, warnings));
+    }
     let routes = bitbybit_network::routes::analyze(&snapshot, &classifications);
     let lan = match &r.lan {
         Some(text) => Some(IpPrefix::parse(text, true).ok_or_else(|| Error::invalid("Invalid LAN subnet."))?),
@@ -142,7 +194,7 @@ fn build(context: &SharingContext, r: &StartRequest) -> Result<(Vec<StepAction>,
         upstream.dns_servers.iter().map(|ip: &IpAddr| SocketAddr::new(*ip, 53)).collect();
     let steps = build_plan(&PlanInput {
         mode: SharingMode::WinNat,
-        use_hotspot: r.use_hotspot,
+        hotspot: None,
         upstream_luid: r.upstream_luid,
         downstream_luid: r.downstream_luid,
         lan,
@@ -180,6 +232,18 @@ impl BrokerOperation for StartOperation {
         &self.0
     }
     fn validate(&self, r: &StartRequest) -> Result<()> {
+        if let Some(hotspot) = r.hotspot() {
+            if r.upstream_luid == 0 {
+                return Err(Error::invalid("Choose the Internet source."));
+            }
+            if r.leak_protection {
+                return Err(Error::invalid("Leak protection is not available with the hotspot."));
+            }
+            return hotspot.validate();
+        }
+        if r.hotspot_passphrase.is_some() {
+            return Err(Error::invalid("A hotspot password needs a hotspot name."));
+        }
         if r.upstream_luid == 0 || r.downstream_luid == 0 || r.upstream_luid == r.downstream_luid {
             return Err(Error::invalid("Choose two different interfaces."));
         }
@@ -190,11 +254,15 @@ impl BrokerOperation for StartOperation {
     }
     fn plan(&self, r: &StartRequest, _: &CallContext) -> Result<Option<OperationPlan>> {
         let (steps, lan, warnings) = build(&self.1, r)?;
-        let mut plan = OperationPlan::new(
-            text!("sharing.plan.summary", "Share the Internet connection on the network {0}", lan.to_string()),
-            steps.iter().map(step_text).collect(),
-            RiskLevel::Medium,
-        );
+        let summary = match &r.hotspot_name {
+            Some(name) => text!(
+                "sharing.plan.hotspotSummary",
+                "Share the Internet connection through the Wi-Fi hotspot \"{0}\"",
+                name.clone()
+            ),
+            None => text!("sharing.plan.summary", "Share the Internet connection on the network {0}", lan.to_string()),
+        };
+        let mut plan = OperationPlan::new(summary, steps.iter().map(step_text).collect(), RiskLevel::Medium);
         plan.may_interrupt_connectivity = true;
         plan.warnings = warnings;
         Ok(Some(plan))

@@ -157,7 +157,7 @@ fn main() -> Result<(), slint::PlatformError> {
         // After the first (failing) broker read has emptied the lists.
         slint::Timer::single_shot(std::time::Duration::from_millis(1500), move || {
             if let Some(ui) = weak.upgrade() {
-                demo::fill(&ui, mode == "dialog");
+                demo::fill(&ui, &mode);
             }
         });
     }
@@ -205,7 +205,11 @@ fn load(weak: slint::Weak<AppWindow>) {
             match result {
                 Ok(data) => {
                     apply(&ui, &data, catalog);
-                    sharing_page::show(&ui, view::share_choices(&data.network), view::active_sharing_session(&changes));
+                    sharing_page::show(
+                        &ui,
+                        view::share_choices(&data.network, catalog),
+                        view::active_sharing_session(&changes),
+                    );
                 }
                 Err(problem) => {
                     ui.set_broker_state(2);

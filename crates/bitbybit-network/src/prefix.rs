@@ -73,6 +73,11 @@ impl IpPrefix {
     pub const DEFAULT_V6: Self = Self { network: IpAddr::V6(Ipv6Addr::UNSPECIFIED), len: 0 };
 
     /// Host bits are cleared. `None` when the length is too long for the family.
+    /// A fixed IPv4 network for constants; `octets` must already be the network address and `len` ≤ 32.
+    pub const fn v4_const(octets: [u8; 4], len: u8) -> Self {
+        Self { network: IpAddr::V4(std::net::Ipv4Addr::new(octets[0], octets[1], octets[2], octets[3])), len }
+    }
+
     pub fn new(address: IpAddr, len: u8) -> Option<Self> {
         let bits = bits_of(address);
         (len <= bits).then(|| Self { network: from_u128(to_u128(address) & mask(len, bits), address.is_ipv4()), len })

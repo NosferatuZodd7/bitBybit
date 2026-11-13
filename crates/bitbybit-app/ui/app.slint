@@ -371,9 +371,14 @@ export component AppWindow inherits Window {
     in property <string> backups-text;
     in property <[string]> share-labels;
     in-out property <int> share-upstream;
-    in-out property <int> share-downstream: 1;
+    in property <[string]> share-target-labels;
+    in-out property <int> share-downstream;
     in-out property <string> share-lan;
-    in-out property <bool> share-hotspot;
+    // 0 Wi-Fi hotspot (Windows Mobile Hotspot), 1 another network card.
+    in-out property <int> share-mode;
+    in property <bool> share-has-wifi: true;
+    in-out property <string> share-name: "bitBybit";
+    in-out property <string> share-password;
     in-out property <bool> share-leak;
     in property <bool> share-upstream-vpn;
     in property <string> share-session;
@@ -564,12 +569,23 @@ export component AppWindow inherits Window {
                                 }
                                 if root.share-session == "": VerticalLayout {
                                     spacing: Theme.space-s;
+                                    HorizontalLayout {
+                                        alignment: start;
+                                        Segmented {
+                                            items: [Tr.t("app.share.mode.hotspot"), Tr.t("app.share.mode.adapter")];
+                                            selected <=> root.share-mode;
+                                        }
+                                    }
+                                    Secondary { text: root.share-mode == 0 ? Tr.t("app.share.modeHint.hotspot") : Tr.t("app.share.modeHint.adapter"); }
+                                    if root.share-mode == 0 && !root.share-has-wifi: StatusBanner { kind: 3; message: Tr.t("app.share.noWifi"); }
                                     FieldRow { label: Tr.t("app.share.from"); ComboBox { model: root.share-labels; current-index <=> root.share-upstream; selected => { root.share-upstream-changed(); } } }
-                                    FieldRow { label: Tr.t("app.share.to"); ComboBox { model: root.share-labels; current-index <=> root.share-downstream; } }
-                                    FieldRow { label: Tr.t("app.share.subnet"); LineEdit { placeholder-text: Tr.t("app.share.subnetAuto"); text <=> root.share-lan; } }
-                                    Switch { text: Tr.t("app.share.hotspot"); checked <=> root.share-hotspot; }
-                                    Switch { text: Tr.t("app.share.leak"); checked <=> root.share-leak; enabled: root.share-upstream-vpn; }
-                                    if root.share-upstream-vpn && !root.share-leak: StatusBanner { kind: 3; message: Tr.t("app.share.leakOff"); }
+                                    if root.share-mode == 0: FieldRow { label: Tr.t("app.share.name"); LineEdit { text <=> root.share-name; } }
+                                    if root.share-mode == 0: FieldRow { label: Tr.t("app.share.password"); LineEdit { input-type: password; placeholder-text: Tr.t("app.share.passwordHint"); text <=> root.share-password; } }
+                                    if root.share-mode == 0 && root.share-upstream-vpn: StatusBanner { kind: 3; message: Tr.t("app.share.hotspotNoLeak"); }
+                                    if root.share-mode == 1: FieldRow { label: Tr.t("app.share.to"); ComboBox { model: root.share-target-labels; current-index <=> root.share-downstream; } }
+                                    if root.share-mode == 1: FieldRow { label: Tr.t("app.share.subnet"); LineEdit { placeholder-text: Tr.t("app.share.subnetAuto"); text <=> root.share-lan; } }
+                                    if root.share-mode == 1: Switch { text: Tr.t("app.share.leak"); checked <=> root.share-leak; enabled: root.share-upstream-vpn; }
+                                    if root.share-mode == 1 && root.share-upstream-vpn && !root.share-leak: StatusBanner { kind: 3; message: Tr.t("app.share.leakOff"); }
                                     HorizontalLayout {
                                         alignment: start;
                                         PillButton { text: Tr.t("app.share.start"); kind: 1; clicked => { root.start-sharing(); } }
