@@ -162,6 +162,13 @@ pub fn fill(ui: &AppWindow, mode: &str) {
         ui.set_app_update_state(2);
         ui.set_update_dialog_visible(true);
     }
+    if mode == "newcard" {
+        ui.set_new_card_text("Nova placa de rede detetada: «Wi-Fi 2 (Linksys AE1200)» (demo).".into());
+        ui.set_share_suggestion(
+            "A Internet entra por «Ethernet (demo)». Pode partilhá-la por Wi-Fi com a placa «Wi-Fi 2 (Linksys AE1200)» (hotspot)."
+                .into(),
+        );
+    }
     if mode == "adapter" {
         ui.set_share_mode(1);
     }

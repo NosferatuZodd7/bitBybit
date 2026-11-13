@@ -20,6 +20,50 @@ thread_local! {
     static OFFSETS: RefCell<std::collections::HashMap<String, (f32, f32)>> = RefCell::new(Default::default());
     static NODE_IDS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     static TIMER: slint::Timer = slint::Timer::default();
+    static WATCH: slint::Timer = slint::Timer::default();
+    /// Physical cards seen so far (`None` until the first read, so start-up raises no alert).
+    static CARDS: RefCell<Option<std::collections::HashSet<u64>>> = const { RefCell::new(None) };
+    static SUGGESTION: RefCell<Option<crate::view::ShareSuggestion>> = const { RefCell::new(None) };
+    /// The form was filled from a suggestion once (later reloads keep the user's choices).
+    static SUGGESTED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Fills the form from the suggestion (never starts anything).
+fn apply_suggestion(ui: &AppWindow) {
+    let Some(sug) = SUGGESTION.with(|s| s.borrow().clone()) else { return };
+    ui.set_share_upstream(sug.source as i32);
+    ui.set_share_mode(if sug.hotspot { 0 } else { 1 });
+    if let Some(t) = sug.target {
+        ui.set_share_downstream(t as i32);
+    }
+    upstream_changed(ui);
+}
+
+/// Notices network cards being plugged in or removed (every 8 s) and reloads; a new card raises the banner.
+fn watch_cards(weak: slint::Weak<AppWindow>) {
+    std::thread::spawn(move || {
+        let Ok(o) = crate::broker::network() else { return };
+        let cards = crate::view::physical_cards(&o);
+        let _ = slint::invoke_from_event_loop(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let now: std::collections::HashSet<u64> = cards.iter().map(|c| c.0).collect();
+            let before = CARDS.with(|k| k.borrow_mut().replace(now.clone()));
+            let Some(before) = before else { return };
+            if before == now {
+                return;
+            }
+            if let Some((_, alias)) = cards.iter().find(|c| !before.contains(&c.0)) {
+                let text = TextCatalog::default_catalog().resolve(&text!(
+                    "app.share.newCard",
+                    "New network card found: '{0}'.",
+                    alias.clone()
+                ));
+                ui.set_new_card_text(text.into());
+                SUGGESTED.with(|s| s.set(false));
+            }
+            crate::reload(ui.as_weak());
+        });
+    });
 }
 
 /// Diagram grid (logical pixels).
@@ -102,6 +146,11 @@ pub fn show(
             apply_topology(ui, &[]);
         }
     });
+    let suggestion = OVERVIEW.with(|o| {
+        o.borrow().as_ref().and_then(|o| crate::view::share_suggestion(o, &choices, TextCatalog::default_catalog()))
+    });
+    ui.set_share_suggestion(suggestion.as_ref().map(|s| s.text.clone()).unwrap_or_default().into());
+    SUGGESTION.with(|s| *s.borrow_mut() = suggestion);
     ui.set_share_labels(labels(&choices.sources));
     ui.set_share_target_labels(labels(&choices.targets));
     ui.set_share_has_wifi(choices.wifi);
@@ -110,6 +159,9 @@ pub fn show(
     }
     CHOICES.with(|c| *c.borrow_mut() = choices);
     ui.set_share_session(session.map(|s| s.to_string()).unwrap_or_default().into());
+    if !SUGGESTED.with(|s| s.replace(true)) {
+        apply_suggestion(ui);
+    }
     upstream_changed(ui);
 }
 
@@ -133,6 +185,18 @@ fn upstream_changed(ui: &AppWindow) {
 }
 
 pub fn wire(ui: &AppWindow) {
+    let weak = ui.as_weak();
+    ui.on_use_suggestion(move || {
+        if let Some(ui) = weak.upgrade() {
+            ui.set_new_card_text("".into());
+            ui.set_page(0);
+            apply_suggestion(&ui);
+        }
+    });
+    let weak = ui.as_weak();
+    WATCH.with(|t| {
+        t.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(8), move || watch_cards(weak.clone()))
+    });
     let weak = ui.as_weak();
     ui.on_topo_move(move |i, dx, dy| {
         let Some(ui) = weak.upgrade() else { return };

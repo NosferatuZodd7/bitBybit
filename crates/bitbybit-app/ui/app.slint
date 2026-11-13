@@ -491,6 +491,10 @@ export component AppWindow inherits Window {
     in-out property <bool> share-leak;
     in property <bool> share-upstream-vpn;
     in property <string> share-session;
+    // Proposal from the cards present (Internet source and how to share it) and the "new card" alert.
+    in property <string> share-suggestion;
+    in-out property <string> new-card-text;
+    callback use-suggestion();
     in property <[TopoNode]> topo-nodes;
     in property <length> topo-height;
     in property <length> topo-width;
@@ -641,6 +645,12 @@ export component AppWindow inherits Window {
             padding-top: Theme.space-m;
             spacing: Theme.space-m;
             StatusBanner { kind: root.broker-state == 2 ? 2 : (root.broker-state == 1 ? 1 : 0); message: root.broker-message; }
+            if root.new-card-text != "": StatusBanner {
+                kind: 1;
+                message: root.new-card-text;
+                PillButton { icon: @image-url("assets/icons/wifi.svg"); text: Tr.t("app.share.shareThroughIt"); kind: 1; clicked => { root.use-suggestion(); } }
+                PillButton { text: Tr.t("app.op.dismiss"); kind: 3; clicked => { root.new-card-text = ""; } }
+            }
             if root.op-state != 0: StatusBanner {
                 kind: root.op-state == 3 ? 2 : (root.op-state == 2 ? 1 : 0);
                 message: root.op-message;
@@ -717,6 +727,11 @@ export component AppWindow inherits Window {
                                 }
                                 if root.share-session == "": VerticalLayout {
                                     spacing: Theme.space-s;
+                                    if root.share-suggestion != "": StatusBanner {
+                                        kind: 0;
+                                        message: root.share-suggestion;
+                                        PillButton { text: Tr.t("app.share.useSuggestion"); clicked => { root.use-suggestion(); } }
+                                    }
                                     HorizontalLayout {
                                         alignment: start;
                                         Segmented {

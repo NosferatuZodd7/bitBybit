@@ -645,6 +645,73 @@ pub fn share_choices(o: &NetworkOverview, catalog: &TextCatalog) -> ShareChoices
     }
 }
 
+/// What the sharing panel proposes from the cards present, as Connectify does: the Internet comes in through
+/// `source`; a Wi-Fi card that is not the source can make a hotspot, otherwise a free cable card can share.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShareSuggestion {
+    /// Index in `ShareChoices::sources`.
+    pub source: usize,
+    /// Hotspot mode (else: another card).
+    pub hotspot: bool,
+    /// Index in `ShareChoices::targets` (card mode only).
+    pub target: Option<usize>,
+    pub text: String,
+}
+
+pub fn share_suggestion(o: &NetworkOverview, c: &ShareChoices, catalog: &TextCatalog) -> Option<ShareSuggestion> {
+    let incoming = o.ipv4_default.as_ref()?.interface_luid;
+    let source = c.sources.iter().position(|s| s.luid == incoming)?;
+    let source_alias = c.sources[source].label.clone();
+    // shortcut: with several Wi-Fi cards Windows picks the one that hosts the AP; we name the first free one.
+    let free_wifi = o
+        .snapshot
+        .interfaces
+        .iter()
+        .zip(&o.classifications)
+        .find(|(i, k)| k.kind == InterfaceKind::PhysicalWifi && i.luid != incoming);
+    if let Some((wifi, _)) = free_wifi {
+        return Some(ShareSuggestion {
+            source,
+            hotspot: true,
+            target: None,
+            text: catalog.resolve(&text!(
+                "app.share.suggestHotspot",
+                "The Internet comes in through '{0}'. You can share it over Wi-Fi with the card '{1}' (hotspot).",
+                source_alias,
+                wifi.alias.clone()
+            )),
+        });
+    }
+    let target = c.targets.iter().position(|t| t.luid != incoming)?;
+    Some(ShareSuggestion {
+        source,
+        hotspot: false,
+        target: Some(target),
+        text: catalog.resolve(&text!(
+            "app.share.suggestWired",
+            "The Internet comes in through '{0}'. You can share it by cable on the card '{1}'.",
+            source_alias,
+            c.targets[target].label.clone()
+        )),
+    })
+}
+
+/// Physical network cards present (to notice one being plugged in).
+pub fn physical_cards(o: &NetworkOverview) -> Vec<(u64, String)> {
+    o.snapshot
+        .interfaces
+        .iter()
+        .zip(&o.classifications)
+        .filter(|(_, k)| {
+            matches!(
+                k.kind,
+                InterfaceKind::PhysicalEthernet | InterfaceKind::PhysicalWifi | InterfaceKind::PhysicalOther
+            )
+        })
+        .map(|(i, _)| (i.luid, i.alias.clone()))
+        .collect()
+}
+
 /// `sharing.status` as the app reads it (mirrors the service's JSON).
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -949,6 +1016,20 @@ mod tests {
         assert_eq!(c.sources.iter().map(|x| x.label.as_str()).collect::<Vec<_>>(), ["Ethernet"]);
         assert_eq!(c.targets.iter().map(|x| x.label.as_str()).collect::<Vec<_>>(), ["Ethernet"]);
         assert!(c.wifi, "a Wi-Fi card that is not connected still allows the hotspot");
+    }
+
+    #[test]
+    fn cable_internet_and_a_free_wifi_card_suggest_a_hotspot() {
+        let mut snapshot = overview().snapshot;
+        for i in snapshot.interfaces.iter_mut().filter(|i| i.alias != "Loopback Pseudo-Interface 1") {
+            i.flags = bitbybit_network::model::InterfaceFlags(bitbybit_network::model::InterfaceFlags::HARDWARE);
+        }
+        let o = NetworkOverview::of(snapshot);
+        let catalog = TextCatalog::default_catalog();
+        let s = share_suggestion(&o, &share_choices(&o, catalog), catalog).unwrap();
+        assert!(s.hotspot && s.source == 0, "{s:?}");
+        assert!(s.text.contains("Ethernet") && s.text.contains("Wi-Fi"), "{}", s.text);
+        assert_eq!(physical_cards(&o).len(), 2);
     }
 
     #[test]

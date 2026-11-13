@@ -753,6 +753,11 @@ mod broker {
         Ok(list.devices)
     }
 
+    /// The network alone (cheap): used to notice cards being plugged in.
+    pub fn network() -> bitbybit_core::Result<NetworkOverview> {
+        broker()?.call("network.overview", &serde_json::json!({}), None)
+    }
+
     /// The active share and the devices on it (read-only).
     pub fn share_status() -> bitbybit_core::Result<crate::view::ShareStatus> {
         broker()?.call("sharing.status", &serde_json::json!({}), None)
@@ -782,6 +787,10 @@ mod broker {
 
     pub fn share_status() -> bitbybit_core::Result<crate::view::ShareStatus> {
         Ok(crate::view::ShareStatus::default())
+    }
+
+    pub fn network() -> bitbybit_core::Result<NetworkOverview> {
+        Err(bitbybit_core::Error::new(bitbybit_core::ErrorCode::NotSupported, "Windows only."))
     }
 
     pub fn invoke(
