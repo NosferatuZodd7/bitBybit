@@ -106,7 +106,7 @@ that commit is **compiled only** (clippy for `x86_64-pc-windows-msvc`) until the
 | Driver install/rollback/package delete with backup (`drivers.*`), deny policy | ✅ | ✅ | ⬜ | ⬜ |
 | Windows Update driver search/install, restore point | ✅ | ✅ | ⬜ | ⬜ |
 | Sharing: hotspot, LAN address, forwarding, WinNAT, DHCP/DNS hosts, rollback on failure | ✅ session + hosts | ✅ | ⬜ | partial: dev.46 log on the user's PC shows Hosted Network start, DHCP/DNS bind, forwarding and a clean rollback; WinNAT absent there (MSFT_NetNat not found) |
-| Sharing through Windows ICS when WinNAT is missing (HNetCfg enable/verify/revert) | ✅ engine choice only | ✅ | ⬜ | ⬜ |
+| Sharing through Windows ICS when WinNAT is missing (HNetCfg enable/verify/revert) | ✅ engine choice only | ✅ | ⬜ | partial: dev.48 app log on the user's PC (2026-11-14, Windows 10 Pro, `winNat: false`): Hosted Network + ICS `sharing.start` Ok and `sharing.stop` reverted ICS then the access point, twice, no warnings; Internet on the connected device reported by the user (not in the log). Not checked: the hotspot adapter's address after ICS is off |
 | WFP leak guard (persistent filters, read back, fail closed) + watchdog | ✅ plan/assess/watchdog | ✅ | ⬜ | ⬜ |
 | Audio services restart, volume/mute, DP profile reconciler | ✅ reconciler | ✅ | ⬜ | ⬜ |
 | App: confirmation dialog, in-process broker without service, self-update swap | ✅ view/swap | ✅ | ⬜ | ⬜ |
