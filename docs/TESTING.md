@@ -110,6 +110,7 @@ that commit is **compiled only** (clippy for `x86_64-pc-windows-msvc`) until the
 | WFP leak guard (persistent filters, read back, fail closed) + watchdog | ✅ plan/assess/watchdog | ✅ | ⬜ | ⬜ |
 | Audio services restart, volume/mute, DP profile reconciler | ✅ reconciler | ✅ | ⬜ | ⬜ |
 | App: confirmation dialog, in-process broker without service, self-update swap | ✅ view/swap | ✅ | ⬜ | ⬜ |
+| Liquid Glass UI: shader port (SDF, bevel, lit rim, shadow, frame slices, backdrop), every page and dialog laid out at 840×620, 1240×780, 1900×1040 and 1.5× scale in the dark, glass and light looks | ✅ glass math (6 tests) + catalog keys of every Slint file | ✅ | ⬜ | ⬜ (Linux Xvfb software renderer with demo data only; not yet seen on Windows) |
 | Release tool keygen/manifest/sign/verify; WiX MSI | ✅ round trip | ✅ | ⬜ | — |
 
 ## Tests that change system state

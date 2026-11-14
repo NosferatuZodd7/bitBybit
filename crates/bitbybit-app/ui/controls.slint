@@ -1,0 +1,803 @@
+// Controls of the bitBybit design system. Every control has hover, pressed, keyboard-focus, disabled and (where
+// it applies) loading states; the focus ring shows for keyboard focus only (Tab), never after a mouse click.
+// Icons are Lucide SVGs (ISC, third-party/lucide) tinted with `colorize`.
+
+import { Theme } from "theme.slint";
+import { GlassEngine, GlassFrame } from "glass.slint";
+
+// A 16-px icon from assets/icons.
+export component Icon inherits Image {
+    in property <color> tint: Theme.text-secondary;
+    width: 16px;
+    height: 16px;
+    colorize: root.tint;
+    image-fit: contain;
+    accessible-role: none;
+}
+
+// Indeterminate progress (static when Windows asks for reduced animations).
+export component Spinner {
+    in property <color> tint: Theme.text-secondary;
+    in property <length> size: 16px;
+    width: root.size;
+    height: root.size;
+    accessible-role: progress-indicator;
+    Image {
+        width: root.size;
+        height: root.size;
+        source: @image-url("assets/icons/loader-circle.svg");
+        colorize: root.tint;
+        transform-rotation: Theme.reduce-motion ? 0deg : Math.mod(animation-tick() / 1ms, 900) * 0.4deg;
+    }
+}
+
+// The keyboard focus ring around a capsule or rounded control.
+component FocusRing inherits Rectangle {
+    in property <length> radius;
+    // Size of the element the ring surrounds.
+    in property <length> around-width;
+    in property <length> around-height;
+    x: -3px;
+    y: -3px;
+    width: root.around-width + 6px;
+    height: root.around-height + 6px;
+    border-radius: root.radius + 3px;
+    border-width: 2px;
+    border-color: Theme.focus-ring;
+}
+
+// Capsule button. kind: 0 secondary (glass), 1 primary (accent), 2 destructive, 3 quiet (text only).
+// size: 0 regular (32 px), 1 small (28 px), 2 large (40 px).
+export component Button {
+    in property <string> text;
+    in property <image> icon;
+    in property <int> kind;
+    in property <int> size;
+    in property <bool> enabled: true;
+    in property <bool> loading;
+    // true: the button takes the width its layout gives it (otherwise it is never wider than its label).
+    in property <bool> stretch;
+    callback clicked;
+    property <bool> active: root.enabled && !root.loading;
+    property <bool> kbd;
+    property <length> h: root.size == 1 ? Theme.control-height-s : root.size == 2 ? Theme.control-height-l : Theme.control-height;
+    property <color> fg: root.kind == 1 ? Theme.on-accent : root.kind == 2 ? Theme.error : Theme.text;
+    property <bool> has-icon: root.icon.width > 0 || root.loading;
+    height: root.h;
+    min-width: row.preferred-width;
+    max-width: root.stretch ? 100000px : row.preferred-width;
+    horizontal-stretch: root.stretch ? 1 : 0;
+    vertical-stretch: 0;
+    opacity: root.enabled ? 1 : 0.42;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.active;
+    accessible-action-default => { if (root.active) { root.clicked(); } }
+    if root.kind != 3: GlassFrame {
+        f: root.size == 1 ? GlassEngine.thumb : root.size == 2 ? GlassEngine.large : GlassEngine.control;
+        inner-width: root.width;
+        inner-height: root.height;
+    }
+    body := Rectangle {
+        border-radius: root.h / 2;
+        background: root.kind == 1 ? (touch.pressed ? Theme.accent.darker(0.12) : touch.has-hover && root.active ? Theme.accent-hover : Theme.accent)
+            : root.kind == 2 ? (touch.pressed ? Theme.error.with-alpha(0.3) : touch.has-hover && root.active ? Theme.error.with-alpha(0.22) : Theme.error.with-alpha(0.13))
+            : root.kind == 3 ? (touch.pressed ? Theme.fill-press : touch.has-hover && root.active ? Theme.fill-hover : transparent)
+            : (touch.pressed ? Theme.fill-press : touch.has-hover && root.active ? Theme.fill-hover : Theme.fill-subtle);
+        border-width: root.kind == 2 ? 1px : 0px;
+        border-color: Theme.error.with-alpha(0.4);
+        animate background { duration: Theme.quick; easing: ease-out; }
+    }
+    if root.kbd: FocusRing { radius: root.h / 2; around-width: root.width; around-height: root.height; }
+    focus := FocusScope {
+        enabled: root.active;
+        focus-gained(reason) => { root.kbd = reason == FocusReason.tab-navigation; }
+        focus-lost => { root.kbd = false; }
+        key-pressed(event) => {
+            if (event.text == " " || event.text == "\n") {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+    touch := TouchArea {
+        enabled: root.active;
+        mouse-cursor: root.active ? pointer : default;
+        clicked => { root.clicked(); }
+    }
+    row := HorizontalLayout {
+        padding-left: root.kind == 3 ? 10px : (root.size == 1 ? 12px : 16px);
+        padding-right: root.kind == 3 ? 10px : (root.size == 1 ? 12px : 16px);
+        spacing: 7px;
+        alignment: center;
+        if root.loading: Spinner { y: (parent.height - self.height) / 2; tint: root.fg; size: 14px; }
+        if !root.loading && root.icon.width > 0: Icon {
+            y: (parent.height - self.height) / 2;
+            source: root.icon;
+            tint: root.fg;
+            width: root.size == 1 ? 14px : 15px;
+            height: self.width;
+        }
+        Text {
+            text: root.text;
+            font-size: root.size == 1 ? Theme.font-small : Theme.font-body;
+            font-weight: root.kind == 1 || root.kind == 2 ? 600 : 500;
+            color: root.fg;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// A round icon-only button with a tooltip (the tooltip is also its accessible name).
+export component IconButton {
+    in property <image> icon;
+    in property <string> tooltip;
+    in property <bool> enabled: true;
+    in property <bool> destructive;
+    callback clicked;
+    property <bool> kbd;
+    property <bool> hovering: touch.has-hover;
+    width: 30px;
+    height: 30px;
+    accessible-role: button;
+    accessible-label: root.tooltip;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if (root.enabled) { root.clicked(); } }
+    opacity: root.enabled ? 1 : 0.42;
+    changed hovering => {
+        if (!self.hovering) {
+            tip.close();
+        }
+    }
+    Rectangle {
+        border-radius: self.height / 2;
+        background: touch.pressed ? Theme.fill-press : touch.has-hover && root.enabled ? Theme.fill-hover : transparent;
+        animate background { duration: Theme.quick; }
+    }
+    if root.kbd: FocusRing { radius: root.height / 2; around-width: root.width; around-height: root.height; }
+    Icon {
+        source: root.icon;
+        tint: root.destructive ? Theme.error : (touch.has-hover ? Theme.text : Theme.text-secondary);
+    }
+    FocusScope {
+        enabled: root.enabled;
+        focus-gained(reason) => { root.kbd = reason == FocusReason.tab-navigation; }
+        focus-lost => { root.kbd = false; }
+        key-pressed(event) => {
+            if (event.text == " " || event.text == "\n") {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => {
+            tip.close();
+            root.clicked();
+        }
+    }
+    Timer {
+        interval: 550ms;
+        running: touch.has-hover && root.tooltip != "";
+        triggered => {
+            self.running = false;
+            tip.show();
+        }
+    }
+    tip := PopupWindow {
+        close-policy: no-auto-close;
+        x: (root.width - self.width) / 2;
+        y: -self.height - 6px;
+        width: tip-text.preferred-width + 16px;
+        height: 24px;
+        Rectangle {
+            border-radius: Theme.radius-xs;
+            background: Theme.glass-strong;
+            border-width: 1px;
+            border-color: Theme.edge;
+            tip-text := Text { text: root.tooltip; font-size: Theme.font-small; color: Theme.text; }
+        }
+    }
+}
+
+// Switch. `toggled` fires after `checked` changed.
+export component Toggle {
+    in property <string> text;
+    in-out property <bool> checked;
+    in property <bool> enabled: true;
+    callback toggled;
+    property <bool> kbd;
+    min-height: 22px;
+    accessible-role: switch;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if (root.enabled) { root.checked = !root.checked; root.toggled(); } }
+    opacity: root.enabled ? 1 : 0.42;
+    HorizontalLayout {
+        spacing: 10px;
+        track := Rectangle {
+            width: 36px;
+            height: 20px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 10px;
+            background: root.checked ? (touch.has-hover && root.enabled ? Theme.accent-hover : Theme.accent) : (touch.has-hover && root.enabled ? Theme.fill-press : Theme.fill-hover);
+            border-width: root.checked ? 0px : 1px;
+            border-color: Theme.field-edge;
+            animate background { duration: Theme.quick; }
+            Rectangle {
+                x: root.checked ? 18px : 2px;
+                y: 2px;
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                background: root.checked ? #FFFFFF : (Theme.dark ? #DCE6F0 : #FFFFFF);
+                drop-shadow-color: #00000059;
+                drop-shadow-blur: 3px;
+                drop-shadow-offset-y: 1px;
+                animate x { duration: Theme.smooth; easing: ease-out; }
+            }
+            if root.kbd: FocusRing { radius: 10px; around-width: 36px; around-height: 20px; }
+        }
+        if root.text != "": Text {
+            text: root.text;
+            font-size: Theme.font-body;
+            color: Theme.text;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+    FocusScope {
+        enabled: root.enabled;
+        focus-gained(reason) => { root.kbd = reason == FocusReason.tab-navigation; }
+        focus-lost => { root.kbd = false; }
+        key-pressed(event) => {
+            if (event.text == " " || event.text == "\n") {
+                root.checked = !root.checked;
+                root.toggled();
+                return accept;
+            }
+            reject
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled();
+        }
+    }
+}
+
+// Check box. `toggled` fires after `checked` changed.
+export component Check {
+    in property <string> text;
+    in-out property <bool> checked;
+    in property <bool> enabled: true;
+    callback toggled;
+    property <bool> kbd;
+    min-height: 20px;
+    accessible-role: checkbox;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if (root.enabled) { root.checked = !root.checked; root.toggled(); } }
+    opacity: root.enabled ? 1 : 0.42;
+    HorizontalLayout {
+        spacing: 10px;
+        alignment: start;
+        box := Rectangle {
+            width: 18px;
+            height: 18px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 5px;
+            background: root.checked ? (touch.has-hover && root.enabled ? Theme.accent-hover : Theme.accent) : (touch.has-hover && root.enabled ? Theme.fill-hover : Theme.field);
+            border-width: root.checked ? 0px : 1px;
+            border-color: touch.has-hover ? Theme.accent.with-alpha(0.6) : Theme.field-edge;
+            animate background { duration: Theme.quick; }
+            if root.checked: Icon { width: 12px; height: 12px; source: @image-url("assets/icons/check.svg"); tint: Theme.on-accent; }
+            if root.kbd: FocusRing { radius: 5px; around-width: 18px; around-height: 18px; }
+        }
+        if root.text != "": Text {
+            text: root.text;
+            font-size: Theme.font-body;
+            color: Theme.text;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+    FocusScope {
+        enabled: root.enabled;
+        focus-gained(reason) => { root.kbd = reason == FocusReason.tab-navigation; }
+        focus-lost => { root.kbd = false; }
+        key-pressed(event) => {
+            if (event.text == " ") {
+                root.checked = !root.checked;
+                root.toggled();
+                return accept;
+            }
+            reject
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => {
+            root.checked = !root.checked;
+            root.toggled();
+        }
+    }
+}
+
+// Single-line text field. Trailing children (e.g. a show/hide button) sit inside the field on the right.
+export component TextField {
+    in-out property <string> text <=> input.text;
+    in property <string> placeholder-text;
+    in property <InputType> input-type: InputType.text;
+    in property <bool> enabled: true;
+    callback accepted(string);
+    callback edited(string);
+    property <bool> focused: input.has-focus;
+    height: Theme.control-height;
+    min-width: 96px;
+    horizontal-stretch: 1;
+    opacity: root.enabled ? 1 : 0.5;
+    if root.focused: Rectangle {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        border-radius: Theme.radius-m + 3px;
+        background: Theme.accent.with-alpha(0.16);
+    }
+    Rectangle {
+        border-radius: Theme.radius-m;
+        background: Theme.field;
+        border-width: 1px;
+        border-color: root.focused ? Theme.accent : (hover.has-hover && root.enabled ? Theme.text-secondary.with-alpha(0.45) : Theme.field-edge);
+        animate border-color { duration: Theme.quick; }
+    }
+    hover := TouchArea { enabled: root.enabled; mouse-cursor: MouseCursor.text; clicked => { input.focus(); } }
+    HorizontalLayout {
+        padding-left: 11px;
+        padding-right: 4px;
+        spacing: 4px;
+        Rectangle {
+            horizontal-stretch: 1;
+            if root.text == "": Text {
+                width: parent.width;
+                text: root.placeholder-text;
+                color: Theme.text-tertiary;
+                font-size: Theme.font-body;
+                vertical-alignment: center;
+                overflow: elide;
+                accessible-role: none;
+            }
+            input := TextInput {
+                width: parent.width;
+                height: parent.height;
+                vertical-alignment: center;
+                font-size: Theme.font-body;
+                color: Theme.text;
+                selection-background-color: Theme.accent.with-alpha(0.35);
+                selection-foreground-color: Theme.text;
+                input-type: root.input-type;
+                single-line: true;
+                enabled: root.enabled;
+                accessible-label: root.placeholder-text;
+                accepted => { root.accepted(self.text); }
+                edited => { root.edited(self.text); }
+            }
+        }
+        @children
+    }
+}
+
+// Drop-down list (same contract as std ComboBox: model, current-index, `selected(value)`).
+export component Select {
+    in property <[string]> model;
+    in-out property <int> current-index;
+    out property <string> current-value: root.model[root.current-index];
+    in property <bool> enabled: true;
+    callback selected(string);
+    property <bool> kbd;
+    height: Theme.control-height;
+    min-width: 140px;
+    horizontal-stretch: 1;
+    opacity: root.enabled ? 1 : 0.5;
+    accessible-role: combobox;
+    accessible-value: root.current-value;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if (root.enabled) { popup.show(); } }
+    function pick(i: int) {
+        if (i >= 0 && i < root.model.length && i != root.current-index) {
+            root.current-index = i;
+            root.selected(root.model[i]);
+        }
+    }
+    if root.kbd: FocusRing { radius: Theme.radius-m; around-width: root.width; around-height: root.height; }
+    Rectangle {
+        border-radius: Theme.radius-m;
+        background: touch.pressed ? Theme.fill-press : Theme.field;
+        border-width: 1px;
+        border-color: touch.has-hover && root.enabled ? Theme.text-secondary.with-alpha(0.45) : Theme.field-edge;
+        animate border-color { duration: Theme.quick; }
+    }
+    HorizontalLayout {
+        padding-left: 11px;
+        padding-right: 9px;
+        spacing: 6px;
+        Text {
+            text: root.current-value;
+            font-size: Theme.font-body;
+            color: Theme.text;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        Icon {
+            y: (parent.height - self.height) / 2;
+            width: 14px;
+            height: 14px;
+            source: @image-url("assets/icons/chevron-down.svg");
+        }
+    }
+    FocusScope {
+        enabled: root.enabled;
+        focus-gained(reason) => { root.kbd = reason == FocusReason.tab-navigation; }
+        focus-lost => { root.kbd = false; }
+        key-pressed(event) => {
+            if (event.text == Key.UpArrow) {
+                root.pick(root.current-index - 1);
+                return accept;
+            }
+            if (event.text == Key.DownArrow) {
+                root.pick(root.current-index + 1);
+                return accept;
+            }
+            if (event.text == " " || event.text == "\n") {
+                popup.show();
+                return accept;
+            }
+            reject
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { popup.show(); }
+    }
+    popup := PopupWindow {
+        x: 0;
+        y: root.height + 4px;
+        width: max(root.width, 200px);
+        height: min(list.preferred-height, 300px);
+        Rectangle {
+            border-radius: Theme.radius-l;
+            background: Theme.glass-strong;
+            border-width: 1px;
+            border-color: Theme.edge;
+            drop-shadow-color: Theme.shadow;
+            drop-shadow-blur: 24px;
+            drop-shadow-offset-y: 10px;
+        }
+        Flickable {
+            content-height: list.preferred-height;
+            list := VerticalLayout {
+                padding: 5px;
+                spacing: 1px;
+                for item[i] in root.model: Rectangle {
+                    height: 30px;
+                    border-radius: Theme.radius-s;
+                    background: item-touch.has-hover ? Theme.fill-hover : transparent;
+                    accessible-role: list-item;
+                    accessible-label: item;
+                    accessible-item-selected: i == root.current-index;
+                    accessible-action-default => { root.pick(i); popup.close(); }
+                    item-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.pick(i);
+                            popup.close();
+                        }
+                    }
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 10px;
+                        spacing: 8px;
+                        Rectangle {
+                            width: 14px;
+                            if i == root.current-index: Icon { width: 14px; height: 14px; source: @image-url("assets/icons/check.svg"); tint: Theme.accent; }
+                        }
+                        Text {
+                            text: item;
+                            font-size: Theme.font-body;
+                            font-weight: i == root.current-index ? 600 : 400;
+                            color: Theme.text;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export struct SegItem { label: string, icon: image }
+
+// Segmented control: a glass thumb slides to the chosen segment. size: 0 regular (34 px), 1 large (46 px).
+// accent: the thumb carries the accent (for a primary choice such as the sharing mode).
+export component Segmented {
+    in property <[SegItem]> items;
+    in-out property <int> selected;
+    in property <int> size;
+    in property <bool> accent;
+    in property <bool> enabled: true;
+    in property <length> segment-min: 88px;
+    callback changed(int);
+    property <length> pad: 3px;
+    property <length> h: root.size == 1 ? 46px : 34px;
+    property <int> n: max(1, root.items.length);
+    property <length> seg-w: (root.width - 2 * root.pad) / root.n;
+    property <bool> kbd;
+    height: root.h;
+    min-width: root.n * root.segment-min + 2 * root.pad;
+    preferred-width: self.min-width;
+    opacity: root.enabled ? 1 : 0.5;
+    accessible-role: tab-list;
+    function choose(i: int) {
+        if (root.enabled && i >= 0 && i < root.items.length && i != root.selected) {
+            root.selected = i;
+            root.changed(i);
+        }
+    }
+    Rectangle {
+        border-radius: root.h / 2;
+        background: Theme.fill-subtle;
+        border-width: 1px;
+        border-color: Theme.hairline;
+    }
+    if root.kbd: FocusRing { radius: root.h / 2; around-width: root.width; around-height: root.height; }
+    thumb := Rectangle {
+        x: root.pad + root.selected * root.seg-w;
+        y: root.pad;
+        width: root.seg-w;
+        height: root.h - 2 * root.pad;
+        animate x { duration: Theme.smooth; easing: cubic-bezier(0.2, 0.9, 0.3, 1.0); }
+        GlassFrame {
+            f: root.size == 1 ? GlassEngine.large : GlassEngine.thumb;
+            inner-width: parent.width;
+            inner-height: parent.height;
+        }
+        Rectangle {
+            border-radius: self.height / 2;
+            background: root.accent ? Theme.accent.with-alpha(Theme.dark ? 0.22 : 0.14) : (Theme.dark ? #FFFFFF1A : #FFFFFF);
+            border-width: root.accent ? 1px : 0px;
+            border-color: Theme.accent.with-alpha(0.45);
+        }
+    }
+    for item[i] in root.items: Rectangle {
+        x: root.pad + i * root.seg-w;
+        y: root.pad;
+        width: root.seg-w;
+        height: root.h - 2 * root.pad;
+        accessible-role: tab;
+        accessible-label: item.label;
+        accessible-item-selected: i == root.selected;
+        accessible-action-default => { root.choose(i); }
+        seg-touch := TouchArea {
+            enabled: root.enabled;
+            mouse-cursor: pointer;
+            clicked => { root.choose(i); }
+        }
+        if i != root.selected && seg-touch.has-hover: Rectangle {
+            border-radius: self.height / 2;
+            background: Theme.fill-subtle;
+        }
+        HorizontalLayout {
+            alignment: center;
+            spacing: 7px;
+            padding-left: 8px;
+            padding-right: 8px;
+            if item.icon.width > 0: Icon {
+                y: (parent.height - self.height) / 2;
+                source: item.icon;
+                tint: i == root.selected ? (root.accent ? Theme.accent : Theme.text) : Theme.text-secondary;
+                width: root.size == 1 ? 17px : 15px;
+                height: self.width;
+            }
+            Text {
+                text: item.label;
+                font-size: Theme.font-body;
+                font-weight: i == root.selected ? 600 : 500;
+                color: i == root.selected ? Theme.text : Theme.text-secondary;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+    FocusScope {
+        enabled: root.enabled;
+        focus-gained(reason) => { root.kbd = reason == FocusReason.tab-navigation; }
+        focus-lost => { root.kbd = false; }
+        key-pressed(event) => {
+            if (event.text == Key.LeftArrow) {
+                root.choose(root.selected - 1);
+                return accept;
+            }
+            if (event.text == Key.RightArrow) {
+                root.choose(root.selected + 1);
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+// Horizontal slider (same contract as std Slider: value, minimum, maximum, `released(value)`).
+export component Slider {
+    in-out property <float> value;
+    in property <float> minimum: 0;
+    in property <float> maximum: 100;
+    in property <bool> enabled: true;
+    callback changed(float);
+    callback released(float);
+    property <float> ratio: (root.value - root.minimum) / max(0.0001, root.maximum - root.minimum);
+    property <bool> kbd;
+    height: 22px;
+    min-width: 120px;
+    horizontal-stretch: 1;
+    opacity: root.enabled ? 1 : 0.42;
+    accessible-role: slider;
+    accessible-value: Math.round(root.value);
+    accessible-value-minimum: root.minimum;
+    accessible-value-maximum: root.maximum;
+    accessible-value-step: 5;
+    accessible-enabled: root.enabled;
+    function set-from(x: length) {
+        root.value = Math.clamp(root.minimum + (x - 8px) / max(1px, root.width - 16px) * (root.maximum - root.minimum), root.minimum, root.maximum);
+        root.changed(root.value);
+    }
+    function step(d: float) {
+        root.value = Math.clamp(root.value + d, root.minimum, root.maximum);
+        root.changed(root.value);
+        root.released(root.value);
+    }
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.fill-press;
+    }
+    Rectangle {
+        x: 0;
+        y: (parent.height - self.height) / 2;
+        width: 8px + root.ratio * (root.width - 16px);
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.accent;
+    }
+    knob := Rectangle {
+        x: root.ratio * (root.width - 16px);
+        y: (parent.height - self.height) / 2;
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        background: #FFFFFF;
+        drop-shadow-color: #00000066;
+        drop-shadow-blur: 4px;
+        drop-shadow-offset-y: 1px;
+        if root.kbd: FocusRing { radius: 8px; around-width: 16px; around-height: 16px; }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                root.set-from(self.mouse-x);
+            }
+            if (event.kind == PointerEventKind.up) {
+                root.released(root.value);
+            }
+        }
+        moved => {
+            if (self.pressed) {
+                root.set-from(self.mouse-x);
+            }
+        }
+    }
+    FocusScope {
+        enabled: root.enabled;
+        focus-gained(reason) => { root.kbd = reason == FocusReason.tab-navigation; }
+        focus-lost => { root.kbd = false; }
+        key-pressed(event) => {
+            if (event.text == Key.LeftArrow || event.text == Key.DownArrow) {
+                root.step(-5);
+                return accept;
+            }
+            if (event.text == Key.RightArrow || event.text == Key.UpArrow) {
+                root.step(5);
+                return accept;
+            }
+            reject
+        }
+    }
+}
+
+export struct MenuEntry { label: string, icon: image, destructive: bool, enabled: bool }
+
+// "More actions" button opening a glass menu; `activated(index)` reports the entry.
+export component MenuButton {
+    in property <[MenuEntry]> entries;
+    in property <string> tooltip;
+    callback activated(int);
+    width: 30px;
+    height: 30px;
+    IconButton {
+        icon: @image-url("assets/icons/ellipsis.svg");
+        tooltip: root.tooltip;
+        clicked => { menu.show(); }
+    }
+    menu := PopupWindow {
+        x: root.width - self.width;
+        y: root.height + 4px;
+        width: 236px;
+        height: entries-box.preferred-height;
+        Rectangle {
+            border-radius: Theme.radius-l;
+            background: Theme.glass-strong;
+            border-width: 1px;
+            border-color: Theme.edge;
+            drop-shadow-color: Theme.shadow;
+            drop-shadow-blur: 24px;
+            drop-shadow-offset-y: 10px;
+        }
+        entries-box := VerticalLayout {
+            padding: 5px;
+            spacing: 1px;
+            for e[i] in root.entries: Rectangle {
+                height: 32px;
+                border-radius: Theme.radius-s;
+                background: e.enabled && entry-touch.has-hover ? (e.destructive ? Theme.error.with-alpha(0.14) : Theme.fill-hover) : transparent;
+                opacity: e.enabled ? 1 : 0.4;
+                accessible-role: button;
+                accessible-label: e.label;
+                accessible-enabled: e.enabled;
+                accessible-action-default => { if (e.enabled) { root.activated(i); menu.close(); } }
+                entry-touch := TouchArea {
+                    enabled: e.enabled;
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.activated(i);
+                        menu.close();
+                    }
+                }
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 10px;
+                    Icon {
+                        y: (parent.height - self.height) / 2;
+                        source: e.icon;
+                        tint: e.destructive ? Theme.error : Theme.text-secondary;
+                    }
+                    Text {
+                        text: e.label;
+                        font-size: Theme.font-body;
+                        color: e.destructive ? Theme.error : Theme.text;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+    }
+}

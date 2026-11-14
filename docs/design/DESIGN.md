@@ -1,3 +1,6 @@
+> Historical: the WPF design system of the C# app. The current (Rust/Slint) design system is
+> `docs/design/LIQUID_GLASS.md`.
+
 # bitBybit design system (after OrbisLink)
 
 Status: **implemented in WPF in 0.3.0** (theme engine, controls, window shell, pages). Studied from the OrbisLink

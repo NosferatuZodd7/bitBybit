@@ -256,6 +256,7 @@ pub fn apply(ui: &crate::ui::AppWindow, t: &Tokens, reduce_motion: bool) {
     g.set_warn(t.warn.to_slint());
     g.set_error(t.error.to_slint());
     g.set_reduce_motion(reduce_motion);
+    crate::glass::set_look(ui, t);
 }
 
 #[cfg(test)]

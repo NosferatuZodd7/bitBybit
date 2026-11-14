@@ -1,5 +1,5 @@
 //! Debug builds only: `BITBYBIT_UI_DEMO=1` fills the pages with FAKE sample rows (and `=dialog` also opens a
-//! high-risk confirmation; `=adapter` shows the sharing panel in adapter mode) so the layout can be checked where no Windows broker exists. Never in release builds.
+//! high-risk confirmation; `=adapter` shows the sharing panel in adapter mode, `=drivers` opens the driver chooser, `=toast` shows a failed operation) so the layout can be checked where no Windows broker exists. Never in release builds.
 
 use crate::ui::{
     AppWindow, AudioRow, ChangeRow, DeviceRow, DisplayRow, DriverChoice, FindingRow, InterfaceRow, StoreItem,
@@ -35,7 +35,10 @@ pub fn fill(ui: &AppWindow, mode: &str) {
         device("Monitor DisplayPort (demo)", "Monitor", "Código 43: o Windows parou o dispositivo", true),
         device("Intel Wi-Fi 6E AX211 (demo)", "Net", "A funcionar", false),
     ]));
-    ui.set_driver_device_id("gpu".into());
+    // The chooser is a modal dialog: only in its own demo mode.
+    if mode == "drivers" {
+        ui.set_driver_device_id("gpu".into());
+    }
     ui.set_driver_device_name("Intel(R) HD Graphics (demo)".into());
     ui.set_driver_choices(model(vec![
         DriverChoice {
@@ -203,6 +206,11 @@ pub fn fill(ui: &AppWindow, mode: &str) {
             "A Internet entra por «Ethernet (demo)». Pode partilhá-la por Wi-Fi com a placa «Wi-Fi 2 (Linksys AE1200)» (hotspot)."
                 .into(),
         );
+    }
+    if mode == "toast" {
+        ui.set_op_state(3);
+        ui.set_op_message("A operação não foi concluída: o Windows recusou a alteração (demo).".into());
+        ui.set_op_elevate(true);
     }
     if mode == "adapter" {
         ui.set_share_mode(1);

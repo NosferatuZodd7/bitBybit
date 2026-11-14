@@ -7,7 +7,9 @@ Rewrite bitBybit in Rust + Slint (master prompt of 2026-11-11). C# under `src/` 
 stays until `docs/RUST_MIGRATION_MATRIX.md` is complete (Phase N).
 
 ## Current phase
-All phases A–N done; Liquid Glass redesign done (task #46, `docs/design/LIQUID_GLASS.md`). Next: the release (#47).
+All phases A–N done. UI redesigned (2026-11-14) with a native port of the LiquidGlass shader (`src/glass.rs`,
+`docs/design/LIQUID_GLASS.md`): refracting glass sidebar/panes/dialogs, lit frames for cards and controls, own
+controls (no std widgets but ScrollView), fixed panes that scroll inside. Next: the release (#47).
 
 ## Done
 * Phase A: `docs/RUST_REWRITE_AUDIT.md`, `docs/RUST_MIGRATION_MATRIX.md` (99 rows, ids stable).

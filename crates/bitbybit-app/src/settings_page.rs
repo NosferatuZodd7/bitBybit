@@ -25,6 +25,17 @@ fn reduce_motion() -> bool {
     false
 }
 
+/// Liquid Glass rendering, unless Windows "Transparency effects" is off or `BITBYBIT_GLASS=0` (then flat glass).
+fn glass_enabled() -> bool {
+    if std::env::var("BITBYBIT_GLASS").is_ok_and(|v| v == "0") {
+        return false;
+    }
+    #[cfg(windows)]
+    return bitbybit_platform_windows::ui::transparency_enabled();
+    #[cfg(not(windows))]
+    true
+}
+
 fn load() -> AppSettings {
     fsio::read_json(&AppPaths::from_environment().user_settings_file()).unwrap_or_default()
 }
@@ -76,7 +87,9 @@ pub fn wire(ui: &AppWindow) {
     ui.set_custom_accent(s.appearance.custom_colors.get("accent").cloned().unwrap_or_default().into());
     ui.set_update_channel(index(&CHANNELS, &s.updates.channel));
     ui.set_update_auto(s.updates.automatic_check);
-    theme::apply(ui, &theme::resolve(&s.appearance), reduce_motion());
+    let tokens = theme::resolve(&s.appearance);
+    crate::glass::install(ui, &tokens, glass_enabled());
+    theme::apply(ui, &tokens, reduce_motion());
 
     let weak = ui.as_weak();
     ui.on_settings_changed(move || {
@@ -132,7 +145,12 @@ mod ui_keys {
     fn every_ui_key_is_in_the_catalog() {
         let catalog = bitbybit_localization::TextCatalog::default_catalog();
         let mut missing = Vec::new();
-        for src in [include_str!("../ui/app.slint"), include_str!("../ui/components.slint")] {
+        for src in [
+            include_str!("../ui/app.slint"),
+            include_str!("../ui/components.slint"),
+            include_str!("../ui/controls.slint"),
+            include_str!("../ui/glass.slint"),
+        ] {
             for part in src.split("Tr.t(\"").skip(1) {
                 let key = part.split('"').next().unwrap_or_default();
                 if catalog.template(key).is_none() {

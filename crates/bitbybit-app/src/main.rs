@@ -17,6 +17,7 @@ mod demo;
 mod devices_actions;
 mod drivers_page;
 mod export_logs;
+mod glass;
 mod ops;
 mod settings_page;
 mod sharing_page;
@@ -199,6 +200,14 @@ fn main() -> Result<(), slint::PlatformError> {
         if page == 6 {
             diagnose(ui.as_weak());
         }
+    }
+    // Debug builds: open at a given logical size ("1024x640") to check the layout at other window sizes.
+    #[cfg(debug_assertions)]
+    if let Some((w, h)) = std::env::var("BITBYBIT_UI_SIZE")
+        .ok()
+        .and_then(|v| v.split_once('x').and_then(|(w, h)| Some((w.parse::<f32>().ok()?, h.parse::<f32>().ok()?))))
+    {
+        ui.window().set_size(slint::LogicalSize::new(w, h));
     }
     #[cfg(debug_assertions)]
     if let Ok(mode) = std::env::var("BITBYBIT_UI_DEMO") {
