@@ -442,7 +442,7 @@
   "app.network.hidden": "{0} interfaces técnicas ocultas (loopback, WAN Miniport, túneis IPv6).",
   "app.network.noAddress": "Sem endereço",
   "app.about.title": "Sobre",
-  "app.about.version": "Versão {0} · reescrita em Rust (pré-visualização)",
+  "app.about.version": "Versão {0}, reescrita em Rust (pré-visualização)",
   "app.about.logs": "Registos (sem palavras-passe nem chaves): app em {0}, serviço em {1}.",
   "app.export.button": "Exportar registos para enviar",
   "app.export.running": "A recolher os registos…",
@@ -610,7 +610,7 @@
   "app.share.modeLabel": "Modo",
   "app.share.flow.source": "Origem",
   "app.share.flow.via": "Partilhada como",
-  "app.share.flow.devices": "Dispositivos",
+  "app.share.flow.devices": "Os seus dispositivos",
   "app.share.flow.devicesDetail": "Rede privada encaminhada",
   "app.share.flow.localOnly": "Só rede local",
   "app.share.protection": "Firewall e proteção",
@@ -628,6 +628,7 @@
   "app.store.caption": "Pacotes de controladores de terceiros (oemNN.inf) instalados neste PC",
   "app.audio.none": "Não foram encontrados dispositivos de áudio.",
   "app.settings.themeLabel": "Tema",
-  "app.dialog.steps": "O que vai acontecer",
-  "app.nav.case": "Caso Realtek / DP"
+  "app.nav.case": "Caso Realtek / DP",
+  "app.update.installed": "Versão instalada:",
+  "app.share.autoShort": "Automático"
 }

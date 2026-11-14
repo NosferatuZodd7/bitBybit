@@ -134,10 +134,10 @@ pub fn fill(ui: &AppWindow, mode: &str) {
             targets: vec![choice(1, "Ethernet (demo)", false), choice(2, "Ethernet 2 (não ligada) (demo)", false)],
             wifi: true,
         },
-        if mode == "share" { uuid::Uuid::from_u128(1).into() } else { None },
+        if mode.starts_with("share") { uuid::Uuid::from_u128(1).into() } else { None },
         None,
     );
-    if mode == "share" {
+    if mode.starts_with("share") {
         crate::sharing_page::apply_cards(
             ui,
             &[crate::view::ClientCard {
@@ -151,7 +151,8 @@ pub fn fill(ui: &AppWindow, mode: &str) {
                 fixed: String::new(),
             }],
         );
-        ui.set_share_tab(1);
+        // `=sharepath`: the live share on its settings tab (the signal path).
+        ui.set_share_tab(if mode == "sharepath" { 0 } else { 1 });
         ui.set_share_name("Casa-bitBybit".into());
         ui.set_share_password("segredo-123".into());
         let node = |id: &str, kind, title: &str, detail: &str, parent, col, row| crate::view::TopoNode {

@@ -531,7 +531,8 @@ export component Select {
     }
 }
 
-export struct SegItem { label: string, icon: image }
+// badge: a short count shown as a pill after the label ("" = none).
+export struct SegItem { label: string, icon: image, badge: string }
 
 // Segmented control: a glass thumb slides to the chosen segment. size: 0 regular (34 px), 1 large (46 px).
 // accent: the thumb carries the accent (for a primary choice such as the sharing mode).
@@ -621,6 +622,14 @@ export component Segmented {
                 color: i == root.selected ? Theme.text : Theme.text-secondary;
                 vertical-alignment: center;
                 overflow: elide;
+            }
+            if item.badge != "": Rectangle {
+                y: (parent.height - self.height) / 2;
+                height: 18px;
+                width: max(18px, count.preferred-width + 10px);
+                border-radius: 9px;
+                background: i == root.selected ? Theme.accent : Theme.fill-press;
+                count := Text { text: item.badge; font-size: Theme.font-caption; font-weight: 700; color: i == root.selected ? Theme.on-accent : Theme.text-secondary; }
             }
         }
     }

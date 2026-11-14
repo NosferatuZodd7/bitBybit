@@ -70,7 +70,13 @@ on resize, page change, look change or a new pane.
 * Lists are grouped rows separated by hairlines (no card inside a card). Occasional or destructive actions sit in a
   "⋯" menu; the common action stays visible.
 * Forms put labels above fields, in columns; options with consequences are setting rows (label, caption, control).
-* Status is never colour-only: dots and badges carry text, banners carry an icon and a sentence.
+* Status is never colour-only: dots and badges carry text, banners carry an icon and a sentence. Status and
+  category are badges, not words joined into an "A · B · C" string.
+* Labels above content only where they name a group (sidebar groups, settings groups, "Evidências"); a dialog opens
+  with its own sentence, not a label over it.
+* **One signature element**: the network **signal path** (`SignalPath`) — source, how bitBybit shares it, who receives
+  it, as three glass nodes on a conduit. Idle it is quiet; live it lights green → cyan and, when sharing starts, a
+  single glint runs along it (no motion with reduced animations). Everything else stays calm.
 * Every control has hover, pressed, keyboard-focus (ring on Tab only), disabled and, where it applies, loading
   states, an accessible role and label.
 * Confirmations are modal glass dialogs showing the plan (summary, risk, warnings, steps); high risk gets a red edge
@@ -79,6 +85,6 @@ on resize, page change, look change or a new pane.
 ## Checking the layout
 
 Debug builds: `BITBYBIT_UI_DEMO=1` fills the pages with fake rows (`=share`, `=dialog`, `=update`, `=drivers`,
-`=toast`, `=adapter`, `=newcard`, `=force` for specific states), `BITBYBIT_UI_PAGE=<n>` opens a page and
+`=toast`, `=adapter`, `=newcard`, `=force`, `=sharepath` for specific states), `BITBYBIT_UI_PAGE=<n>` opens a page and
 `BITBYBIT_UI_SIZE=WxH` sets the window size. On Linux: Xvfb + `SLINT_BACKEND=winit-software` (needs
 `libxkbcommon-x11-0`).

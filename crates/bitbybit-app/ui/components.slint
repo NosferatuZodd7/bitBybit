@@ -21,11 +21,10 @@ export component SectionTitle inherits Text {
     color: Theme.text;
 }
 
-// Small caps-like group label (sidebar groups, form groups).
+// Label of a group of rows or fields (sidebar groups, form groups) — only where it names what follows.
 export component Eyebrow inherits Text {
-    font-size: Theme.font-caption;
+    font-size: Theme.font-small;
     font-weight: 600;
-    letter-spacing: 0.4px;
     color: Theme.text-tertiary;
 }
 
@@ -175,7 +174,7 @@ export component PageHeader inherits HorizontalLayout {
         horizontal-stretch: 1;
         spacing: 3px;
         alignment: center;
-        Text { text: root.title; font-size: Theme.font-page; font-weight: 700; color: Theme.text; letter-spacing: -0.3px; accessible-role: text; }
+        Text { text: root.title; font-size: Theme.font-page; font-weight: 700; color: Theme.text; letter-spacing: -0.5px; accessible-role: text; }
         if root.subtitle != "": Text { text: root.subtitle; color: Theme.text-secondary; wrap: word-wrap; font-size: Theme.font-small; }
     }
     HorizontalLayout {

@@ -170,10 +170,12 @@ component DashTileCard inherits Card {
             }
             Text { text: root.info.value; font-size: Theme.font-title; font-weight: 650; color: Theme.text; wrap: word-wrap; }
         }
-        Icon {
-            y: (parent.height - self.height) / 2;
-            source: @image-url("assets/icons/chevron-right.svg");
-            tint: root.hovered ? Theme.accent : Theme.text-tertiary;
+        VerticalLayout {
+            alignment: center;
+            Icon {
+                source: @image-url("assets/icons/chevron-right.svg");
+                tint: root.hovered ? Theme.accent : Theme.text-tertiary;
+            }
         }
     }
 }
@@ -224,9 +226,9 @@ component FindingItem inherits Rectangle {
                 }
             }
             if root.info.actions != "": HorizontalLayout {
-                spacing: 6px;
-                Icon { source: @image-url("assets/icons/arrow-right.svg"); tint: Theme.accent; y: 1px; width: 14px; height: 14px; }
-                Text { text: root.info.actions; font-size: Theme.font-small; color: Theme.accent; wrap: word-wrap; }
+                spacing: 10px;
+                Rectangle { width: 2px; border-radius: 1px; background: Theme.accent; }
+                Text { text: root.info.actions; font-size: Theme.font-small; font-weight: 500; color: Theme.text; wrap: word-wrap; }
             }
             if root.info.buttons.length > 0: HorizontalLayout {
                 spacing: 6px;
@@ -270,7 +272,12 @@ component AudioItem inherits Rectangle {
                 Text { text: root.info.name; font-size: Theme.font-body; font-weight: 600; color: Theme.text; overflow: elide; horizontal-stretch: 1; vertical-alignment: center; }
                 if root.info.defaults != "": VerticalLayout { alignment: center; Badge { text: root.info.defaults; tone: 3; } }
             }
-            Secondary { text: root.info.flow + " · " + root.info.state; }
+            HorizontalLayout {
+                spacing: 8px;
+                Secondary { text: root.info.flow; horizontal-stretch: 0; vertical-alignment: center; }
+                Badge { text: root.info.state; dot: true; }
+                Rectangle { }
+            }
             if root.info.volume >= 0: HorizontalLayout {
                 spacing: 12px;
                 padding-top: 2px;
@@ -488,28 +495,95 @@ component ClientCardView inherits Card {
     }
 }
 
-// A step of the sharing chain shown above the settings: where the Internet comes from, how it is shared, who
-// receives it.
-component FlowStep inherits HorizontalLayout {
-    in property <image> icon;
-    in property <string> caption;
-    in property <string> value;
-    in property <bool> lit;
-    spacing: 10px;
-    horizontal-stretch: 1;
+// The signal path of the share: where the Internet comes from, how bitBybit shares it, who receives it — three
+// glass nodes on a conduit. The conduit is lit while sharing; when sharing starts, one glint runs along it.
+component SignalPath inherits Rectangle {
+    in property <bool> live;
+    // false: a local network only (the Internet end stays dark).
+    in property <bool> internet: true;
+    in property <image> source-icon;
+    in property <string> source;
+    in property <string> source-role;
+    in property <image> via-icon;
+    in property <string> via;
+    in property <string> via-role;
+    in property <string> devices;
+    in property <string> devices-role;
+    property <length> node: 32px;
+    property <length> col-w: root.width / 3;
+    property <length> x0: root.col-w / 2;
+    property <length> x1: root.width - root.col-w / 2;
+    property <length> cy: 16px + root.node / 2;
+    height: cols.preferred-height;
+    border-radius: Theme.radius-l;
+    background: Theme.fill-subtle;
+    border-width: 1px;
+    border-color: Theme.hairline;
+    accessible-role: text;
+    accessible-label: root.source-role + " " + root.source + ", " + root.via-role + " " + root.via + ", " + root.devices-role + " " + root.devices;
+    // The conduit (under the nodes).
     Rectangle {
-        width: 30px;
-        height: 30px;
-        y: (parent.height - self.height) / 2;
-        border-radius: 9px;
-        background: root.lit ? Theme.accent-soft : Theme.fill-hover;
-        Icon { source: root.icon; width: 15px; height: 15px; tint: root.lit ? Theme.accent : Theme.text-secondary; }
+        x: root.x0;
+        y: root.cy - 1px;
+        width: root.x1 - root.x0;
+        height: 2px;
+        border-radius: 1px;
+        background: root.live ? @linear-gradient(90deg, Theme.ok 0%, Theme.accent 100%) : Theme.text-tertiary.with-alpha(0.28);
+        animate background { duration: Theme.smooth; }
     }
-    VerticalLayout {
-        alignment: center;
-        spacing: 1px;
-        Eyebrow { text: root.caption; }
-        Text { text: root.value; font-size: Theme.font-body; font-weight: 600; color: Theme.text; overflow: elide; }
+    if !root.internet: Rectangle {
+        x: root.x0;
+        y: root.cy - 1px;
+        width: (root.x1 - root.x0) / 2;
+        height: 2px;
+        background: Theme.bg-bottom.with-alpha(0.7);
+    }
+    // The glint: runs once from the source to the devices when the share goes live (none with reduced motion).
+    Rectangle {
+        x: root.live ? root.x1 - 40px : root.x0;
+        y: root.cy - 2px;
+        width: 40px;
+        height: 4px;
+        border-radius: 2px;
+        background: @linear-gradient(90deg, #FFFFFF00 0%, #FFFFFFE6 60%, #FFFFFF00 100%);
+        opacity: root.live && self.x < root.x1 - 41px ? 1 : 0;
+        animate x { duration: Theme.reduce-motion ? 0ms : 1400ms; easing: cubic-bezier(0.4, 0.0, 0.2, 1.0); }
+    }
+    cols := HorizontalLayout {
+        padding-top: 16px;
+        padding-bottom: 14px;
+        for step[i] in [
+            { icon: root.source-icon, value: root.source, role: root.source-role, lit: root.internet },
+            { icon: root.via-icon, value: root.via, role: root.via-role, lit: true },
+            { icon: @image-url("assets/icons/smartphone.svg"), value: root.devices, role: root.devices-role, lit: root.live },
+        ]: VerticalLayout {
+            horizontal-stretch: 1;
+            preferred-width: 0px;
+            spacing: 8px;
+            HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    width: root.node;
+                    height: root.node;
+                    GlassFrame { f: GlassEngine.control; inner-width: parent.width; inner-height: parent.height; }
+                    Rectangle {
+                        border-radius: self.height / 2;
+                        background: step.lit ? (root.live ? Theme.ok : Theme.accent).mix(Theme.glass-strong, Theme.dark ? 0.22 : 0.15) : Theme.glass-strong;
+                        border-width: 1px;
+                        border-color: step.lit ? (root.live ? Theme.ok : Theme.accent).with-alpha(0.55) : Theme.hairline;
+                        animate background, border-color { duration: Theme.smooth; }
+                    }
+                    Icon { source: step.icon; width: 15px; height: 15px; tint: step.lit ? (root.live ? Theme.ok : Theme.accent) : Theme.text-tertiary; }
+                }
+            }
+            VerticalLayout {
+                spacing: 1px;
+                padding-left: 8px;
+                padding-right: 8px;
+                Text { text: step.value; font-size: Theme.font-body; font-weight: 600; color: Theme.text; horizontal-alignment: center; overflow: elide; }
+                Text { text: step.role; font-size: Theme.font-caption; color: Theme.text-secondary; horizontal-alignment: center; overflow: elide; }
+            }
+        }
     }
 }
 
@@ -671,7 +745,7 @@ export component AppWindow inherits Window {
     property <bool> wide: root.content-w >= 880px;
     property <length> side-w: root.content-w >= 1240px ? 380px : root.content-w >= 1100px ? 340px : 300px;
     // Sharing: what the flow strip shows.
-    property <string> share-source-label: root.share-mode == 2 ? (root.share-repeater-source != "" ? root.share-repeater-source : "—") : (root.share-labels.length > root.share-upstream ? root.share-labels[root.share-upstream] : "—");
+    property <string> share-source-label: root.share-mode == 2 ? (root.share-repeater-source != "" ? root.share-repeater-source : "—") : root.share-upstream == 0 ? Tr.t("app.share.autoShort") : (root.share-labels.length > root.share-upstream ? root.share-labels[root.share-upstream] : "—");
     property <string> share-target-label: root.share-mode == 1 ? (root.share-target-labels.length > root.share-downstream && root.share-downstream >= 0 ? root.share-target-labels[root.share-downstream] : "—") : (root.share-name != "" ? root.share-name : Tr.t("app.share.mode.hotspot"));
 
     Backdrop { width: root.width; height: root.height; }
@@ -974,7 +1048,7 @@ export component AppWindow inherits Window {
                                 HorizontalLayout {
                                     alignment: start;
                                     Segmented {
-                                        items: [{ label: Tr.t("app.share.tab.settings") }, { label: Tr.t("app.share.tab.clients") + (root.share-clients > 0 ? " · " + root.share-clients : "") }];
+                                        items: [{ label: Tr.t("app.share.tab.settings") }, { label: Tr.t("app.share.tab.clients"), badge: root.share-clients > 0 ? root.share-clients : "" }];
                                         selected <=> root.share-tab;
                                         segment-min: 112px;
                                     }
@@ -1014,38 +1088,18 @@ export component AppWindow inherits Window {
                                         }
                                         if root.share-mode != 1 && !root.share-has-wifi: StatusBanner { kind: 3; message: Tr.t("app.share.noWifi"); }
                                         if root.share-mode == 2 && root.share-has-wifi && root.share-repeater-source == "": StatusBanner { kind: 3; message: Tr.t("app.share.repeaterNoWifi"); }
-                                        // The chain at a glance: where the Internet comes from, how it is shared, who gets it.
-                                        Rectangle {
-                                            border-radius: Theme.radius-l;
-                                            background: Theme.fill-subtle;
-                                            border-width: 1px;
-                                            border-color: Theme.hairline;
-                                            height: flow.preferred-height;
-                                            accessible-role: text;
-                                            accessible-label: Tr.t("app.share.flow.source") + " " + root.share-source-label + ", " + Tr.t("app.share.flow.via") + " " + root.share-target-label + ", " + Tr.t("app.share.flow.devices");
-                                            flow := HorizontalLayout {
-                                                padding: 12px;
-                                                spacing: 10px;
-                                                FlowStep {
-                                                    icon: root.share-upstream-vpn ? @image-url("assets/icons/shield-check.svg") : @image-url("assets/icons/globe.svg");
-                                                    caption: Tr.t("app.share.flow.source");
-                                                    value: root.share-allow-internet ? root.share-source-label : Tr.t("app.share.flow.localOnly");
-                                                    lit: root.share-allow-internet;
-                                                }
-                                                Icon { y: (parent.height - self.height) / 2; source: @image-url("assets/icons/arrow-right.svg"); tint: Theme.text-tertiary; }
-                                                FlowStep {
-                                                    icon: root.share-mode == 1 ? @image-url("assets/icons/router.svg") : root.share-mode == 2 ? @image-url("assets/icons/repeat-2.svg") : @image-url("assets/icons/wifi.svg");
-                                                    caption: Tr.t("app.share.flow.via");
-                                                    value: root.share-target-label;
-                                                    lit: true;
-                                                }
-                                                Icon { y: (parent.height - self.height) / 2; source: @image-url("assets/icons/arrow-right.svg"); tint: Theme.text-tertiary; }
-                                                FlowStep {
-                                                    icon: @image-url("assets/icons/smartphone.svg");
-                                                    caption: Tr.t("app.share.flow.devices");
-                                                    value: Tr.t("app.share.flow.devicesDetail");
-                                                }
-                                            }
+                                        // The signal path at a glance: where from, shared how, to whom.
+                                        SignalPath {
+                                            live: root.share-session != "";
+                                            internet: root.share-allow-internet;
+                                            source-icon: root.share-upstream-vpn ? @image-url("assets/icons/shield-check.svg") : @image-url("assets/icons/globe.svg");
+                                            source: root.share-allow-internet ? root.share-source-label : Tr.t("app.share.flow.localOnly");
+                                            source-role: Tr.t("app.share.flow.source");
+                                            via-icon: root.share-mode == 1 ? @image-url("assets/icons/router.svg") : root.share-mode == 2 ? @image-url("assets/icons/repeat-2.svg") : @image-url("assets/icons/wifi.svg");
+                                            via: root.share-target-label;
+                                            via-role: Tr.t("app.share.flow.via");
+                                            devices: root.share-session != "" && root.share-clients > 0 ? root.share-clients + " " + Tr.t("app.share.clientsCount") : Tr.t("app.share.flow.devices");
+                                            devices-role: Tr.t("app.share.flow.devicesDetail");
                                         }
                                         // Where from and where to.
                                         HorizontalLayout {
@@ -1154,9 +1208,10 @@ export component AppWindow inherits Window {
                                                     icon: row.vpn ? @image-url("assets/icons/shield-check.svg") : @image-url("assets/icons/network.svg");
                                                     tone: row.up ? (row.vpn ? 3 : 4) : 0;
                                                     title: row.name;
-                                                    subtitle: row.kind + " · " + row.status;
+                                                    subtitle: row.kind;
                                                     detail: row.addresses;
                                                     last: i == root.interfaces.length - 1;
+                                                    Badge { text: row.status; tone: row.up ? 4 : 0; dot: true; }
                                                 }
                                             }
                                             Secondary { text: root.hidden-summary; }
@@ -1209,9 +1264,10 @@ export component AppWindow inherits Window {
                                                 icon: row.vpn ? @image-url("assets/icons/shield-check.svg") : @image-url("assets/icons/network.svg");
                                                 tone: row.up ? (row.vpn ? 3 : 4) : 0;
                                                 title: row.name;
-                                                subtitle: row.kind + " · " + row.status;
+                                                subtitle: row.kind;
                                                 detail: row.addresses;
                                                 last: i == root.interfaces.length - 1;
+                                                Badge { text: row.status; tone: row.up ? 4 : 0; dot: true; }
                                             }
                                         }
                                         Secondary { text: root.hidden-summary; }
@@ -1335,9 +1391,9 @@ export component AppWindow inherits Window {
                                                 }
                                                 if c.detail != "": Secondary { text: c.detail; }
                                                 HorizontalLayout {
-                                                    spacing: 6px;
-                                                    Icon { source: @image-url("assets/icons/triangle-alert.svg"); tint: Theme.warn; width: 13px; height: 13px; y: 1px; }
-                                                    Text { text: c.impact + " · " + c.risk; font-size: Theme.font-small; color: Theme.warn; wrap: word-wrap; }
+                                                    spacing: 8px;
+                                                    Text { text: c.impact; font-size: Theme.font-small; color: Theme.warn; wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; }
+                                                    VerticalLayout { alignment: center; Badge { text: c.risk; tone: 1; } }
                                                 }
                                             }
                                         }
@@ -1445,7 +1501,7 @@ export component AppWindow inherits Window {
                                         tone: display.warning != "" ? 2 : 3;
                                         title: display.name;
                                         subtitle: display.warning != "" ? display.warning : display.connection;
-                                        detail: display.warning != "" ? display.connection + " · " + display.edid : display.edid;
+                                        detail: display.warning != "" ? display.connection + "\n" + display.edid : display.edid;
                                         last: i == root.displays.length - 1;
                                         Badge { text: display.mode; tone: 3; }
                                     }
@@ -1480,9 +1536,10 @@ export component AppWindow inherits Window {
                                         tone: change.can-revert ? 3 : 0;
                                         title: change.kind;
                                         subtitle: change.description;
-                                        detail: change.when + " · " + change.scope;
+                                        detail: change.when;
                                         last: i == root.changes.length - 1;
-                                        Badge { text: change.status; tone: change.can-revert ? 4 : 0; }
+                                        Badge { text: change.scope; }
+                                        Badge { text: change.status; tone: change.can-revert ? 4 : 0; dot: true; }
                                         if change.can-revert: Button { icon: @image-url("assets/icons/undo-2.svg"); text: Tr.t("app.changes.revert"); size: 1; clicked => { root.revert(change.id); } }
                                     }
                                 }
@@ -1715,8 +1772,7 @@ export component AppWindow inherits Window {
                     VerticalLayout {
                         horizontal-stretch: 1;
                         spacing: 2px;
-                        Eyebrow { text: Tr.t("app.drivers.chooser"); }
-                        Text { text: root.driver-device-name; font-size: Theme.font-title + 2px; font-weight: 650; color: Theme.text; wrap: word-wrap; }
+                        Text { text: Tr.t("app.drivers.chooser") + " " + root.driver-device-name; font-size: Theme.font-title + 2px; font-weight: 650; color: Theme.text; wrap: word-wrap; }
                     }
                     VerticalLayout { alignment: start; IconButton { icon: @image-url("assets/icons/x.svg"); tooltip: Tr.t("app.op.dismiss"); clicked => { root.close-drivers(); } } }
                 }
@@ -1788,7 +1844,6 @@ export component AppWindow inherits Window {
                     VerticalLayout {
                         spacing: 3px;
                         horizontal-stretch: 1;
-                        Eyebrow { text: Tr.t("app.dialog.title"); }
                         Text { text: root.dialog-summary; font-size: 17px; font-weight: 650; color: Theme.text; wrap: word-wrap; }
                     }
                     VerticalLayout {
@@ -1822,7 +1877,6 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
-                Eyebrow { text: Tr.t("app.dialog.steps"); }
                 Scroller {
                     min-height: min(steps.preferred-height, 60px);
                     preferred-height: steps.preferred-height;
@@ -1886,8 +1940,8 @@ export component AppWindow inherits Window {
                     VerticalLayout {
                         spacing: 3px;
                         horizontal-stretch: 1;
-                        Eyebrow { text: Tr.t("app.update.youHave") + " " + root.version; }
                         Text { text: Tr.t("app.update.dialogTitle") + " " + root.update-version; font-size: 17px; font-weight: 650; color: Theme.text; wrap: word-wrap; }
+                        Secondary { text: Tr.t("app.update.installed") + " " + root.version; }
                     }
                 }
                 Rectangle {
