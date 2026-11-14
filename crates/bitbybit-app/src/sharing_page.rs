@@ -222,6 +222,7 @@ pub fn show(
     ui.set_share_labels(ModelRc::from(Rc::new(VecModel::from(source_labels))));
     ui.set_share_target_labels(labels(&choices.targets));
     ui.set_share_has_wifi(choices.wifi);
+    ui.set_share_repeater_source(repeater_source(&choices).map_or(String::new(), |s| s.label.clone()).into());
     if !choices.wifi {
         ui.set_share_mode(1);
     }
@@ -250,6 +251,11 @@ fn upstream_changed(ui: &AppWindow) {
     if !vpn {
         ui.set_share_leak(false);
     }
+}
+
+/// What a repeater repeats: the Wi-Fi network this PC is connected to (a Wi-Fi card among the up sources).
+fn repeater_source(choices: &ShareChoices) -> Option<&ShareChoice> {
+    choices.sources.iter().find(|s| s.wifi)
 }
 
 /// Wi-Fi repeater: the source is the Wi-Fi the PC is connected to.
@@ -340,7 +346,21 @@ pub fn wire(ui: &AppWindow) {
     let weak = ui.as_weak();
     ui.on_start_sharing(move || {
         let Some(ui) = weak.upgrade() else { return };
-        let source = source_of(&ui);
+        let repeater = ui.get_share_mode() == 2;
+        let source = if repeater {
+            CHOICES.with(|c| repeater_source(&c.borrow()).map(|s| (s.luid, s.vpn)))
+        } else {
+            source_of(&ui)
+        };
+        if repeater && source.is_none() {
+            let message = TextCatalog::default_catalog().resolve(&text!(
+                "app.share.repeaterNoWifi",
+                "This PC's Wi-Fi is not connected to a network, so there is nothing to repeat. Connect the Wi-Fi to a network, or use the Wi-Fi hotspot to share another connection (for example the Ethernet)."
+            ));
+            ui.set_op_state(3);
+            ui.set_op_message(message.into());
+            return;
+        }
         let allow_internet = ui.get_share_allow_internet() && source.is_some();
         if ui.get_share_upstream() == AUTO && source.is_none() {
             let message = TextCatalog::default_catalog()
