@@ -139,7 +139,7 @@ User guide: [PREVIEW.md](PREVIEW.md).
 | VPN detection (WireGuard, OpenVPN TAP/Wintun/DCO, IKEv2/L2TP/SSTP/PPTP, commercial) | 🟡 | Wave 1. |
 | DHCP server + DNS forwarder | 🟡 | Wave 1. |
 | Hotspot backends (Mobile Hotspot, Wi-Fi Direct legacy AP, Hosted Network) | ⬜ | Wave 2. |
-| Sharing engines (ICS, WinNAT, routing), topology validator | ⬜ | Wave 2. |
+| Sharing engines (ICS, WinNAT, routing), topology validator | 🟡 | WinNAT, and ICS when WinNAT is missing: compiled only (docs/TESTING.md). |
 | VPN leak protection (WFP, fail-closed) | ⬜ | Wave 2. |
 | Firewall (owned rules), clients (DHCP leases + neighbours) | ⬜ | Wave 2. |
 | Bridge / repeater | ⬜ | Wave 2: detection + honest capability reporting; Windows has no documented API to create a MAC bridge. |

@@ -1,11 +1,11 @@
 //! Windows side of `bitbybit_network::session::SharingBackend` and the revert handler of each step kind:
 //! Mobile Hotspot (WinRT tethering), LAN address and IPv4 forwarding (IP Helper), WinNAT `bitBybit-*` (WMI
-//! `MSFT_NetNat`) and the WFP leak guard (`net::wfp`). `prepare` only reads; every step records what existed
-//! before, and reverts only undo what bitBybit itself added. Firewall rules go through `net::firewall`; DHCP/DNS
-//! are hosted by the service; ICS is not available in this version (refused, never half-applied).
+//! `MSFT_NetNat`), Windows ICS (HNetCfg, when the PC has no WinNAT) and the WFP leak guard (`net::wfp`). `prepare`
+//! only reads; every step records what existed before, and reverts only undo what bitBybit itself added. Firewall
+//! rules go through `net::firewall`; DHCP/DNS are hosted by the service.
 //! Compiled only until the Windows CI opt-in system-change step runs it.
 
-use bitbybit_core::{Error, ErrorCode, Result};
+use bitbybit_core::{Error, ErrorCode, Result, text};
 use bitbybit_journal::ChangeRecord;
 use bitbybit_network::leak::{self, FilterSpec, LeakGuardObservation, ProtectionState};
 use bitbybit_network::prefix::IpPrefix;
@@ -108,8 +108,9 @@ mod nat {
     };
     use windows::Win32::System::Variant::{VARIANT, VARIANT_0, VARIANT_0_0, VARIANT_0_0_0, VT_BSTR, VariantClear};
     use windows::Win32::System::Wmi::{
-        IWbemClassObject, IWbemLocator, IWbemServices, WBEM_FLAG_CREATE_ONLY, WBEM_FLAG_FORWARD_ONLY,
-        WBEM_FLAG_RETURN_IMMEDIATELY, WBEM_FLAG_RETURN_WBEM_COMPLETE, WBEM_GENERIC_FLAG_TYPE, WbemLocator,
+        IWbemClassObject, IWbemLocator, IWbemServices, WBEM_E_INVALID_CLASS, WBEM_E_NOT_FOUND, WBEM_FLAG_CREATE_ONLY,
+        WBEM_FLAG_FORWARD_ONLY, WBEM_FLAG_RETURN_IMMEDIATELY, WBEM_FLAG_RETURN_WBEM_COMPLETE, WBEM_GENERIC_FLAG_TYPE,
+        WbemLocator,
     };
     use windows::core::{BSTR, HSTRING, PCWSTR};
 
@@ -191,6 +192,21 @@ mod nat {
 
     pub fn exists(name: &str) -> Result<bool> {
         Ok(path(&services()?, name)?.is_some())
+    }
+
+    /// The WinNAT class is registered (it comes with Hyper-V / Windows containers; many client PCs lack it).
+    pub fn class_present() -> Result<bool> {
+        let s = services()?;
+        let mut class = None;
+        // SAFETY: reads the class definition only.
+        let r = unsafe {
+            s.GetObject(&BSTR::from("MSFT_NetNat"), WBEM_FLAG_RETURN_WBEM_COMPLETE, None, Some(&mut class), None)
+        };
+        match r {
+            Ok(()) => Ok(class.is_some()),
+            Err(e) if [WBEM_E_NOT_FOUND.0, WBEM_E_INVALID_CLASS.0].contains(&e.code().0) => Ok(false),
+            Err(e) => Err(failed("GetObject(MSFT_NetNat)", &e)),
+        }
     }
 
     pub fn create(name: &str, internal: IpPrefix) -> Result<()> {
@@ -325,6 +341,174 @@ mod nat {
         }
         Ok(())
     }
+}
+
+/// Whether the Windows NAT exists on this PC; `None` when WMI could not answer (logged).
+pub fn win_nat_available() -> Option<bool> {
+    nat::class_present().map_err(|e| log::warn!("Could not check for the Windows NAT: {e}")).ok()
+}
+
+// ---------- Internet Connection Sharing (COM HNetCfg.HNetShare) ----------
+
+/// Windows ICS: one public (Internet) and one private (home network) connection for the whole PC. Only connections
+/// bitBybit shared are unshared again; a share that was already on (another connection, the Mobile Hotspot) is refused.
+mod ics {
+    use super::*;
+    use windows::Win32::NetworkManagement::IpHelper::ConvertInterfaceLuidToGuid;
+    use windows::Win32::NetworkManagement::WindowsFirewall::{
+        ICSSHARINGTYPE_PRIVATE, ICSSHARINGTYPE_PUBLIC, INetConnection, INetSharingConfiguration, INetSharingManager,
+        NetSharingManager, SHARINGCONNECTIONTYPE,
+    };
+    use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
+    use windows::Win32::System::Ole::IEnumVARIANT;
+    use windows::Win32::System::Variant::{VARIANT, VT_DISPATCH, VT_UNKNOWN, VariantClear};
+    use windows::core::{GUID, IUnknown, Interface};
+
+    fn failed(api: &str, e: &windows::core::Error) -> Error {
+        Error::platform(format!("{api}: {}", e.message()), e.code().0)
+    }
+
+    struct Connection {
+        guid: GUID,
+        name: String,
+        config: INetSharingConfiguration,
+    }
+
+    /// Every connection Windows sharing knows (at most 256), with its interface GUID.
+    fn connections() -> Result<Vec<Connection>> {
+        crate::com::init();
+        let mut out = Vec::new();
+        // SAFETY: in-process COM server of Windows (hnetcfg.dll); each enumerated VARIANT is cleared after use.
+        unsafe {
+            let m: INetSharingManager = CoCreateInstance(&NetSharingManager, None, CLSCTX_INPROC_SERVER)
+                .map_err(|e| failed("NetSharingManager", &e))?;
+            if !m.SharingInstalled().map_err(|e| failed("SharingInstalled", &e))?.as_bool() {
+                return Err(Error::new(ErrorCode::NotSupported, "Internet Connection Sharing is not installed."));
+            }
+            let all = m.EnumEveryConnection().map_err(|e| failed("EnumEveryConnection", &e))?;
+            let items: IEnumVARIANT =
+                all._NewEnum().and_then(|u| u.cast()).map_err(|e| failed("EnumEveryConnection._NewEnum", &e))?;
+            for _ in 0..256 {
+                let mut v = [VARIANT::default()];
+                let mut fetched = 0u32;
+                let _ = items.Next(&mut v, &mut fetched);
+                if fetched != 1 {
+                    break;
+                }
+                let inner = &v[0].Anonymous.Anonymous;
+                let unknown: Option<IUnknown> = match inner.vt {
+                    VT_UNKNOWN => (*inner.Anonymous.punkVal).clone(),
+                    VT_DISPATCH => (*inner.Anonymous.pdispVal).as_ref().and_then(|d| d.cast().ok()),
+                    _ => None,
+                };
+                let _ = VariantClear(&mut v[0]);
+                let Some(connection) = unknown.and_then(|u| u.cast::<INetConnection>().ok()) else { continue };
+                let props = m.get_NetConnectionProps(&connection).map_err(|e| failed("NetConnectionProps", &e))?;
+                let Some(guid) = props
+                    .Guid()
+                    .ok()
+                    .and_then(|g| GUID::try_from(g.to_string().trim_matches(|c| c == '{' || c == '}')).ok())
+                else {
+                    continue;
+                };
+                let name = props.Name().map(|n| n.to_string()).unwrap_or_default();
+                let config = m
+                    .get_INetSharingConfigurationForINetConnection(&connection)
+                    .map_err(|e| failed("INetSharingConfiguration", &e))?;
+                out.push(Connection { guid, name, config });
+            }
+        }
+        Ok(out)
+    }
+
+    fn guid_of(luid: u64) -> Result<GUID> {
+        let mut guid = GUID::zeroed();
+        // SAFETY: plain value in, one GUID out.
+        unsafe { ConvertInterfaceLuidToGuid(&NET_LUID_LH { Value: luid }, &mut guid) }
+            .ok()
+            .map_err(|e| failed("ConvertInterfaceLuidToGuid", &e))?;
+        Ok(guid)
+    }
+
+    /// `Some(type)` when the connection is shared.
+    fn role(c: &Connection) -> Result<Option<SHARINGCONNECTIONTYPE>> {
+        // SAFETY: property reads.
+        unsafe {
+            if !c.config.SharingEnabled().map_err(|e| failed("SharingEnabled", &e))?.as_bool() {
+                return Ok(None);
+            }
+            c.config.SharingConnectionType().map(Some).map_err(|e| failed("SharingConnectionType", &e))
+        }
+    }
+
+    /// The connections of `public` and `private` (interface LUIDs).
+    fn pair(public: u64, private: u64) -> Result<(Connection, Connection)> {
+        let (public, private) = (guid_of(public)?, guid_of(private)?);
+        let mut all = connections()?;
+        let mut take = |guid: GUID| {
+            let at = all.iter().position(|c| c.guid == guid).ok_or_else(|| {
+                Error::not_found("Windows Internet Connection Sharing does not list this network connection.")
+            })?;
+            Ok::<_, Error>(all.swap_remove(at))
+        };
+        Ok((take(public)?, take(private)?))
+    }
+
+    /// Name of a connection that is already shared (by anyone), if any.
+    pub fn shared_connection() -> Result<Option<String>> {
+        for c in connections()? {
+            if role(&c)?.is_some() {
+                return Ok(Some(c.name));
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn enable(public: u64, private: u64) -> Result<()> {
+        // A just-started access point may reach the connections list a moment after IP Helper sees it (5 tries).
+        let mut found = pair(public, private);
+        for _ in 0..4 {
+            if !matches!(&found, Err(e) if e.code == ErrorCode::NotFound) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            found = pair(public, private);
+        }
+        let (public, private) = found?;
+        // SAFETY: COM calls on the two connections just found.
+        unsafe {
+            public.config.EnableSharing(ICSSHARINGTYPE_PUBLIC).map_err(|e| failed("EnableSharing(public)", &e))?;
+            private.config.EnableSharing(ICSSHARINGTYPE_PRIVATE).map_err(|e| failed("EnableSharing(private)", &e))
+        }
+    }
+
+    /// Whether each connection is shared in the role bitBybit gave it (public, private).
+    pub fn ours(public: u64, private: u64) -> Result<(bool, bool)> {
+        let (public, private) = pair(public, private)?;
+        Ok((role(&public)? == Some(ICSSHARINGTYPE_PUBLIC), role(&private)? == Some(ICSSHARINGTYPE_PRIVATE)))
+    }
+
+    /// Unshares whichever of the two is still shared in bitBybit's role; a missing connection is skipped.
+    pub fn disable(public: u64, private: u64) -> Result<()> {
+        let all = connections()?;
+        for (luid, kind) in [(private, ICSSHARINGTYPE_PRIVATE), (public, ICSSHARINGTYPE_PUBLIC)] {
+            let Ok(guid) = guid_of(luid) else { continue };
+            if let Some(c) = all.iter().find(|c| c.guid == guid)
+                && role(c)? == Some(kind)
+            {
+                // SAFETY: COM call on a connection bitBybit shared.
+                unsafe { c.config.DisableSharing() }.map_err(|e| failed("DisableSharing", &e))?;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Ics {
+    public_luid: u64,
+    private_luid: u64,
 }
 
 // ---------- Mobile Hotspot (WinRT) ----------
@@ -528,11 +712,20 @@ impl SharingBackend for WindowsSharing {
             StepAction::StartDhcp { .. } | StepAction::StartDns { .. } => {
                 return Err(not_here(step));
             }
-            StepAction::EnableIcs { .. } => {
-                return Err(Error::new(
-                    ErrorCode::NotSupported,
-                    "Internet Connection Sharing mode is not available in this version; use the NAT mode.",
-                ));
+            StepAction::EnableIcs { public_luid, private_luid } => {
+                if let Some(name) = ics::shared_connection()? {
+                    return Err(Error::new(
+                        ErrorCode::Conflict,
+                        format!("Internet Connection Sharing is already on for \"{name}\"."),
+                    )
+                    .with_user_text(text!(
+                        "sharing.ics.inUse",
+                        "Windows Internet Connection Sharing is already on for \"{0}\" (or the Windows Mobile Hotspot). Turn it off first: bitBybit does not change a share it did not create.",
+                        name
+                    )));
+                }
+                let state = Ics { public_luid: *public_luid, private_luid: *private_luid };
+                StepStates { previous: Some(r#"{"sharedConnections":[]}"#.into()), applied: json(&state)? }
             }
         })
     }
@@ -564,6 +757,7 @@ impl SharingBackend for WindowsSharing {
             }
             StepAction::EnableForwarding { luids } => luids.iter().try_for_each(|l| set_forwarding(*l, true)),
             StepAction::CreateNat { name, internal } => nat::create(name, *internal),
+            StepAction::EnableIcs { public_luid, private_luid } => ics::enable(*public_luid, *private_luid),
             StepAction::InstallLeakGuard { filters } => crate::net::wfp::install(filters).map(|_| ()),
             StepAction::AddFirewallRules { rules } => rules.iter().try_for_each(crate::net::firewall::add),
             _ => Err(not_here(step)),
@@ -593,6 +787,9 @@ impl SharingBackend for WindowsSharing {
             StepAction::SetLanAddress { luid, address, .. } => address_present(*luid, *address),
             StepAction::EnableForwarding { luids } => luids.iter().all(|l| forwarding(*l).unwrap_or(false)),
             StepAction::CreateNat { name, .. } => nat::exists(name)?,
+            StepAction::EnableIcs { public_luid, private_luid } => {
+                ics::ours(*public_luid, *private_luid)? == (true, true)
+            }
             StepAction::InstallLeakGuard { filters } => leak_guard_verified(filters),
             StepAction::AddFirewallRules { rules } => crate::net::firewall::verify(rules)?,
             _ => return Err(not_here(step)),
@@ -710,6 +907,27 @@ impl RevertHandler for NatRevert {
     }
     fn revert(&self, record: &ChangeRecord) -> Result<()> {
         nat::delete(&record.target_id)
+    }
+}
+
+/// Unshares the connections bitBybit shared with Windows ICS (left alone when someone gave them another role).
+pub struct IcsRevert;
+impl RevertHandler for IcsRevert {
+    fn target_kind(&self) -> &str {
+        "sharing.ics"
+    }
+    fn compare(&self, record: &ChangeRecord) -> Result<LiveState> {
+        let Some(s) = read::<Ics>(record.applied_state.as_deref()) else { return Ok(LiveState::Unknown) };
+        Ok(match ics::ours(s.public_luid, s.private_luid) {
+            Ok((false, false)) => LiveState::Gone,
+            Ok(_) => LiveState::MatchesApplied, // one or both still ours (a partial apply is undone too)
+            Err(e) if e.code == ErrorCode::NotFound => LiveState::Gone,
+            Err(_) => LiveState::Unknown,
+        })
+    }
+    fn revert(&self, record: &ChangeRecord) -> Result<()> {
+        let s = read::<Ics>(record.applied_state.as_deref()).ok_or_else(|| Error::invalid("No ICS state."))?;
+        ics::disable(s.public_luid, s.private_luid)
     }
 }
 

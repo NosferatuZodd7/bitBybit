@@ -105,7 +105,8 @@ that commit is **compiled only** (clippy for `x86_64-pc-windows-msvc`) until the
 | Device restart/enable/disable/uninstall, journal + drift-aware revert (`devices.action`) | ✅ | ✅ | ⬜ | ⬜ |
 | Driver install/rollback/package delete with backup (`drivers.*`), deny policy | ✅ | ✅ | ⬜ | ⬜ |
 | Windows Update driver search/install, restore point | ✅ | ✅ | ⬜ | ⬜ |
-| Sharing: hotspot, LAN address, forwarding, WinNAT, DHCP/DNS hosts, rollback on failure | ✅ session + hosts | ✅ | ⬜ | ⬜ |
+| Sharing: hotspot, LAN address, forwarding, WinNAT, DHCP/DNS hosts, rollback on failure | ✅ session + hosts | ✅ | ⬜ | partial: dev.46 log on the user's PC shows Hosted Network start, DHCP/DNS bind, forwarding and a clean rollback; WinNAT absent there (MSFT_NetNat not found) |
+| Sharing through Windows ICS when WinNAT is missing (HNetCfg enable/verify/revert) | ✅ engine choice only | ✅ | ⬜ | ⬜ |
 | WFP leak guard (persistent filters, read back, fail closed) + watchdog | ✅ plan/assess/watchdog | ✅ | ⬜ | ⬜ |
 | Audio services restart, volume/mute, DP profile reconciler | ✅ reconciler | ✅ | ⬜ | ⬜ |
 | App: confirmation dialog, in-process broker without service, self-update swap | ✅ view/swap | ✅ | ⬜ | ⬜ |

@@ -56,6 +56,7 @@ pub fn setup(paths: &AppPaths) -> Setup {
         Arc::new(sharing::LanAddressRevert),
         Arc::new(sharing::ForwardingRevert),
         Arc::new(sharing::NatRevert),
+        Arc::new(sharing::IcsRevert),
         Arc::new(sharing::LeakGuardRevert),
         Arc::new(bitbybit_platform_windows::net::firewall::FirewallRulesRevert),
     ];

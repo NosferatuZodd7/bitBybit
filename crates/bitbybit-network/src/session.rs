@@ -61,10 +61,13 @@ pub enum ApProvider {
     HostedNetwork,
 }
 
-/// What this PC's Wi-Fi can do for a hotspot, as far as can be read without starting anything.
+/// What this PC can do for a hotspot and sharing, as far as can be read without starting anything.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApCapabilities {
+    /// The Windows NAT (WMI `MSFT_NetNat`) exists; without it Windows ICS shares instead. `None` when unreadable.
+    #[serde(default)]
+    pub win_nat: Option<bool>,
     /// A Wi-Fi Direct device interface exists (confirmed only when an AP actually starts).
     pub wifi_direct: bool,
     /// The Hosted Network reports a state other than "unavailable"; `None` when it could not be read.

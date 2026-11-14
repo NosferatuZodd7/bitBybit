@@ -19,6 +19,7 @@ fn failed(e: &windows::core::Error) -> Error {
 
 pub fn capabilities() -> ApCapabilities {
     ApCapabilities {
+        win_nat: crate::net::sharing::win_nat_available(),
         wifi_direct: wifi_direct::present(),
         hosted_network: hosted::supported(),
         radio_on: hosted::radio_on(),

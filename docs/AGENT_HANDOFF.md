@@ -94,7 +94,9 @@ All phases A–N done; Liquid Glass redesign done (task #46, `docs/design/LIQUID
   (hotspot WinRT, LAN address + forwarding IP Helper, WinNAT via WMI MSFT_NetNat `bitBybit-*` only, firewall step,
   leak guard) + revert handlers; service `sharing::{Hosts, ServiceSharing}` hosts DHCP/DNS bound to the LAN gateway
   only (`StartDns` now carries `listen`); ops `sharing.start` (topology-validated, leak protection only for a VPN
-  upstream) / `sharing.stop`. ICS, Wi-Fi Direct legacy AP and Hosted Network: Limited (ICS refused with a message).
+  upstream) / `sharing.stop`. Wi-Fi Direct legacy AP and Hosted Network: Limited. ICS (HNetCfg, `net::sharing::ics`)
+  replaces WinNAT when `MSFT_NetNat` is missing (e.g. Windows 10 Pro without Hyper-V): fixed 192.168.137.0/24,
+  Windows' own DHCP/DNS, refused when another connection is already shared, no leak protection or per-device rules.
   SVC-05: `sharing::leak_watchdog_tick` (journal → planned filters vs WFP; NotGuaranteed/Unknown stops the session),
   service thread every 15 s. SVC-06 moves to the app (default devices are per user, session 0 cannot see them).
   App: `ops.rs` runs any broker op off the UI thread; plans are shown in the confirmation dialog (summary, steps,

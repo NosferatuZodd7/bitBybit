@@ -1,6 +1,7 @@
 //! `sharing.start` (WinNAT mode: optional Mobile Hotspot, LAN address, firewall rules, DHCP, DNS, forwarding, NAT,
-//! and — when sharing a VPN — the WFP leak guard first) and `sharing.stop`. The plan comes from the live network
-//! state and the topology validator; a failed step rolls back everything already applied.
+//! and — when sharing a VPN — the WFP leak guard first; on PCs without WinNAT, Windows ICS instead, without leak
+//! protection) and `sharing.stop`. The plan comes from the live network state and the topology validator; a failed
+//! step rolls back everything already applied.
 
 use crate::NetworkInventory;
 use bitbybit_core::{Error, ErrorCode, LocalizedText, Result, RiskLevel, text};
@@ -223,10 +224,16 @@ fn build_lan(
         return local_only(&snapshot, downstream_luid, lan_text);
     }
     let routes = bitbybit_network::routes::analyze(&snapshot, &classifications);
-    let lan = match lan_text {
+    let mut lan = match lan_text {
         Some(text) => Some(IpPrefix::parse(text, true).ok_or_else(|| Error::invalid("Invalid LAN subnet."))?),
         None => None,
     };
+    let win_nat = (context.ap_capabilities)().win_nat;
+    log::info!("Windows NAT available: {win_nat:?}");
+    let ics = win_nat == Some(false);
+    if ics {
+        lan = Some(ics_lan(lan, r.leak_protection)?);
+    }
     let report = topology::validate(
         &SharingPlanInput { upstream_luid: r.upstream_luid, downstream_luid, lan },
         &snapshot,
@@ -266,7 +273,7 @@ fn build_lan(
     let dns_upstreams: Vec<SocketAddr> =
         upstream.dns_servers.iter().map(|ip: &IpAddr| SocketAddr::new(*ip, 53)).collect();
     let steps = build_plan(&PlanInput {
-        mode: SharingMode::WinNat,
+        mode: if ics { SharingMode::Ics } else { SharingMode::WinNat },
         hotspot: None,
         upstream_luid: r.upstream_luid,
         downstream_luid,
@@ -278,8 +285,39 @@ fn build_lan(
         leak_filters,
         share_internet: true,
     });
-    let warnings = report.issues.into_iter().filter(|i| i.severity == IssueSeverity::Warning).map(|i| i.text).collect();
+    let mut warnings: Vec<LocalizedText> =
+        report.issues.into_iter().filter(|i| i.severity == IssueSeverity::Warning).map(|i| i.text).collect();
+    if ics {
+        warnings.push(text!(
+            "sharing.ics.limits",
+            "This PC has no Windows NAT, so Windows Internet Connection Sharing shares the connection (network 192.168.137.0/24, Windows' own addresses and DNS); per-device rules and console ports are not available."
+        ));
+    }
     Ok((steps, lan, warnings))
+}
+
+/// The LAN when Windows ICS shares (no WinNAT on this PC): always 192.168.137.0/24, and never with leak protection
+/// (bitBybit's packet filters were not verified against ICS's NAT, so protection cannot be claimed).
+fn ics_lan(requested: Option<IpPrefix>, leak_protection: bool) -> Result<IpPrefix> {
+    if leak_protection {
+        return Err(Error::new(ErrorCode::NotSupported, "Leak protection needs the Windows NAT.").with_user_text(text!(
+            "sharing.ics.noLeakGuard",
+            "This PC has no Windows NAT (it comes with Hyper-V), so sharing uses Windows Internet Connection Sharing, and leak protection is not possible with it."
+        )));
+    }
+    match requested {
+        Some(lan) if lan != WINDOWS_HOTSPOT_LAN => {
+            Err(Error::invalid("Windows ICS always uses 192.168.137.0/24.").with_user_text(text!(
+                "sharing.ics.fixedLan",
+                "This PC has no Windows NAT, so sharing uses Windows Internet Connection Sharing, whose network is always 192.168.137.0/24."
+            )))
+        }
+        _ => Ok(WINDOWS_HOTSPOT_LAN),
+    }
+}
+
+fn uses_ics(steps: &[StepAction]) -> bool {
+    steps.iter().any(|s| matches!(s, StepAction::EnableIcs { .. }))
 }
 
 pub struct StartOperation(Descriptor, SharingContext);
@@ -362,6 +400,7 @@ impl BrokerOperation for StartOperation {
                 ssid: None,
                 leak_protection: r.leak_protection,
                 allow_internet: r.allow_internet,
+                ics: uses_ics(&steps),
             }),
         );
         Ok(Started { session_id, lan: lan.to_string() })
@@ -395,6 +434,10 @@ fn hotspot_plan(context: &SharingContext, r: &StartRequest, hotspot: &HotspotSet
         return Err(Error::invalid("Leak protection needs a VPN as the Internet source.")
             .with_user_text(text!("sharing.leak.needsVpn", "Leak protection is only for sharing a VPN connection.")));
     }
+    let ics = r.allow_internet && (context.ap_capabilities)().win_nat == Some(false);
+    if ics {
+        ics_lan(None, r.leak_protection)?;
+    }
     let mut steps = vec![
         text!(
             "sharing.step.accessPoint",
@@ -410,6 +453,11 @@ fn hotspot_plan(context: &SharingContext, r: &StartRequest, hotspot: &HotspotSet
         steps[1] = text!(
             "sharing.step.apLocalOnly",
             "Give connected devices addresses on a local network of their own, without Internet access"
+        );
+    } else if ics {
+        steps[1] = text!(
+            "sharing.step.apIcs",
+            "Give connected devices addresses, DNS and Internet through Windows Internet Connection Sharing (network 192.168.137.0/24; this PC has no Windows NAT)"
         );
     } else if r.leak_protection {
         steps.push(text!(
@@ -509,10 +557,10 @@ fn start_hotspot(
             let request = StartRequest { downstream_luid: downstream, ..r.clone() };
             let (steps, lan, _) = build_lan(context, &request, downstream, None)?;
             sessions.extend(session, &steps, now).map_err(|f| failure(&f))?;
-            Ok((lan, downstream))
+            Ok((lan, downstream, uses_ics(&steps)))
         });
         return match lan {
-            Ok((lan, downstream)) => {
+            Ok((lan, downstream, ics)) => {
                 set_active(
                     context,
                     Some(ActiveShare {
@@ -524,6 +572,7 @@ fn start_hotspot(
                         ssid: Some(hotspot.ssid.clone()),
                         leak_protection: r.leak_protection,
                         allow_internet: r.allow_internet,
+                        ics,
                     }),
                 );
                 Ok(Started { session_id: session, lan: lan.to_string() })
@@ -564,6 +613,7 @@ fn start_hotspot(
             ssid: Some(ssid),
             leak_protection: false,
             allow_internet: true,
+            ics: false,
         }),
     );
     Ok(Started { session_id, lan: WINDOWS_HOTSPOT_LAN.to_string() })
@@ -605,6 +655,9 @@ pub struct ActiveShare {
     pub leak_protection: bool,
     #[serde(default = "yes")]
     pub allow_internet: bool,
+    /// Windows ICS shares (no WinNAT on this PC): no per-device rules or console ports.
+    #[serde(default)]
+    pub ics: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -761,6 +814,14 @@ impl ClientOperation {
                     "sharing.client.windowsHotspot",
                     "Per-device rules need bitBybit's own network; this share runs on the Windows Mobile Hotspot."
                 )));
+        }
+        if share.ics {
+            return Err(Error::new(ErrorCode::NotSupported, "Windows ICS has no per-device rules.").with_user_text(
+                text!(
+                    "sharing.client.ics",
+                    "Per-device rules need the Windows NAT, which this PC does not have; this share runs on Windows Internet Connection Sharing."
+                ),
+            ));
         }
         let mac = bitbybit_network::clients::normalize_mac(&r.mac).ok_or_else(|| Error::invalid("Invalid MAC."))?;
         let lan = IpPrefix::parse(&share.lan, true).ok_or_else(|| Error::invalid("Invalid LAN."))?;
@@ -964,5 +1025,19 @@ impl BrokerOperation for StopOperation {
             *active = None;
         }
         Ok(Stopped { reverted })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn without_winnat_ics_shares_on_its_fixed_network_and_never_claims_leak_protection() {
+        assert_eq!(ics_lan(None, false).unwrap(), WINDOWS_HOTSPOT_LAN);
+        assert_eq!(ics_lan(Some(WINDOWS_HOTSPOT_LAN), false).unwrap(), WINDOWS_HOTSPOT_LAN);
+        let other = IpPrefix::parse("10.42.0.0/24", true).unwrap();
+        assert_eq!(ics_lan(Some(other), false).unwrap_err().code, ErrorCode::InvalidArgument);
+        assert_eq!(ics_lan(None, true).unwrap_err().code, ErrorCode::NotSupported);
     }
 }

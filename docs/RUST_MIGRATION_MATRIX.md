@@ -76,7 +76,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | NET-04 | Mobile Hotspot | new | `platform-windows::net::sharing` (hotspot) | Built | compiled only | name/password, source profile; fallback engine (Windows routes, no leak guard) |
 | NET-05 | Wi-Fi Direct legacy AP | new | `platform-windows::net::ap` + service engine | Built | session unit tests; compiled only | own AP + bitBybit NAT/DHCP/DNS/WFP leak guard; first choice when the driver offers it (docs/research/HOTSPOT_ENGINES.md) |
 | NET-06 | Hosted Network | new | `platform-windows::net::ap` + service engine | Built | compiled only | older Native 802.11 drivers; probed, never assumed; previous SSID/enable restored |
-| NET-07 | ICS | new | `platform-windows::net::ics` | Limited | opt-in | journaled, verified |
+| NET-07 | ICS | new | `platform-windows::net::sharing::ics` | Built | compiled only | used when WinNAT is missing; journaled, verified; no leak protection |
 | NET-08 | WinNAT (owned `bitBybit-*` only) | new | `platform-windows::net::nat` | Built | opt-in | never touches other NATs |
 | NET-09 | LAN address + forwarding | new | `platform-windows::net::ipconfig` | Built | opt-in | previous state journaled |
 | NET-10 | Topology validator | new | `bitbybit-network::topology` | Logic | unit | subnet conflicts, default-route protection |

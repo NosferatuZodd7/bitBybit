@@ -59,7 +59,8 @@ compiladas e testadas com dados simulados, mas **ainda não foram validadas em h
 
 ## O que falta ou ficou limitado nesta versão
 
-* Partilha pelo ICS do Windows, Wi-Fi Direct e Hosted Network (a partilha usa o NAT do Windows).
+* Nos PCs sem o NAT do Windows (sem Hyper-V) a partilha usa o ICS do Windows: rede fixa 192.168.137.0/24, sem
+  proteção contra fugas nem regras por dispositivo.
 * Mudar o modo/topologia dos ecrãs, formatos de áudio, modo de teste de controladores, "resolver tudo" com uma só
   confirmação, ícone na bandeja (o perfil de áudio só atua com a aplicação aberta).
 * Assinatura de código do executável (evita o aviso do SmartScreen) e validação em hardware real de cada ação.
