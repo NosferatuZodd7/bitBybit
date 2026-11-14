@@ -55,8 +55,8 @@ pub fn before(provider: ApProvider) -> Result<ApBefore> {
     Ok(match provider {
         ApProvider::WifiDirect => ApBefore { provider, hosted_enabled: None, hosted_ssid: None },
         ApProvider::HostedNetwork => {
-            let (enabled, ssid) = hosted::settings()?;
-            ApBefore { provider, hosted_enabled: Some(enabled), hosted_ssid: Some(ssid) }
+            let (enabled, ssid) = hosted::settings();
+            ApBefore { provider, hosted_enabled: Some(enabled), hosted_ssid: ssid }
         }
     })
 }
@@ -186,12 +186,12 @@ mod hosted {
     use super::*;
     use windows::Win32::Foundation::{ERROR_SUCCESS, HANDLE, WIN32_ERROR};
     use windows::Win32::NetworkManagement::WiFi::{
-        DOT11_SSID, WLAN_HOSTED_NETWORK_CONNECTION_SETTINGS, WLAN_HOSTED_NETWORK_OPCODE, WLAN_HOSTED_NETWORK_STATUS,
-        WLAN_INTERFACE_INFO_LIST, WLAN_OPCODE_VALUE_TYPE, WLAN_RADIO_STATE, WlanCloseHandle, WlanEnumInterfaces,
-        WlanFreeMemory, WlanHostedNetworkForceStart, WlanHostedNetworkForceStop, WlanHostedNetworkQueryProperty,
-        WlanHostedNetworkQueryStatus, WlanHostedNetworkSetProperty, WlanHostedNetworkSetSecondaryKey, WlanOpenHandle,
-        WlanQueryInterface, dot11_radio_state_on, wlan_hosted_network_active,
-        wlan_hosted_network_opcode_connection_settings, wlan_hosted_network_opcode_enable,
+        DOT11_SSID, WLAN_HOSTED_NETWORK_CONNECTION_SETTINGS, WLAN_HOSTED_NETWORK_OPCODE, WLAN_HOSTED_NETWORK_REASON,
+        WLAN_HOSTED_NETWORK_STATUS, WLAN_INTERFACE_INFO_LIST, WLAN_OPCODE_VALUE_TYPE, WLAN_RADIO_STATE,
+        WlanCloseHandle, WlanEnumInterfaces, WlanFreeMemory, WlanHostedNetworkForceStart, WlanHostedNetworkForceStop,
+        WlanHostedNetworkQueryProperty, WlanHostedNetworkQueryStatus, WlanHostedNetworkSetProperty,
+        WlanHostedNetworkSetSecondaryKey, WlanOpenHandle, WlanQueryInterface, dot11_radio_state_on,
+        wlan_hosted_network_active, wlan_hosted_network_opcode_connection_settings, wlan_hosted_network_opcode_enable,
         wlan_hosted_network_unavailable, wlan_intf_opcode_radio_state,
     };
     use windows::core::BOOL;
@@ -236,9 +236,11 @@ mod hosted {
         Ok(state)
     }
 
+    /// `Some(true)` when Windows reports the Hosted Network as idle or active; `None` otherwise, because
+    /// "unavailable" is also what a never-configured or disallowed Hosted Network reports (only a start tells).
     pub fn supported() -> Option<bool> {
         let c = Client::open().ok()?;
-        status(&c).ok().map(|s| s != wlan_hosted_network_unavailable.0)
+        status(&c).ok().filter(|s| *s != wlan_hosted_network_unavailable.0).map(|_| true)
     }
 
     /// Whether any Wi-Fi card has its radio on (software switch and hardware switch); `None` without a card.
@@ -310,11 +312,16 @@ mod hosted {
         String::from_utf8_lossy(&s.ucSSID[..len]).into_owned()
     }
 
-    pub fn settings() -> Result<(bool, String)> {
-        let c = Client::open()?;
-        let enabled: BOOL = query(&c, wlan_hosted_network_opcode_enable)?;
-        let conn: WLAN_HOSTED_NETWORK_CONNECTION_SETTINGS = query(&c, wlan_hosted_network_opcode_connection_settings)?;
-        Ok((enabled.as_bool(), ssid_of(&conn.hostedNetworkSSID)))
+    /// Whether it is allowed and its name. A Hosted Network that was never configured answers the queries with
+    /// ERROR_BAD_CONFIGURATION (1610): that reads as "not allowed, no name" (nothing to put back).
+    pub fn settings() -> (bool, Option<String>) {
+        let Ok(c) = Client::open() else { return (false, None) };
+        let enabled = query::<BOOL>(&c, wlan_hosted_network_opcode_enable).is_ok_and(|b| b.as_bool());
+        let ssid = query::<WLAN_HOSTED_NETWORK_CONNECTION_SETTINGS>(&c, wlan_hosted_network_opcode_connection_settings)
+            .ok()
+            .map(|conn| ssid_of(&conn.hostedNetworkSSID))
+            .filter(|s| !s.is_empty());
+        (enabled, ssid)
     }
 
     fn set<T>(c: &Client, op: WLAN_HOSTED_NETWORK_OPCODE, value: &T) -> Result<()> {
@@ -343,38 +350,36 @@ mod hosted {
 
     pub fn start(ssid: &str, passphrase: &str) -> Result<()> {
         let c = Client::open()?;
-        // "Unavailable" is also what Windows reports while the Hosted Network is merely disallowed
-        // (`netsh wlan set hostednetwork mode=disallow`): allow it first, then judge.
-        let enabled_before: BOOL = query(&c, wlan_hosted_network_opcode_enable).unwrap_or(BOOL(0));
-        set(&c, wlan_hosted_network_opcode_enable, &BOOL(1))?;
-        if status(&c)? == wlan_hosted_network_unavailable.0 {
-            if !enabled_before.as_bool() {
-                let _ = set(&c, wlan_hosted_network_opcode_enable, &BOOL(0));
-            }
-            return Err(Error::new(ErrorCode::NotSupported, "This Wi-Fi driver does not offer the Hosted Network.")
-                .with_user_text(text!(
-                    "sharing.ap.noHosted",
-                    "Hosted Network: this card's driver does not offer it (or its radio is off)."
-                )));
+        let (enabled_before, _) = settings();
+        // Same order as `netsh wlan set hostednetwork mode=allow ssid=… key=…` then `start hostednetwork`:
+        // name and key first, then allow, then start. Status is not checked before: a never-configured or
+        // disallowed Hosted Network reports "unavailable" although the driver offers it.
+        let result = (|| {
+            set(&c, wlan_hosted_network_opcode_connection_settings, &connection(ssid)?)?;
+            // WPA2-PSK passphrase (8–63 ASCII, validated by the caller), including the terminating NUL as wlanapi expects.
+            let mut key = passphrase.as_bytes().to_vec();
+            key.push(0);
+            // SAFETY: a live buffer.
+            let r = unsafe { WlanHostedNetworkSetSecondaryKey(c.0, &key, true, false, None, None) };
+            key.iter_mut().for_each(|b| *b = 0);
+            check("WlanHostedNetworkSetSecondaryKey", r)?;
+            set(&c, wlan_hosted_network_opcode_enable, &BOOL(1))?;
+            let mut reason = WLAN_HOSTED_NETWORK_REASON::default();
+            // SAFETY: valid handle and out-pointer; the broker runs elevated (ForceStart needs administrator rights).
+            let r = unsafe { WlanHostedNetworkForceStart(c.0, Some(&mut reason), None) };
+            check("WlanHostedNetworkForceStart", r).map_err(|e| {
+                log::warn!("WlanHostedNetworkForceStart failed: code {r}, reason {}", reason.0);
+                e.with_user_text(text!(
+                    "sharing.ap.hostedFailed",
+                    "Hosted Network: Windows could not start it (code {0}).",
+                    format!("{r}/{}", reason.0)
+                ))
+            })
+        })();
+        if result.is_err() && !enabled_before {
+            let _ = set(&c, wlan_hosted_network_opcode_enable, &BOOL(0));
         }
-        set(&c, wlan_hosted_network_opcode_connection_settings, &connection(ssid)?)?;
-        // WPA2-PSK passphrase (8–63 ASCII, validated by the caller), including the terminating NUL as wlanapi expects.
-        let mut key = passphrase.as_bytes().to_vec();
-        key.push(0);
-        // SAFETY: a live buffer.
-        check("WlanHostedNetworkSetSecondaryKey", unsafe {
-            WlanHostedNetworkSetSecondaryKey(c.0, &key, true, false, None, None)
-        })?;
-        key.iter_mut().for_each(|b| *b = 0);
-        // SAFETY: valid handle; the service runs elevated (ForceStart needs administrator rights).
-        check("WlanHostedNetworkForceStart", unsafe { WlanHostedNetworkForceStart(c.0, None, None) }).map_err(|e| {
-            let code = e.native_code.unwrap_or_default().to_string();
-            e.with_user_text(text!(
-                "sharing.ap.hostedFailed",
-                "Hosted Network: Windows could not start it (code {0}).",
-                code
-            ))
-        })
+        result
     }
 
     pub fn stop() -> Result<()> {
