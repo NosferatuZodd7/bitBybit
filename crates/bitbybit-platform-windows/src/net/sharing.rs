@@ -388,7 +388,34 @@ mod hotspot {
         let result = op.join().map_err(|e| failed(&e))?;
         match result.Status() {
             Ok(TetheringOperationStatus::Success) => Ok(()),
-            Ok(status) => Err(Error::platform(format!("Mobile Hotspot refused ({})", status.0), status.0)),
+            Ok(status) => {
+                use bitbybit_core::text;
+                // TetheringOperationStatus values (Windows.Networking.NetworkOperators).
+                let user = match status.0 {
+                    3 => text!(
+                        "sharing.hotspot.refused.wifiOff",
+                        "Windows Mobile Hotspot: Windows reports the Wi-Fi card as off or unusable for a hotspot. Turn Wi-Fi on (and airplane mode off); if it is on, the card's driver does not support the Windows hotspot."
+                    ),
+                    2 => text!(
+                        "sharing.hotspot.refused.mobileOff",
+                        "Windows Mobile Hotspot: the mobile broadband device is off."
+                    ),
+                    6 => text!(
+                        "sharing.hotspot.refused.busy",
+                        "Windows Mobile Hotspot: another hotspot operation is still running; try again in a moment."
+                    ),
+                    8 => text!(
+                        "sharing.hotspot.refused.limited",
+                        "Windows Mobile Hotspot: the chosen connection has no full Internet access."
+                    ),
+                    n => text!(
+                        "sharing.hotspot.refused.other",
+                        "Windows Mobile Hotspot refused (code {0}).",
+                        n.to_string()
+                    ),
+                };
+                Err(Error::platform(format!("Mobile Hotspot refused ({})", status.0), status.0).with_user_text(user))
+            }
             Err(e) => Err(failed(&e)),
         }
     }

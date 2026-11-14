@@ -61,6 +61,31 @@ pub enum ApProvider {
     HostedNetwork,
 }
 
+/// What this PC's Wi-Fi can do for a hotspot, as far as can be read without starting anything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApCapabilities {
+    /// A Wi-Fi Direct device interface exists (confirmed only when an AP actually starts).
+    pub wifi_direct: bool,
+    /// The Hosted Network reports a state other than "unavailable"; `None` when it could not be read.
+    pub hosted_network: Option<bool>,
+    /// A Wi-Fi radio is switched on (software and hardware); `None` when there is no Wi-Fi card or no answer.
+    pub radio_on: Option<bool>,
+}
+
+impl ApCapabilities {
+    /// bitBybit's own access points to try, best control first.
+    pub fn preferred(self) -> Vec<ApProvider> {
+        let mut list = Vec::new();
+        if self.wifi_direct {
+            list.push(ApProvider::WifiDirect);
+        }
+        // Always tried: "unavailable" may only mean disallowed, which starting it fixes.
+        list.push(ApProvider::HostedNetwork);
+        list
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum StepAction {

@@ -84,10 +84,7 @@ pub fn setup(paths: &AppPaths) -> Setup {
         audio_services: Arc::new(AudioServiceControl),
         sharing_backend: Arc::new(sharing::WindowsSharing),
         sharing_handlers: platform_sharing,
-        access_points: Arc::new(|| {
-            use bitbybit_platform_windows::net::ap;
-            ap::preferred(ap::capabilities())
-        }),
+        ap_capabilities: Arc::new(bitbybit_platform_windows::net::ap::capabilities),
         neighbors: Arc::new(|| bitbybit_platform_windows::net::inventory::neighbors().unwrap_or_default()),
         hosts: hosts.clone(),
         revert_handlers,

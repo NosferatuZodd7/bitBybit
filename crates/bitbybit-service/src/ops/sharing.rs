@@ -14,7 +14,7 @@ use bitbybit_network::dhcp::PoolConfig;
 use bitbybit_network::leak::{self, LeakGuardInput};
 use bitbybit_network::prefix::IpPrefix;
 use bitbybit_network::session::{
-    ApProvider, HotspotSettings, Passphrase, PlanInput, SharingBackend, SharingMode, SharingSessions, StepAction,
+    ApCapabilities, HotspotSettings, Passphrase, PlanInput, SharingBackend, SharingMode, SharingSessions, StepAction,
     build_plan,
 };
 use bitbybit_network::topology::{self, IssueSeverity, SharingPlanInput};
@@ -27,8 +27,8 @@ use std::time::Duration;
 #[derive(Clone)]
 pub struct SharingContext {
     pub network: Arc<dyn NetworkInventory>,
-    /// Access points of bitBybit's own this PC's Wi-Fi driver may offer, best first (probed each time).
-    pub access_points: Arc<dyn Fn() -> Vec<ApProvider> + Send + Sync>,
+    /// What this PC's Wi-Fi can do for a hotspot (probed each time; reading only).
+    pub ap_capabilities: Arc<dyn Fn() -> ApCapabilities + Send + Sync>,
     /// The IPv4 neighbour (ARP) table, for the devices on the shared network.
     pub neighbors: Arc<dyn Fn() -> Vec<NeighborEntry> + Send + Sync>,
     /// DHCP leases of the session's server.
@@ -476,8 +476,16 @@ fn start_hotspot(
     hotspot: HotspotSettings,
     now: time::OffsetDateTime,
 ) -> Result<Started> {
+    let caps = (context.ap_capabilities)();
+    log::info!("Hotspot requested; Wi-Fi capabilities: {caps:?}");
+    if caps.radio_on == Some(false) {
+        return Err(Error::new(ErrorCode::PreconditionFailed, "The Wi-Fi radio is off.").with_user_text(text!(
+            "sharing.hotspot.radioOff",
+            "The Wi-Fi of this PC is turned off (Windows switch or airplane mode). Turn Wi-Fi on and try again."
+        )));
+    }
     let mut last = None;
-    for provider in (context.access_points)() {
+    for provider in caps.preferred() {
         let step = StepAction::StartAccessPoint {
             provider,
             ssid: hotspot.ssid.clone(),
@@ -486,11 +494,16 @@ fn start_hotspot(
         let session = match sessions.start(std::slice::from_ref(&step), now) {
             Ok(session) => session,
             Err(f) => {
-                log::warn!("Access point {provider:?} did not start: {}", f.error.message);
+                log::warn!(
+                    "Access point {provider:?} did not start: {} (code {:?})",
+                    f.error.message,
+                    f.error.native_code
+                );
                 last = Some(f.error);
                 continue;
             }
         };
+        log::info!("Access point {provider:?} started (session {session})");
         // The network behind the AP; any failure from here rolls the whole session back (AP included).
         let lan = ap_interface(context).and_then(|downstream| {
             let request = StartRequest { downstream_luid: downstream, ..r.clone() };
@@ -535,7 +548,11 @@ fn start_hotspot(
     }
     let ssid = hotspot.ssid.clone();
     let steps = windows_hotspot(r, hotspot);
-    let session_id = sessions.start(&steps, now).map_err(|f| failure(&f))?;
+    log::info!("Falling back to the Windows Mobile Hotspot");
+    let session_id = sessions.start(&steps, now).map_err(|f| {
+        log::warn!("Windows Mobile Hotspot did not start: {} (code {:?})", f.error.message, f.error.native_code);
+        failure(&f)
+    })?;
     set_active(
         context,
         Some(ActiveShare {
@@ -602,6 +619,38 @@ pub struct ShareStatus {
 fn set_active(context: &SharingContext, share: Option<ActiveShare>) {
     *book(context) = DeviceBook::default();
     *context.active.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = share;
+}
+
+/// `sharing.capabilities`: what this PC's Wi-Fi can do for a hotspot (Wi-Fi Direct, Hosted Network, radio). Read-only.
+pub struct CapabilitiesOperation(Descriptor, SharingContext);
+
+impl CapabilitiesOperation {
+    pub fn new(context: SharingContext) -> Self {
+        Self(
+            Descriptor {
+                name: "sharing.capabilities",
+                tier: RiskTier::ReadOnly,
+                category: Category::NONE,
+                requires_confirmation: false,
+                timeout: Some(Duration::from_secs(30)),
+            },
+            context,
+        )
+    }
+}
+
+impl BrokerOperation for CapabilitiesOperation {
+    type Request = crate::NoParameters;
+    type Response = ApCapabilities;
+    fn descriptor(&self) -> &Descriptor {
+        &self.0
+    }
+    fn validate(&self, _: &Self::Request) -> Result<()> {
+        Ok(())
+    }
+    fn execute(&self, _: &Self::Request, _: &CallContext) -> Result<ApCapabilities> {
+        Ok((self.1.ap_capabilities)())
+    }
 }
 
 /// `sharing.status`: the active share and the devices on it (our DHCP leases + the neighbour table). Read-only.

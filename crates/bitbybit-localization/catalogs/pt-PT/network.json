@@ -84,5 +84,16 @@
   "sharing.client.gaming": "Encaminhar {0} portas de consola para {1}",
   "sharing.client.fixed": "Dar sempre {0} a este dispositivo (muda para lá quando renovar ou voltar a ligar-se)",
   "sharing.client.summary": "Mudar as regras do dispositivo {0}",
+  "sharing.ap.wfdRadio": "Wi-Fi Direct: o rádio Wi-Fi está desligado ou o Windows não o consegue usar.",
+  "sharing.ap.wfdBusy": "Wi-Fi Direct: a placa Wi-Fi está ocupada (o Hotspot Móvel do Windows ou outro grupo Wi-Fi Direct está ligado).",
+  "sharing.ap.wfdNone": "Wi-Fi Direct: o controlador desta placa não oferece ponto de acesso.",
+  "sharing.ap.noHosted": "Hosted Network: o controlador desta placa não o oferece (ou o rádio está desligado).",
+  "sharing.ap.hostedFailed": "Hosted Network: o Windows não o conseguiu iniciar (código {0}).",
+  "sharing.hotspot.radioOff": "O Wi-Fi deste PC está desligado (interruptor do Windows ou modo de avião). Ligue o Wi-Fi e tente de novo.",
+  "sharing.hotspot.refused.wifiOff": "Hotspot Móvel do Windows: o Windows diz que a placa Wi-Fi está desligada ou não serve para hotspot. Ligue o Wi-Fi (e desligue o modo de avião); se já estiver ligado, o controlador da placa não suporta o hotspot do Windows.",
+  "sharing.hotspot.refused.mobileOff": "Hotspot Móvel do Windows: o dispositivo de banda larga móvel está desligado.",
+  "sharing.hotspot.refused.busy": "Hotspot Móvel do Windows: outra operação de hotspot ainda está a decorrer; tente daqui a pouco.",
+  "sharing.hotspot.refused.limited": "Hotspot Móvel do Windows: a ligação escolhida não tem acesso completo à Internet.",
+  "sharing.hotspot.refused.other": "O Hotspot Móvel do Windows recusou (código {0}).",
   "sharing.plan.summary": "Partilhar a ligação à Internet na rede {0}"
 }

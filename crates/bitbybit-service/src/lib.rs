@@ -148,7 +148,7 @@ pub struct Platform {
     pub sharing_backend: Arc<dyn bitbybit_network::session::SharingBackend>,
     pub sharing_handlers: Vec<Arc<dyn RevertHandler>>,
     /// Access points of bitBybit's own the Wi-Fi driver offers, best first (Windows: `net::ap`).
-    pub access_points: Arc<dyn Fn() -> Vec<bitbybit_network::session::ApProvider> + Send + Sync>,
+    pub ap_capabilities: Arc<dyn Fn() -> bitbybit_network::session::ApCapabilities + Send + Sync>,
     /// The IPv4 neighbour table (Windows: IP Helper `GetIpNetTable2`).
     pub neighbors: Arc<dyn Fn() -> Vec<bitbybit_network::clients::NeighborEntry> + Send + Sync>,
     pub hosts: Arc<sharing::Hosts>,
@@ -189,7 +189,7 @@ pub fn build_dispatcher(
     revert_handlers.extend(sharing_handlers.iter().cloned());
     let sharing_context = ops::sharing::SharingContext {
         network: platform.network.clone(),
-        access_points: platform.access_points.clone(),
+        ap_capabilities: platform.ap_capabilities.clone(),
         neighbors: platform.neighbors.clone(),
         hosts: platform.hosts.clone(),
         active: Arc::default(),
@@ -226,6 +226,7 @@ pub fn build_dispatcher(
         .register(ops::audio::RestartAudioServicesOperation::new(platform.audio_services))?
         .register(ops::sharing::StartOperation::new(sharing_context.clone()))?
         .register(ops::sharing::StatusOperation::new(sharing_context.clone()))?
+        .register(ops::sharing::CapabilitiesOperation::new(sharing_context.clone()))?
         .register(ops::sharing::ClientOperation::new(sharing_context.clone()))?
         .register(ops::sharing::StopOperation::new(sharing_context))?
         .register(ops::journal::RevertOperation::new(revert_journal, revert_handlers))?
@@ -390,7 +391,7 @@ mod tests {
             audio_services: Arc::new(NoAudioServices),
             sharing_backend: Arc::new(NoSharing),
             sharing_handlers: vec![],
-            access_points: Arc::new(Vec::new),
+            ap_capabilities: Arc::new(Default::default),
             neighbors: Arc::new(Vec::new),
             hosts: Arc::new(sharing::Hosts::new()),
             revert_handlers: vec![],
@@ -449,6 +450,7 @@ mod tests {
                 "drivers.windowsUpdateSearch",
                 "journal.revert",
                 "network.overview",
+                "sharing.capabilities",
                 "sharing.client",
                 "sharing.start",
                 "sharing.status",

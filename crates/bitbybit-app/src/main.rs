@@ -16,6 +16,7 @@ use ui::{AppWindow, AudioRow, ChangeRow, DeviceRow, DisplayRow, FindingRow, Inte
 mod demo;
 mod devices_actions;
 mod drivers_page;
+mod export_logs;
 mod ops;
 mod settings_page;
 mod sharing_page;
@@ -82,6 +83,10 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.on_run_finding_action({
         let weak = ui.as_weak();
         move |f, a| run_finding_action(weak.clone(), f as usize, a as usize)
+    });
+    ui.on_export_logs({
+        let weak = ui.as_weak();
+        move || export_logs_clicked(weak.clone())
     });
     ui.on_check_app_update({
         let weak = ui.as_weak();
@@ -460,6 +465,56 @@ fn update_status(ui: &AppWindow, t: LocalizedText, state: i32) {
 
 /// Checks this repository's releases (signed manifest, fail closed) off the UI thread. A found version opens the
 /// update dialog; installing still waits for the user's click.
+/// "Exportar registos": gathers broker answers and log tails off the UI thread, writes one redacted text file.
+fn export_logs_clicked(weak: slint::Weak<AppWindow>) {
+    let catalog = TextCatalog::default_catalog();
+    if let Some(ui) = weak.upgrade() {
+        ops::status(&ui, 1, &catalog.resolve(&text!("app.export.running", "Collecting the logs…")));
+    }
+    std::thread::spawn(move || {
+        let paths = bitbybit_core::paths::AppPaths::from_environment();
+        let answer = |op: &str| match broker::read(op) {
+            Ok(v) => serde_json::to_string_pretty(&v).unwrap_or_default(),
+            Err(e) => format!("(error: {})", e.message),
+        };
+        let network = broker::network().ok();
+        let now = time::OffsetDateTime::now_utc();
+        let report = export_logs::report(
+            &paths,
+            version(),
+            &answer("sharing.capabilities"),
+            &answer("sharing.status"),
+            network.as_ref(),
+            now,
+        );
+        let dest = export_logs::destination(&paths, now);
+        let result = bitbybit_core::fsio::write_atomic(&dest, report.as_bytes());
+        if let Err(e) = &result {
+            log::warn!("log export failed: {}", e.message);
+        }
+        let _ = slint::invoke_from_event_loop(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let catalog = TextCatalog::default_catalog();
+            match result {
+                Ok(()) => ops::status(
+                    &ui,
+                    2,
+                    &catalog.resolve(&text!(
+                        "app.export.done",
+                        "Logs exported to {0}. Send this file.",
+                        dest.display().to_string()
+                    )),
+                ),
+                Err(e) => ops::status(
+                    &ui,
+                    3,
+                    &catalog.resolve(&text!("app.export.failed", "The logs could not be exported: {0}", e.message)),
+                ),
+            }
+        });
+    });
+}
+
 fn check_app_update(weak: slint::Weak<AppWindow>, silent: bool) {
     if let Some(ui) = weak.upgrade() {
         if ui.get_app_update_state() == 1 {
@@ -802,6 +857,11 @@ mod broker {
         broker()?.call("sharing.status", &serde_json::json!({}), None)
     }
 
+    /// A read-only operation with no parameters.
+    pub fn read(operation: &str) -> bitbybit_core::Result<serde_json::Value> {
+        broker()?.call(operation, &serde_json::json!({}), None)
+    }
+
     /// One operation; `confirm` is shown any plan the broker returns.
     pub fn invoke(
         operation: &str,
@@ -829,6 +889,10 @@ mod broker {
     }
 
     pub fn network() -> bitbybit_core::Result<NetworkOverview> {
+        Err(bitbybit_core::Error::new(bitbybit_core::ErrorCode::NotSupported, "Windows only."))
+    }
+
+    pub fn read(_operation: &str) -> bitbybit_core::Result<serde_json::Value> {
         Err(bitbybit_core::Error::new(bitbybit_core::ErrorCode::NotSupported, "Windows only."))
     }
 

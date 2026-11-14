@@ -604,6 +604,7 @@ export component AppWindow inherits Window {
     callback dismiss-update();
     in-out property <bool> update-auto: true;
     callback check-app-update();
+    callback export-logs();
     callback install-app-update();
     callback refresh-drivers();
     callback toggle-cleanup(string, bool, bool);
@@ -1338,6 +1339,7 @@ export component AppWindow inherits Window {
                             alignment: start;
                             padding-top: 4px;
                             PillButton { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.update.check"); clicked => { root.check-app-update(); } }
+                            PillButton { text: Tr.t("app.export.button"); kind: 3; clicked => { root.export-logs(); } }
                             if root.app-update-available: PillButton { text: Tr.t("app.update.install"); kind: 1; clicked => { root.install-app-update(); } }
                         }
                         if root.app-update-text != "": Body { text: root.app-update-text; }

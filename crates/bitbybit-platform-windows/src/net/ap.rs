@@ -7,8 +7,8 @@
 //! virtual interface they create. Probes only read. Written from the Microsoft API documentation and the MIT
 //! WiFiDirectLegacyAP sample. Compiled only until it runs on Windows with a Wi-Fi card.
 
-use bitbybit_core::{Error, ErrorCode, Result};
-use bitbybit_network::session::ApProvider;
+use bitbybit_core::{Error, ErrorCode, Result, text};
+use bitbybit_network::session::{ApCapabilities, ApProvider};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -17,30 +17,12 @@ fn failed(e: &windows::core::Error) -> Error {
     Error::platform(e.message(), e.code().0)
 }
 
-/// What this PC's Wi-Fi driver offers, as far as can be read without starting anything.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ApCapabilities {
-    /// A Wi-Fi Direct device interface exists (confirmed only when an AP actually starts).
-    pub wifi_direct: bool,
-    /// The Hosted Network reports a state other than "unavailable"; `None` when wlanapi could not be read.
-    pub hosted_network: Option<bool>,
-}
-
 pub fn capabilities() -> ApCapabilities {
-    ApCapabilities { wifi_direct: wifi_direct::present(), hosted_network: hosted::supported() }
-}
-
-/// Engines to try, best control first.
-pub fn preferred(c: ApCapabilities) -> Vec<ApProvider> {
-    let mut list = Vec::new();
-    if c.wifi_direct {
-        list.push(ApProvider::WifiDirect);
+    ApCapabilities {
+        wifi_direct: wifi_direct::present(),
+        hosted_network: hosted::supported(),
+        radio_on: hosted::radio_on(),
     }
-    if c.hosted_network != Some(false) {
-        list.push(ApProvider::HostedNetwork);
-    }
-    list
 }
 
 pub fn start(provider: ApProvider, ssid: &str, passphrase: &str) -> Result<()> {
@@ -167,11 +149,25 @@ mod wifi_direct {
             }
             if status == WiFiDirectAdvertisementPublisherStatus::Aborted || Instant::now() >= deadline {
                 let _ = publisher.Stop();
-                let reason = aborted.lock().ok().and_then(|e| *e).map_or("it did not start in time", error_text);
+                let error = aborted.lock().ok().and_then(|e| *e);
+                let reason = error.map_or("it did not start in time", error_text);
+                let user = match error {
+                    Some(WiFiDirectError::RadioNotAvailable) => {
+                        text!("sharing.ap.wfdRadio", "Wi-Fi Direct: the Wi-Fi radio is off or Windows cannot use it.")
+                    }
+                    Some(WiFiDirectError::ResourceInUse) => text!(
+                        "sharing.ap.wfdBusy",
+                        "Wi-Fi Direct: the Wi-Fi card is busy (the Windows Mobile Hotspot or another Wi-Fi Direct group is on)."
+                    ),
+                    _ => {
+                        text!("sharing.ap.wfdNone", "Wi-Fi Direct: this card's driver does not offer an access point.")
+                    }
+                };
                 return Err(Error::new(
                     ErrorCode::NotSupported,
                     format!("Wi-Fi Direct access point unavailable: {reason}."),
-                ));
+                )
+                .with_user_text(user));
             }
             std::thread::sleep(Duration::from_millis(150));
         }
@@ -191,11 +187,12 @@ mod hosted {
     use windows::Win32::Foundation::{ERROR_SUCCESS, HANDLE, WIN32_ERROR};
     use windows::Win32::NetworkManagement::WiFi::{
         DOT11_SSID, WLAN_HOSTED_NETWORK_CONNECTION_SETTINGS, WLAN_HOSTED_NETWORK_OPCODE, WLAN_HOSTED_NETWORK_STATUS,
-        WLAN_OPCODE_VALUE_TYPE, WlanCloseHandle, WlanFreeMemory, WlanHostedNetworkForceStart,
-        WlanHostedNetworkForceStop, WlanHostedNetworkQueryProperty, WlanHostedNetworkQueryStatus,
-        WlanHostedNetworkSetProperty, WlanHostedNetworkSetSecondaryKey, WlanOpenHandle, wlan_hosted_network_active,
+        WLAN_INTERFACE_INFO_LIST, WLAN_OPCODE_VALUE_TYPE, WLAN_RADIO_STATE, WlanCloseHandle, WlanEnumInterfaces,
+        WlanFreeMemory, WlanHostedNetworkForceStart, WlanHostedNetworkForceStop, WlanHostedNetworkQueryProperty,
+        WlanHostedNetworkQueryStatus, WlanHostedNetworkSetProperty, WlanHostedNetworkSetSecondaryKey, WlanOpenHandle,
+        WlanQueryInterface, dot11_radio_state_on, wlan_hosted_network_active,
         wlan_hosted_network_opcode_connection_settings, wlan_hosted_network_opcode_enable,
-        wlan_hosted_network_unavailable,
+        wlan_hosted_network_unavailable, wlan_intf_opcode_radio_state,
     };
     use windows::core::BOOL;
 
@@ -242,6 +239,48 @@ mod hosted {
     pub fn supported() -> Option<bool> {
         let c = Client::open().ok()?;
         status(&c).ok().map(|s| s != wlan_hosted_network_unavailable.0)
+    }
+
+    /// Whether any Wi-Fi card has its radio on (software switch and hardware switch); `None` without a card.
+    pub fn radio_on() -> Option<bool> {
+        let c = Client::open().ok()?;
+        let mut list: *mut WLAN_INTERFACE_INFO_LIST = std::ptr::null_mut();
+        // SAFETY: wlanapi allocates the list; freed below.
+        if unsafe { WlanEnumInterfaces(c.0, None, &mut list) } != 0 || list.is_null() {
+            return None;
+        }
+        // SAFETY: valid list from wlanapi with dwNumberOfItems entries.
+        let guids: Vec<windows::core::GUID> = unsafe {
+            let l = &*list;
+            std::slice::from_raw_parts(l.InterfaceInfo.as_ptr(), l.dwNumberOfItems as usize)
+                .iter()
+                .map(|i| i.InterfaceGuid)
+                .collect()
+        };
+        // SAFETY: memory from wlanapi.
+        unsafe { WlanFreeMemory(list.cast()) };
+        let mut any = None;
+        for guid in guids {
+            let mut size = 0u32;
+            let mut data: *mut std::ffi::c_void = std::ptr::null_mut();
+            // SAFETY: wlanapi allocates the radio state; size checked; freed below.
+            let r = unsafe {
+                WlanQueryInterface(c.0, &guid, wlan_intf_opcode_radio_state, None, &mut size, &mut data, None)
+            };
+            if r != 0 || data.is_null() || (size as usize) < std::mem::size_of::<WLAN_RADIO_STATE>() {
+                continue;
+            }
+            // SAFETY: at least size_of::<WLAN_RADIO_STATE>() bytes from wlanapi.
+            let state = unsafe { std::ptr::read_unaligned(data.cast::<WLAN_RADIO_STATE>()) };
+            // SAFETY: memory from wlanapi.
+            unsafe { WlanFreeMemory(data) };
+            let phys = &state.PhyRadioState[..(state.dwNumberOfPhys as usize).min(state.PhyRadioState.len())];
+            let on = phys.iter().any(|p| {
+                p.dot11SoftwareRadioState == dot11_radio_state_on && p.dot11HardwareRadioState == dot11_radio_state_on
+            });
+            any = Some(any.unwrap_or(false) || on);
+        }
+        any
     }
 
     pub fn active() -> Result<bool> {
@@ -304,10 +343,20 @@ mod hosted {
 
     pub fn start(ssid: &str, passphrase: &str) -> Result<()> {
         let c = Client::open()?;
-        if status(&c)? == wlan_hosted_network_unavailable.0 {
-            return Err(Error::new(ErrorCode::NotSupported, "This Wi-Fi driver does not offer the Hosted Network."));
-        }
+        // "Unavailable" is also what Windows reports while the Hosted Network is merely disallowed
+        // (`netsh wlan set hostednetwork mode=disallow`): allow it first, then judge.
+        let enabled_before: BOOL = query(&c, wlan_hosted_network_opcode_enable).unwrap_or(BOOL(0));
         set(&c, wlan_hosted_network_opcode_enable, &BOOL(1))?;
+        if status(&c)? == wlan_hosted_network_unavailable.0 {
+            if !enabled_before.as_bool() {
+                let _ = set(&c, wlan_hosted_network_opcode_enable, &BOOL(0));
+            }
+            return Err(Error::new(ErrorCode::NotSupported, "This Wi-Fi driver does not offer the Hosted Network.")
+                .with_user_text(text!(
+                    "sharing.ap.noHosted",
+                    "Hosted Network: this card's driver does not offer it (or its radio is off)."
+                )));
+        }
         set(&c, wlan_hosted_network_opcode_connection_settings, &connection(ssid)?)?;
         // WPA2-PSK passphrase (8–63 ASCII, validated by the caller), including the terminating NUL as wlanapi expects.
         let mut key = passphrase.as_bytes().to_vec();
@@ -318,7 +367,14 @@ mod hosted {
         })?;
         key.iter_mut().for_each(|b| *b = 0);
         // SAFETY: valid handle; the service runs elevated (ForceStart needs administrator rights).
-        check("WlanHostedNetworkForceStart", unsafe { WlanHostedNetworkForceStart(c.0, None, None) })
+        check("WlanHostedNetworkForceStart", unsafe { WlanHostedNetworkForceStart(c.0, None, None) }).map_err(|e| {
+            let code = e.native_code.unwrap_or_default().to_string();
+            e.with_user_text(text!(
+                "sharing.ap.hostedFailed",
+                "Hosted Network: Windows could not start it (code {0}).",
+                code
+            ))
+        })
     }
 
     pub fn stop() -> Result<()> {
