@@ -95,5 +95,6 @@
   "sharing.hotspot.refused.busy": "Hotspot Móvel do Windows: outra operação de hotspot ainda está a decorrer; tente daqui a pouco.",
   "sharing.hotspot.refused.limited": "Hotspot Móvel do Windows: a ligação escolhida não tem acesso completo à Internet.",
   "sharing.hotspot.refused.other": "O Hotspot Móvel do Windows recusou (código {0}).",
+  "sharing.dhcp.portBusy": "Outro programa já está a distribuir endereços neste PC (porta UDP 67, por exemplo outro hotspot ou servidor DHCP), por isso o bitBybit não o consegue fazer em {0}.",
   "sharing.plan.summary": "Partilhar a ligação à Internet na rede {0}"
 }

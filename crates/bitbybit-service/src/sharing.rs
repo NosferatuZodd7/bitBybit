@@ -15,6 +15,15 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 use time::OffsetDateTime;
 
+/// The DHCP/DNS server socket on the LAN gateway address. On Windows the port is shared with services that keep it
+/// bound on all addresses (ICS holds UDP 67), see `bitbybit_platform_windows::net::udp`.
+fn bind_server(ip: Ipv4Addr, port: u16) -> std::io::Result<UdpSocket> {
+    #[cfg(windows)]
+    return bitbybit_platform_windows::net::udp::bind_shared(std::net::SocketAddrV4::new(ip, port));
+    #[cfg(not(windows))]
+    UdpSocket::bind((ip, port))
+}
+
 struct Running {
     stop: Arc<AtomicBool>,
     thread: JoinHandle<()>,
@@ -76,7 +85,14 @@ impl Hosts {
         if slot.is_some() {
             return Err(Error::new(ErrorCode::Conflict, "A DHCP server is already running."));
         }
-        let socket = UdpSocket::bind((pool.server, self.dhcp_port))?;
+        let socket = bind_server(pool.server, self.dhcp_port).map_err(|e| {
+            log::warn!("DHCP server could not bind {}:{}: {e}", pool.server, self.dhcp_port);
+            Error::from(e).with_user_text(bitbybit_core::text!(
+                "sharing.dhcp.portBusy",
+                "Another program is already giving out addresses on this PC (UDP port 67, e.g. another hotspot or DHCP server), so bitBybit cannot: {0}",
+                pool.server.to_string()
+            ))
+        })?;
         socket.set_broadcast(true)?;
         socket.set_read_timeout(Some(Duration::from_millis(300)))?;
         let stop = Arc::new(AtomicBool::new(false));
@@ -117,7 +133,7 @@ impl Hosts {
         if !forwarder.has_upstream() {
             return Err(Error::new(ErrorCode::PreconditionFailed, "No usable upstream DNS server."));
         }
-        let clients = UdpSocket::bind((listen, self.dns_port))?;
+        let clients = bind_server(listen, self.dns_port)?;
         let upstream = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
         for s in [&clients, &upstream] {
             s.set_read_timeout(Some(Duration::from_millis(100)))?;
