@@ -110,7 +110,7 @@ that commit is **compiled only** (clippy for `x86_64-pc-windows-msvc`) until the
 | WFP leak guard (persistent filters, read back, fail closed) + watchdog | ✅ plan/assess/watchdog | ✅ | ⬜ | ⬜ |
 | Audio services restart, volume/mute, DP profile reconciler | ✅ reconciler | ✅ | ⬜ | ⬜ |
 | App: confirmation dialog, in-process broker without service, self-update swap | ✅ view/swap | ✅ | ⬜ | ⬜ |
-| Dashboard UI (flat dark navy reference design): every page, the confirmation/update/driver dialogs, toast and sharing states laid out at 1920×1080, 1600×900 and 1366×768 with debug demo data; cards and chart from journal/broker data | ✅ cards, chart series and chart paths (3 tests) + palette contrast + catalog keys of every Slint file | ✅ Linux software renderer (screenshots inspected) | ⬜ | ⬜ |
+| Dashboard UI (flat dark navy reference design): every page, the confirmation/update/driver dialogs, toast and sharing states laid out at 1920×1080, 1600×900 and 1366×768 with debug demo data; cards and chart from journal/broker data | ✅ cards, chart series and chart paths (3 tests) + palette contrast + catalog keys of every Slint file | ✅ Linux software renderer (screenshots inspected) | ✅ run 57 (Resumo, Rede, Caso and Ecrãs rendered on the Windows runner with real data: cards 4 of 7 interfaces up and 61 devices with 1 problem, empty chart state, case findings; screenshots inspected) | ⬜ |
 | Release tool keygen/manifest/sign/verify; WiX MSI | ✅ round trip | ✅ | ⬜ | — |
 
 ## Tests that change system state
