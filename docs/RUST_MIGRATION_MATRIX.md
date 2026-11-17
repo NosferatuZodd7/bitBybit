@@ -122,7 +122,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 
 | Id | Feature | C# origin | Rust module | State | Tests | Done when |
 |---|---|---|---|---|---|---|
-| UI-01 | Shell, navigation, status, toasts, banners | `MainWindow.xaml`, `MainViewModel.Shell.cs` | `ui/app.slint`, `ui/components.slint` | Built | headless render | all pages reachable; Liquid Glass components |
+| UI-01 | Shell, navigation, status, toasts, banners | `MainWindow.xaml`, `MainViewModel.Shell.cs` | `ui/app.slint`, `ui/components.slint` | Built | headless render | all pages reachable; dashboard design system (`docs/design/DESIGN.md`) |
 | UI-02 | Themes (light, dark, glass, custom accent) | `Theme.xaml`, `ThemeManager.cs`, `ThemePalette.cs` | `ui/theme.slint`, `bitbybit-app::theme` | Built | palette tests, WCAG contrast test | readable in every theme; reduce-motion |
 | UI-03 | Diagnosis page (findings, evidence, actions) | case page | `ui/pages/diagnosis.slint` | Built | render | evidence kinds visually distinct |
 | UI-04 | Devices page + details | devices page, device window | `ui/pages/devices.slint` | Built | render | search, categories, actions |

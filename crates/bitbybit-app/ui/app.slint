@@ -1,21 +1,18 @@
-// bitBybit main window. Design system: theme.slint (tokens), glass.slint (Liquid Glass surfaces rendered by
-// src/glass.rs), controls.slint, components.slint. Every visible text comes from the pt-PT catalog through
-// Tr.t(key); data comes from the broker. The AppWindow properties and callbacks are the Rust contract.
-//
-// Composition: a refracting glass sidebar; each page is a compact header over the backdrop and one or two fixed
-// glass panes whose content scrolls inside them; dialogs and the operation toast float as glass above everything.
+// bitBybit main window — the dark navy administrative dashboard of the design specification: a fixed sidebar, a
+// header panel (page title, search, notifications, settings), coloured summary cards and panels on a dark workspace.
+// Every visible text comes from the pt-PT catalog through Tr.t(key); data comes from the broker. The AppWindow
+// properties and callbacks are the Rust contract.
 
-import { ScrollView, Palette } from "std-widgets.slint";
+import { Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
-import { GlassEngine, GlassFrameImages, Backdrop, GlassPane, GlassFrame } from "glass.slint";
 import { Icon, Spinner, Button, IconButton, Toggle, Check, TextField, Select, SegItem, Segmented, Slider, MenuEntry, MenuButton } from "controls.slint";
-import { Scroller, SectionTitle, Eyebrow, Secondary, Body, Divider, StatusDot, Badge, StatusBanner, Card, PageHeader, SectionHeader, EmptyState, Field, SettingRow, NavItem, ListRow } from "components.slint";
-import "assets/fonts/Inter-Regular.ttf";
-import "assets/fonts/Inter-Medium.ttf";
-import "assets/fonts/Inter-SemiBold.ttf";
-import "assets/fonts/Inter-Bold.ttf";
+import { Scroller, Secondary, Body, Divider, Panel, PanelTitle, KpiCard, AreaChart, ActivityItem, ColumnLabel, TableHeader, TableRow, Badge, StatusDot, StatusBanner, EmptyState, Field, SettingRow, NavItem, NavGroup } from "components.slint";
+import "assets/fonts/Poppins-Regular.ttf";
+import "assets/fonts/Poppins-Medium.ttf";
+import "assets/fonts/Poppins-SemiBold.ttf";
+import "assets/fonts/Poppins-Bold.ttf";
 
-export { Theme, GlassEngine, GlassFrameImages }
+export { Theme }
 
 export global Tr {
     pure callback t(string) -> string;
@@ -85,7 +82,10 @@ export struct FindingRow {
 export struct CleanupItem { id: string, device: bool, title: string, detail: string, impact: string, risk: string, recommended: bool }
 export struct StoreItem { inf: string, title: string, detail: string, used-by: string }
 export struct UpdateItem { id: string, title: string, detail: string }
-export struct DashTile { title: string, value: string, state: int, page: int }
+// A coloured summary card of the dashboard (real figures from src/view.rs).
+export struct Kpi { title: string, value: string, note: string, page: int }
+// One series of the dashboard chart: SVG path data in a 1000×300 box and its axis labels.
+export struct ChartData { name: string, line: string, area: string, x-labels: [string], y-labels: [string], summary: string, empty: bool }
 // A device on the shared network with its rules (Connectify-style card).
 export struct ClientCard { mac: string, title: string, since: string, ip: string, allow-internet: bool, allow-local: bool, gaming: int, fixed: string }
 
@@ -104,79 +104,24 @@ export struct ChangeRow {
 
 // ─────────────────────────────────────────────────────────────── page pieces
 
-// A grouped list inside a pane: one quiet rounded container, rows separated by hairlines.
-component Group inherits Rectangle {
-    border-radius: Theme.radius-l;
-    background: Theme.fill-subtle;
-    border-width: 1px;
-    border-color: Theme.hairline;
-    clip: true;
-    height: body.preferred-height;
-    body := VerticalLayout {
-        @children
+// Three summary cards over a panel band, as in the specification (the band sits behind the lower part of the cards).
+component KpiBand inherits Rectangle {
+    height: 176px;
+    Panel {
+        x: 0;
+        y: 54px;
+        width: root.width;
+        height: root.height - 54px;
     }
-}
-
-// The icon of a dashboard tile / page.
-component PageIcon inherits Icon {
-    in property <int> page;
-    source: root.page == 1 ? @image-url("assets/icons/cpu.svg")
-        : root.page == 0 ? @image-url("assets/icons/network.svg")
-        : root.page == 2 ? @image-url("assets/icons/volume-2.svg")
-        : root.page == 5 ? @image-url("assets/icons/monitor.svg")
-        : root.page == 3 ? @image-url("assets/icons/history.svg")
-        : root.page == 6 ? @image-url("assets/icons/stethoscope.svg")
-        : @image-url("assets/icons/hard-drive-download.svg");
-}
-
-// A dashboard tile: area icon, label, the live value and its state; opens the area's page.
-component DashTileCard inherits Card {
-    in property <DashTile> info;
-    callback open(int);
-    interactive: true;
-    tone: root.info.state == 2 ? 2 : (root.info.state == 1 ? 1 : 0);
-    height: max(76px, box.preferred-height);
-    accessible-role: button;
-    accessible-label: root.info.title + ": " + root.info.value;
-    accessible-action-default => { root.open(root.info.page); }
-    clicked => { root.open(root.info.page); }
-    box := HorizontalLayout {
-        padding: 14px;
-        spacing: 12px;
-        Rectangle {
-            width: 36px;
-            height: 36px;
-            y: (parent.height - self.height) / 2;
-            border-radius: 10px;
-            background: root.info.state == 2 ? Theme.error.with-alpha(0.14) : root.info.state == 1 ? Theme.warn.with-alpha(0.14) : Theme.accent-soft;
-            PageIcon {
-                page: root.info.page;
-                width: 18px;
-                height: 18px;
-                tint: root.info.state == 2 ? Theme.error : root.info.state == 1 ? Theme.warn : Theme.accent;
-            }
-        }
-        VerticalLayout {
-            spacing: 3px;
-            alignment: center;
-            horizontal-stretch: 1;
-            HorizontalLayout {
-                spacing: 6px;
-                Text { text: root.info.title; font-size: Theme.font-small; font-weight: 500; color: Theme.text-secondary; overflow: elide; horizontal-stretch: 1; }
-                if root.info.state != 0: Badge {
-                    text: root.info.state == 2 ? Tr.t("app.state.problem") : Tr.t("app.state.warn");
-                    tone: root.info.state == 2 ? 2 : 1;
-                }
-            }
-            Text { text: root.info.value; font-size: Theme.font-title; font-weight: 650; color: Theme.text; wrap: word-wrap; }
-        }
-        VerticalLayout {
-            alignment: center;
-            Icon {
-                source: @image-url("assets/icons/chevron-right.svg");
-                tint: root.hovered ? Theme.accent : Theme.text-tertiary;
-            }
-        }
+    HorizontalLayout {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: 146px;
+        padding-left: 28px;
+        padding-right: 28px;
+        spacing: Theme.gap;
+        @children
     }
 }
 
@@ -185,22 +130,25 @@ component FindingItem inherits Rectangle {
     in property <FindingRow> info;
     in property <bool> last;
     callback run(int);
-    property <int> tone: root.info.level >= 2 ? 2 : (root.info.level == 1 ? 1 : 0);
+    property <int> tone: root.info.level >= 2 ? 2 : (root.info.level == 1 ? 1 : 3);
     height: layout.preferred-height;
-    if !root.last: Rectangle { x: 16px; y: parent.height - 1px; width: parent.width - 32px; height: 1px; background: Theme.hairline; }
+    if !root.last: Rectangle { y: parent.height - 1px; height: 1px; background: Theme.divider; }
     layout := HorizontalLayout {
-        padding: 16px;
+        padding-top: 16px;
+        padding-bottom: 16px;
         spacing: 14px;
         VerticalLayout {
             alignment: start;
             Rectangle {
-                width: 30px;
-                height: 30px;
-                border-radius: 9px;
-                background: root.tone == 2 ? Theme.error.with-alpha(0.14) : root.tone == 1 ? Theme.warn.with-alpha(0.14) : Theme.accent-soft;
+                width: 42px;
+                height: 42px;
+                border-radius: 10px;
+                background: Theme.inset;
                 Icon {
-                    source: root.tone == 0 ? @image-url("assets/icons/info.svg") : @image-url("assets/icons/triangle-alert.svg");
-                    tint: root.tone == 2 ? Theme.error : root.tone == 1 ? Theme.warn : Theme.accent;
+                    width: 18px;
+                    height: 18px;
+                    source: root.tone == 3 ? @image-url("assets/icons/info.svg") : @image-url("assets/icons/triangle-alert.svg");
+                    tint: root.tone == 2 ? Theme.red : root.tone == 1 ? Theme.amber : Theme.cyan;
                 }
             }
         }
@@ -208,142 +156,124 @@ component FindingItem inherits Rectangle {
             spacing: 6px;
             horizontal-stretch: 1;
             HorizontalLayout {
-                spacing: 8px;
-                Text { text: root.info.title; font-size: Theme.font-emphasis; font-weight: 600; color: Theme.text; wrap: word-wrap; horizontal-stretch: 1; }
-                VerticalLayout { alignment: start; Badge { text: root.info.severity; tone: root.tone; dot: true; } }
+                spacing: 10px;
+                Text { text: root.info.title; font-size: Theme.font-title; font-weight: 600; color: Theme.text; wrap: word-wrap; horizontal-stretch: 1; }
+                VerticalLayout { alignment: start; Badge { text: root.info.severity; tone: root.tone; } }
             }
             Body { text: root.info.detail; color: Theme.text-secondary; }
             if root.info.evidence != "": Rectangle {
-                border-radius: Theme.radius-s;
-                background: Theme.fill-subtle;
+                border-radius: Theme.radius-control;
+                background: Theme.inset;
                 height: ev.preferred-height;
                 ev := VerticalLayout {
-                    padding: 9px;
-                    padding-left: 11px;
+                    padding: 10px;
+                    padding-left: 12px;
                     spacing: 3px;
-                    Eyebrow { text: Tr.t("app.case.evidence"); }
+                    Text { text: Tr.t("app.case.evidence"); font-size: Theme.font-small; font-weight: 600; color: Theme.text-muted; }
                     Text { text: root.info.evidence; font-size: Theme.font-small; color: Theme.text-secondary; wrap: word-wrap; }
                 }
             }
             if root.info.actions != "": HorizontalLayout {
                 spacing: 10px;
-                Rectangle { width: 2px; border-radius: 1px; background: Theme.accent; }
+                Rectangle { width: 3px; border-radius: 1.5px; background: Theme.green; }
                 Text { text: root.info.actions; font-size: Theme.font-small; font-weight: 500; color: Theme.text; wrap: word-wrap; }
             }
             if root.info.buttons.length > 0: HorizontalLayout {
-                spacing: 6px;
+                spacing: 8px;
                 alignment: start;
                 padding-top: 2px;
-                for label[i] in root.info.buttons: Button { text: label; size: 1; clicked => { root.run(i); } }
+                for label[i] in root.info.buttons: Button { text: label; size: 1; kind: i == 0 ? 1 : 0; clicked => { root.run(i); } }
             }
         }
     }
 }
 
-// An audio endpoint: what it is, its default roles, volume and mute, and the actions it supports.
-component AudioItem inherits Rectangle {
+// An audio endpoint as a compact tile: what it is, its roles and state, volume and mute, and its actions.
+component AudioTile inherits Rectangle {
     in property <AudioRow> info;
-    in property <bool> last;
     callback make-default(string);
     callback set-volume(string, float);
     callback set-mute(string, bool);
     callback prefer(string);
     callback force(string);
+    border-radius: Theme.radius-card;
+    background: Theme.inset;
     height: layout.preferred-height;
-    if !root.last: Rectangle { x: 56px; y: parent.height - 1px; width: parent.width - 70px; height: 1px; background: Theme.hairline; }
-    layout := HorizontalLayout {
-        padding: 14px;
+    layout := VerticalLayout {
+        padding: 16px;
         spacing: 12px;
-        VerticalLayout {
-            alignment: start;
+        HorizontalLayout {
+            spacing: 12px;
             Rectangle {
-                width: 30px;
-                height: 30px;
-                border-radius: 9px;
-                background: root.info.defaults != "" ? Theme.accent-soft : Theme.fill-hover;
-                Icon { source: @image-url("assets/icons/volume-2.svg"); tint: root.info.defaults != "" ? Theme.accent : Theme.text-secondary; }
+                width: 38px;
+                height: 38px;
+                border-radius: 10px;
+                background: root.info.defaults != "" ? Theme.green.with-alpha(0.18) : Theme.panel;
+                Icon { source: @image-url("assets/icons/volume-2.svg"); tint: root.info.defaults != "" ? Theme.green : Theme.text-secondary; }
             }
-        }
-        VerticalLayout {
-            spacing: 5px;
-            horizontal-stretch: 1;
-            HorizontalLayout {
-                spacing: 8px;
-                Text { text: root.info.name; font-size: Theme.font-body; font-weight: 600; color: Theme.text; overflow: elide; horizontal-stretch: 1; vertical-alignment: center; }
-                if root.info.defaults != "": VerticalLayout { alignment: center; Badge { text: root.info.defaults; tone: 3; } }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                horizontal-stretch: 1;
+                Text { text: root.info.name; font-size: Theme.font-body; font-weight: 600; color: Theme.text; overflow: elide; }
+                Text { text: root.info.flow; font-size: Theme.font-caption; color: Theme.text-muted; overflow: elide; }
             }
-            HorizontalLayout {
-                spacing: 8px;
-                Secondary { text: root.info.flow; horizontal-stretch: 0; vertical-alignment: center; }
-                Badge { text: root.info.state; dot: true; }
-                Rectangle { }
-            }
-            if root.info.volume >= 0: HorizontalLayout {
-                spacing: 12px;
-                padding-top: 2px;
-                Slider {
-                    max-width: 280px;
-                    value: root.info.volume;
-                    accessible-label: Tr.t("app.audio.volume");
-                    released(v) => { root.set-volume(root.info.id, v); }
+            if root.info.can-prefer || root.info.can-force: MenuButton {
+                tooltip: Tr.t("app.more");
+                entries: [
+                    { label: Tr.t("app.audio.prefer"), icon: @image-url("assets/icons/circle-check.svg"), destructive: false, enabled: root.info.can-prefer },
+                    { label: Tr.t("app.audio.force"), icon: @image-url("assets/icons/volume-2.svg"), destructive: false, enabled: root.info.can-force },
+                ];
+                activated(a) => {
+                    if (a == 0) { root.prefer(root.info.id); }
+                    if (a == 1) { root.force(root.info.id); }
                 }
-                Text { text: Math.round(root.info.volume) + "%"; font-size: Theme.font-small; color: Theme.text-tertiary; vertical-alignment: center; width: 34px; }
-                Toggle {
-                    text: Tr.t("app.audio.mute");
-                    checked: root.info.muted;
-                    toggled => { root.set-mute(root.info.id, self.checked); }
-                }
-                Rectangle { }
             }
         }
         HorizontalLayout {
-            spacing: 6px;
-            horizontal-stretch: 0;
-            alignment: end;
-            VerticalLayout {
-                alignment: start;
-                HorizontalLayout {
-                    spacing: 6px;
-                    if root.info.can-make-default: Button { text: Tr.t("app.audio.makeDefault"); size: 1; kind: 1; clicked => { root.make-default(root.info.id); } }
-                    // The occasional actions stay one click away.
-                    if root.info.can-prefer || root.info.can-force: MenuButton {
-                        tooltip: Tr.t("app.more");
-                        entries: [
-                            { label: Tr.t("app.audio.prefer"), icon: @image-url("assets/icons/circle-check.svg"), destructive: false, enabled: root.info.can-prefer },
-                            { label: Tr.t("app.audio.force"), icon: @image-url("assets/icons/volume-2.svg"), destructive: false, enabled: root.info.can-force },
-                        ];
-                        activated(a) => {
-                            if (a == 0) { root.prefer(root.info.id); }
-                            if (a == 1) { root.force(root.info.id); }
-                        }
-                    }
-                }
+            spacing: 8px;
+            alignment: start;
+            Badge { text: root.info.state; tone: 0; }
+            if root.info.defaults != "": Badge { text: root.info.defaults; tone: 4; }
+        }
+        if root.info.volume >= 0: HorizontalLayout {
+            spacing: 12px;
+            Slider {
+                value: root.info.volume;
+                accessible-label: Tr.t("app.audio.volume");
+                released(v) => { root.set-volume(root.info.id, v); }
             }
+            Text { text: Math.round(root.info.volume) + "%"; font-size: Theme.font-small; color: Theme.text-secondary; vertical-alignment: center; width: 36px; }
+            Toggle {
+                text: Tr.t("app.audio.mute");
+                checked: root.info.muted;
+                toggled => { root.set-mute(root.info.id, self.checked); }
+            }
+        }
+        if root.info.can-make-default: HorizontalLayout {
+            alignment: start;
+            Button { text: Tr.t("app.audio.makeDefault"); kind: 1; size: 1; clicked => { root.make-default(root.info.id); } }
         }
     }
 }
 
-// The live chain of the active share, as in a pipeline view: carrier → (VPN) → hotspot or card → devices.
-// Boxes can be dragged; the links follow.
+// The live chain of the active share: carrier → (VPN) → hotspot or card → devices. Boxes can be dragged.
 component ShareDiagram inherits Rectangle {
     in property <[TopoNode]> nodes;
     in property <length> canvas-height;
     in property <length> canvas-width;
     callback move(int, length, length);
     property <length> node-w: 180px;
-    property <length> node-h: 60px;
+    property <length> node-h: 58px;
     height: max(120px, root.canvas-height);
-    border-radius: Theme.radius-l;
-    background: Theme.fill-subtle;
-    border-width: 1px;
-    border-color: Theme.hairline;
+    border-radius: Theme.radius-card;
+    background: Theme.inset;
     clip: true;
     accessible-role: groupbox;
     accessible-label: Tr.t("app.topo.title");
-    // Wider than the pane: a scroll bar (a mouse drag moves boxes, never the canvas).
-    ScrollView {
-        content-width: max(root.width - 2px, root.canvas-width);
-        content-height: root.height - 2px;
+    Flickable {
+        content-width: max(root.width, root.canvas-width);
+        content-height: root.height;
         for n in root.nodes: Path {
             visible: n.parent >= 0;
             x: 0;
@@ -352,7 +282,7 @@ component ShareDiagram inherits Rectangle {
             height: root.height;
             viewbox-width: self.width / 1px;
             viewbox-height: self.height / 1px;
-            stroke: n.kind == 3 ? Theme.text-secondary.with-alpha(0.4) : Theme.accent.with-alpha(0.65);
+            stroke: n.kind == 3 ? Theme.text-muted : Theme.cyan;
             stroke-width: 1.5px;
             fill: transparent;
             MoveTo {
@@ -373,16 +303,12 @@ component ShareDiagram inherits Rectangle {
             y: n.y;
             width: root.node-w;
             height: root.node-h;
-            border-radius: Theme.radius-l;
+            border-radius: Theme.radius-control;
+            background: drag.pressed ? Theme.control-hover : Theme.panel;
+            border-width: 1px;
+            border-color: drag.has-hover ? Theme.cyan : Theme.divider;
             accessible-role: text;
             accessible-label: n.title + ", " + n.detail;
-            GlassFrame { f: GlassEngine.card; inner-width: parent.width; inner-height: parent.height; }
-            Rectangle {
-                border-radius: Theme.radius-l;
-                background: drag.pressed ? Theme.surface-hover : Theme.glass-strong;
-                border-width: 1px;
-                border-color: drag.has-hover ? Theme.accent.with-alpha(0.55) : Theme.hairline;
-            }
             drag := TouchArea {
                 mouse-cursor: self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
                 moved => {
@@ -398,10 +324,10 @@ component ShareDiagram inherits Rectangle {
                     width: 30px;
                     height: 30px;
                     y: (parent.height - self.height) / 2;
-                    border-radius: 9px;
-                    background: n.kind == 1 ? Theme.ok.with-alpha(0.16) : n.kind == 3 ? Theme.fill-hover : Theme.accent-soft;
+                    border-radius: 8px;
+                    background: n.kind == 1 ? Theme.green.with-alpha(0.18) : n.kind == 3 ? Theme.control : Theme.cyan.with-alpha(0.18);
                     Icon {
-                        tint: n.kind == 1 ? Theme.ok : n.kind == 3 ? Theme.text-secondary : Theme.accent;
+                        tint: n.kind == 1 ? Theme.green : n.kind == 3 ? Theme.text-secondary : Theme.cyan;
                         source: n.kind == 0 ? @image-url("assets/icons/globe.svg")
                             : n.kind == 1 ? @image-url("assets/icons/shield-check.svg")
                             : n.kind == 2 ? @image-url("assets/icons/wifi.svg")
@@ -411,26 +337,24 @@ component ShareDiagram inherits Rectangle {
                 VerticalLayout {
                     alignment: center;
                     spacing: 2px;
-                    HorizontalLayout {
-                        spacing: 6px;
-                        StatusDot { tone: 4; }
-                        Text { text: n.title; font-size: Theme.font-body; font-weight: 600; color: Theme.text; overflow: elide; }
-                    }
-                    Text { text: n.detail; font-size: Theme.font-caption; color: Theme.text-secondary; overflow: elide; }
+                    Text { text: n.title; font-size: Theme.font-small; font-weight: 600; color: Theme.text; overflow: elide; }
+                    Text { text: n.detail; font-size: Theme.font-caption; color: Theme.text-muted; overflow: elide; }
                 }
             }
         }
     }
 }
 
-// One device on the shared network: who it is and its rules. Edits stay local until "Aplicar" (with confirmation).
-component ClientCardView inherits Card {
+// One device on the shared network and its rules. Edits stay local until "Aplicar" (with confirmation).
+component ClientPanel inherits Rectangle {
     in property <ClientCard> info;
     callback apply(string, bool, bool, int, string);
     property <bool> internet: root.info.allow-internet;
     property <bool> local: root.info.allow-local;
     property <int> gaming: root.info.gaming;
     property <string> fixed: root.info.fixed;
+    border-radius: Theme.radius-card;
+    background: Theme.inset;
     height: layout.preferred-height;
     layout := VerticalLayout {
         padding: 16px;
@@ -440,29 +364,24 @@ component ClientCardView inherits Card {
             Rectangle {
                 width: 38px;
                 height: 38px;
-                border-radius: 11px;
-                background: Theme.accent-soft;
-                Icon { width: 19px; height: 19px; tint: Theme.accent; source: @image-url("assets/icons/smartphone.svg"); }
+                border-radius: 10px;
+                background: Theme.panel;
+                Icon { width: 18px; height: 18px; tint: Theme.cyan; source: @image-url("assets/icons/smartphone.svg"); }
             }
             VerticalLayout {
                 alignment: center;
                 spacing: 2px;
                 horizontal-stretch: 1;
-                Text { text: root.info.title; font-size: Theme.font-title; font-weight: 650; color: Theme.text; overflow: elide; }
-                HorizontalLayout {
-                    spacing: 6px;
-                    StatusDot { tone: 4; }
-                    Text { text: root.info.since; font-size: Theme.font-small; font-weight: 500; color: Theme.ok; }
-                }
+                Text { text: root.info.title; font-size: Theme.font-body; font-weight: 600; color: Theme.text; overflow: elide; }
+                Text { text: root.info.since; font-size: Theme.font-caption; color: Theme.green; }
             }
             VerticalLayout {
                 alignment: center;
                 spacing: 1px;
                 Text { text: root.info.ip; font-size: Theme.font-body; font-weight: 600; color: Theme.text; horizontal-alignment: right; }
-                Text { text: root.info.mac; font-size: Theme.font-caption; color: Theme.text-tertiary; horizontal-alignment: right; }
+                Text { text: root.info.mac; font-size: Theme.font-caption; color: Theme.text-muted; horizontal-alignment: right; }
             }
         }
-        Divider { }
         HorizontalLayout {
             spacing: 24px;
             Toggle { text: Tr.t("app.client.internet"); checked <=> root.internet; }
@@ -495,99 +414,7 @@ component ClientCardView inherits Card {
     }
 }
 
-// The signal path of the share: where the Internet comes from, how bitBybit shares it, who receives it — three
-// glass nodes on a conduit. The conduit is lit while sharing; when sharing starts, one glint runs along it.
-component SignalPath inherits Rectangle {
-    in property <bool> live;
-    // false: a local network only (the Internet end stays dark).
-    in property <bool> internet: true;
-    in property <image> source-icon;
-    in property <string> source;
-    in property <string> source-role;
-    in property <image> via-icon;
-    in property <string> via;
-    in property <string> via-role;
-    in property <string> devices;
-    in property <string> devices-role;
-    property <length> node: 32px;
-    property <length> col-w: root.width / 3;
-    property <length> x0: root.col-w / 2;
-    property <length> x1: root.width - root.col-w / 2;
-    property <length> cy: 16px + root.node / 2;
-    height: cols.preferred-height;
-    border-radius: Theme.radius-l;
-    background: Theme.fill-subtle;
-    border-width: 1px;
-    border-color: Theme.hairline;
-    accessible-role: text;
-    accessible-label: root.source-role + " " + root.source + ", " + root.via-role + " " + root.via + ", " + root.devices-role + " " + root.devices;
-    // The conduit (under the nodes).
-    Rectangle {
-        x: root.x0;
-        y: root.cy - 1px;
-        width: root.x1 - root.x0;
-        height: 2px;
-        border-radius: 1px;
-        background: root.live ? @linear-gradient(90deg, Theme.ok 0%, Theme.accent 100%) : Theme.text-tertiary.with-alpha(0.28);
-        animate background { duration: Theme.smooth; }
-    }
-    if !root.internet: Rectangle {
-        x: root.x0;
-        y: root.cy - 1px;
-        width: (root.x1 - root.x0) / 2;
-        height: 2px;
-        background: Theme.bg-bottom.with-alpha(0.7);
-    }
-    // The glint: runs once from the source to the devices when the share goes live (none with reduced motion).
-    Rectangle {
-        x: root.live ? root.x1 - 40px : root.x0;
-        y: root.cy - 2px;
-        width: 40px;
-        height: 4px;
-        border-radius: 2px;
-        background: @linear-gradient(90deg, #FFFFFF00 0%, #FFFFFFE6 60%, #FFFFFF00 100%);
-        opacity: root.live && self.x < root.x1 - 41px ? 1 : 0;
-        animate x { duration: Theme.reduce-motion ? 0ms : 1400ms; easing: cubic-bezier(0.4, 0.0, 0.2, 1.0); }
-    }
-    cols := HorizontalLayout {
-        padding-top: 16px;
-        padding-bottom: 14px;
-        for step[i] in [
-            { icon: root.source-icon, value: root.source, role: root.source-role, lit: root.internet },
-            { icon: root.via-icon, value: root.via, role: root.via-role, lit: true },
-            { icon: @image-url("assets/icons/smartphone.svg"), value: root.devices, role: root.devices-role, lit: root.live },
-        ]: VerticalLayout {
-            horizontal-stretch: 1;
-            preferred-width: 0px;
-            spacing: 8px;
-            HorizontalLayout {
-                alignment: center;
-                Rectangle {
-                    width: root.node;
-                    height: root.node;
-                    GlassFrame { f: GlassEngine.control; inner-width: parent.width; inner-height: parent.height; }
-                    Rectangle {
-                        border-radius: self.height / 2;
-                        background: step.lit ? (root.live ? Theme.ok : Theme.accent).mix(Theme.glass-strong, Theme.dark ? 0.22 : 0.15) : Theme.glass-strong;
-                        border-width: 1px;
-                        border-color: step.lit ? (root.live ? Theme.ok : Theme.accent).with-alpha(0.55) : Theme.hairline;
-                        animate background, border-color { duration: Theme.smooth; }
-                    }
-                    Icon { source: step.icon; width: 15px; height: 15px; tint: step.lit ? (root.live ? Theme.ok : Theme.accent) : Theme.text-tertiary; }
-                }
-            }
-            VerticalLayout {
-                spacing: 1px;
-                padding-left: 8px;
-                padding-right: 8px;
-                Text { text: step.value; font-size: Theme.font-body; font-weight: 600; color: Theme.text; horizontal-alignment: center; overflow: elide; }
-                Text { text: step.role; font-size: Theme.font-caption; color: Theme.text-secondary; horizontal-alignment: center; overflow: elide; }
-            }
-        }
-    }
-}
-
-// The scrim and centring of a modal glass dialog.
+// A modal dialog: scrim over the window, a centred panel.
 component Modal inherits Rectangle {
     background: Theme.scrim;
     TouchArea { }
@@ -697,7 +524,8 @@ export component AppWindow inherits Window {
     callback force-output(string);
     in property <string> audio-profile;
     in-out property <int> page: 8;
-    in property <[DashTile]> tiles;
+    in property <[Kpi]> kpis;
+    in property <[ChartData]> charts;
     callback refresh();
     // Operation feedback (0 none, 1 working, 2 done, 3 failed) and the confirmation dialog.
     in property <int> op-state;
@@ -714,252 +542,278 @@ export component AppWindow inherits Window {
     in property <int> dialog-level;
     callback dialog-answer(bool);
 
-    // Settings page (9): look (0 dark, 1 glass, 2 light, 3 custom), custom base and accent, update channel.
-    in-out property <int> theme-index;
-    in-out property <int> custom-base;
-    in-out property <string> custom-accent;
+    // Settings page (9): update channel.
     in-out property <int> update-channel;
     in property <string> settings-message;
     callback settings-changed();
 
+
     title: "bitBybit " + root.version;
-    preferred-width: 1240px;
-    preferred-height: 780px;
-    min-width: 820px;
-    // The sidebar needs ~600 px for every entry.
-    min-height: 620px;
-    background: Theme.bg-bottom;
+    preferred-width: 1440px;
+    preferred-height: 860px;
+    min-width: 1100px;
+    min-height: 660px;
+    background: Theme.workspace;
     default-font-size: Theme.font-body;
-    default-font-family: "Inter";
+    default-font-family: "Poppins";
     icon: @image-url("assets/app-icon.png");
+    init => { Palette.color-scheme = ColorScheme.dark; }
 
-    // Std widgets left (scroll views) follow the look's light/dark scheme.
-    property <bool> scheme-dark: Theme.dark;
-    init => { Palette.color-scheme = Theme.dark ? ColorScheme.dark : ColorScheme.light; }
-    changed scheme-dark => { Palette.color-scheme = Theme.dark ? ColorScheme.dark : ColorScheme.light; }
-
-    // Geometry of the content column (right of the sidebar), and the breakpoint for two-pane pages.
-    property <length> gutter: 10px;
-    property <length> content-x: root.gutter + Theme.sidebar-width + 18px;
-    property <length> content-w: root.width - root.content-x - 18px;
-    property <bool> wide: root.content-w >= 880px;
-    property <length> side-w: root.content-w >= 1240px ? 380px : root.content-w >= 1100px ? 340px : 300px;
-    // Sharing: what the flow strip shows.
+    // Header search (pages with lists), the chart's series, and what the header bell holds.
+    property <string> query;
+    property <bool> searchable: root.page == 1 || root.page == 3 || root.page == 7;
+    property <int> chart-index;
+    property <int> notifications: (root.broker-state == 2 ? 1 : 0) + (root.app-update-available ? 1 : 0) + (root.new-card-text != "" ? 1 : 0) + (root.op-state == 3 ? 1 : 0);
+    property <string> page-title: root.page == 8 ? Tr.t("app.page.dashboard.title")
+        : root.page == 6 ? Tr.t("app.page.case.title")
+        : root.page == 0 ? Tr.t("app.page.network.title")
+        : root.page == 1 ? Tr.t("app.page.devices.title")
+        : root.page == 7 ? Tr.t("app.page.drivers.title")
+        : root.page == 2 ? Tr.t("app.page.audio.title")
+        : root.page == 5 ? Tr.t("app.page.displays.title")
+        : root.page == 3 ? Tr.t("app.tab.changes")
+        : root.page == 9 ? Tr.t("app.settings.title")
+        : Tr.t("app.about.title");
+    // Sharing: what the summary cards show.
     property <string> share-source-label: root.share-mode == 2 ? (root.share-repeater-source != "" ? root.share-repeater-source : "—") : root.share-upstream == 0 ? Tr.t("app.share.autoShort") : (root.share-labels.length > root.share-upstream ? root.share-labels[root.share-upstream] : "—");
-    property <string> share-target-label: root.share-mode == 1 ? (root.share-target-labels.length > root.share-downstream && root.share-downstream >= 0 ? root.share-target-labels[root.share-downstream] : "—") : (root.share-name != "" ? root.share-name : Tr.t("app.share.mode.hotspot"));
+    property <length> workspace-x: Theme.sidebar-width;
+    property <length> workspace-w: root.width - Theme.sidebar-width;
 
-    Backdrop { width: root.width; height: root.height; }
+    // A row matches the header search (case-insensitive substring; Slint has no `contains`).
+    pure function matches(s: string) -> bool {
+        return root.query == "" || s.to-lowercase().replace-all(root.query.to-lowercase(), "") != s.to-lowercase();
+    }
+    function go(p: int) {
+        root.page = p;
+        root.query = "";
+    }
 
-    // ── Navigation
-    GlassPane {
-        glass-id: "nav";
-        kind: 0;
-        x: root.gutter;
-        y: root.gutter;
+    // ── Sidebar
+    Rectangle {
+        x: 0;
+        y: 0;
         width: Theme.sidebar-width;
-        height: root.height - 2 * root.gutter;
+        height: root.height;
+        background: Theme.sidebar;
         VerticalLayout {
-            padding: 12px;
-            padding-top: 16px;
-            spacing: 2px;
-            // The brand: the logo mark and the wordmark (text, so it follows the look).
-            HorizontalLayout {
-                padding-left: 8px;
-                padding-bottom: 14px;
-                spacing: 9px;
-                alignment: start;
-                Image {
-                    source: @image-url("assets/logo-mark.png");
-                    height: 28px;
-                    width: 28px;
-                    y: (parent.height - self.height) / 2;
-                    image-fit: contain;
-                    accessible-role: image;
-                    accessible-label: "bitBybit";
-                }
+            padding-top: 26px;
+            padding-bottom: 14px;
+            spacing: 0px;
+            // Identity: the logo, the name and the service link.
+            VerticalLayout {
+                spacing: 6px;
+                padding-bottom: 20px;
                 HorizontalLayout {
-                    accessible-role: none;
-                    Text { text: "bit"; font-size: 19px; font-weight: 700; letter-spacing: -0.4px; color: Theme.text; vertical-alignment: center; }
-                    Text { text: "Bybit"; font-size: 19px; font-weight: 700; letter-spacing: -0.4px; color: Theme.accent; vertical-alignment: center; }
+                    alignment: center;
+                    Image {
+                        source: @image-url("assets/logo-mark.png");
+                        width: 54px;
+                        height: 54px;
+                        image-fit: contain;
+                        accessible-role: image;
+                        accessible-label: "bitBybit";
+                    }
+                }
+                Text { text: "bitBybit"; font-size: Theme.font-title; font-weight: 600; color: Theme.text; horizontal-alignment: center; }
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 6px;
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    accessible-role: text;
+                    accessible-label: root.broker-message;
+                    StatusDot { tone: root.broker-state == 2 ? 2 : root.broker-state == 1 ? 4 : 0; }
+                    Text {
+                        text: root.broker-state == 2 ? Tr.t("app.service.error") : root.broker-state == 1 ? Tr.t("app.service.ok") : Tr.t("app.service.connecting");
+                        font-size: Theme.font-caption;
+                        color: Theme.text-secondary;
+                        overflow: elide;
+                    }
                 }
             }
-            Eyebrow { text: Tr.t("app.nav.group.overview"); x: 11px; height: 22px; vertical-alignment: center; }
-            NavItem { icon: @image-url("assets/icons/layout-dashboard.svg"); label: Tr.t("app.page.dashboard.title"); selected: root.page == 8; clicked => { root.page = 8; } }
-            NavItem { icon: @image-url("assets/icons/stethoscope.svg"); label: Tr.t("app.nav.case"); selected: root.page == 6; clicked => { root.page = 6; } }
+            NavItem { icon: @image-url("assets/icons/layout-dashboard.svg"); label: Tr.t("app.page.dashboard.title"); selected: root.page == 8; clicked => { root.go(8); } }
+            Rectangle { height: 12px; }
+            Rectangle { height: 1px; Rectangle { x: 24px; width: parent.width - 48px; background: Theme.divider; } }
             Rectangle { height: 8px; }
-            Eyebrow { text: Tr.t("app.nav.group.system"); x: 11px; height: 22px; vertical-alignment: center; }
-            NavItem { icon: @image-url("assets/icons/network.svg"); label: Tr.t("app.tab.network"); selected: root.page == 0; clicked => { root.page = 0; } }
-            NavItem { icon: @image-url("assets/icons/cpu.svg"); label: Tr.t("app.page.devices.title"); selected: root.page == 1; clicked => { root.page = 1; } }
-            NavItem { icon: @image-url("assets/icons/hard-drive-download.svg"); label: Tr.t("app.page.drivers.title"); selected: root.page == 7; clicked => { root.page = 7; root.refresh-drivers(); } }
-            NavItem { icon: @image-url("assets/icons/volume-2.svg"); label: Tr.t("app.page.audio.title"); selected: root.page == 2; clicked => { root.page = 2; } }
-            NavItem { icon: @image-url("assets/icons/monitor.svg"); label: Tr.t("app.page.displays.title"); selected: root.page == 5; clicked => { root.page = 5; } }
+            NavGroup { text: Tr.t("app.nav.group.diagnostics"); }
+            NavItem { icon: @image-url("assets/icons/stethoscope.svg"); label: Tr.t("app.nav.case"); selected: root.page == 6; clicked => { root.go(6); } }
             Rectangle { height: 8px; }
-            Eyebrow { text: Tr.t("app.nav.group.activity"); x: 11px; height: 22px; vertical-alignment: center; }
-            NavItem { icon: @image-url("assets/icons/history.svg"); label: Tr.t("app.page.changes.short"); selected: root.page == 3; clicked => { root.page = 3; } }
+            NavGroup { text: Tr.t("app.nav.group.system"); }
+            NavItem { icon: @image-url("assets/icons/network.svg"); label: Tr.t("app.tab.network"); selected: root.page == 0; clicked => { root.go(0); } }
+            NavItem { icon: @image-url("assets/icons/cpu.svg"); label: Tr.t("app.page.devices.title"); selected: root.page == 1; clicked => { root.go(1); } }
+            NavItem { icon: @image-url("assets/icons/hard-drive-download.svg"); label: Tr.t("app.page.drivers.title"); selected: root.page == 7; clicked => { root.go(7); root.refresh-drivers(); } }
+            NavItem { icon: @image-url("assets/icons/volume-2.svg"); label: Tr.t("app.page.audio.title"); selected: root.page == 2; clicked => { root.go(2); } }
+            NavItem { icon: @image-url("assets/icons/monitor.svg"); label: Tr.t("app.page.displays.title"); selected: root.page == 5; clicked => { root.go(5); } }
+            Rectangle { height: 8px; }
+            NavGroup { text: Tr.t("app.nav.group.activity"); }
+            NavItem { icon: @image-url("assets/icons/history.svg"); label: Tr.t("app.page.changes.short"); selected: root.page == 3; clicked => { root.go(3); } }
             Rectangle { vertical-stretch: 1; }
-            // The service link and the app's own updates, always at hand.
-            HorizontalLayout {
-                padding-left: 11px;
-                padding-right: 8px;
-                padding-bottom: 6px;
-                spacing: 8px;
-                accessible-role: text;
-                accessible-label: root.broker-message;
-                StatusDot { tone: root.broker-state == 2 ? 2 : root.broker-state == 1 ? 4 : 5; }
-                Text {
-                    text: root.broker-state == 2 ? Tr.t("app.service.error") : root.broker-message;
-                    font-size: Theme.font-caption;
-                    color: root.broker-state == 2 ? Theme.error : Theme.text-secondary;
-                    overflow: elide;
-                    vertical-alignment: center;
-                }
-            }
-            NavItem {
-                icon: @image-url("assets/icons/refresh-cw.svg");
-                label: root.app-update-state == 1 ? Tr.t("app.update.checkingShort") : (root.app-update-available ? Tr.t("app.update.navAvailable") : Tr.t("app.update.navCheck"));
-                selected: false;
-                clicked => { if (root.app-update-available) { root.update-dialog-visible = true; } else { root.check-app-update(); } }
-            }
-            if root.app-update-text != "" && !root.app-update-available: Text {
-                text: root.app-update-text;
-                wrap: word-wrap;
-                font-size: Theme.font-caption;
-                color: root.app-update-state == 3 ? Theme.error : Theme.text-tertiary;
-                x: 11px;
-                width: parent.width - 22px;
-            }
-            Divider { }
-            NavItem { icon: @image-url("assets/icons/settings.svg"); label: Tr.t("app.settings.title"); selected: root.page == 9; clicked => { root.page = 9; } }
-            NavItem { icon: @image-url("assets/icons/info.svg"); label: Tr.t("app.about.title"); selected: root.page == 4; clicked => { root.page = 4; } }
+            Rectangle { height: 1px; Rectangle { x: 24px; width: parent.width - 48px; background: Theme.divider; } }
+            Rectangle { height: 8px; }
+            NavItem { icon: @image-url("assets/icons/settings.svg"); label: Tr.t("app.settings.title"); selected: root.page == 9; clicked => { root.go(9); } }
+            NavItem { icon: @image-url("assets/icons/info.svg"); label: Tr.t("app.about.title"); selected: root.page == 4; clicked => { root.go(4); } }
         }
     }
 
-    // ── Content column
+    // ── Workspace
     Rectangle {
-        x: root.content-x;
+        x: root.workspace-x;
         y: 0;
-        width: root.content-w;
+        width: root.workspace-w;
         height: root.height;
         HorizontalLayout {
-            // Centred column of at most content-max.
-            padding-left: max(0px, (root.content-w - Theme.content-max) / 2);
+            padding: Theme.pad;
+            padding-left: max(Theme.pad, (root.workspace-w - Theme.content-max) / 2);
             padding-right: self.padding-left;
             VerticalLayout {
-                padding-top: 20px;
-                padding-bottom: 16px;
-                spacing: 14px;
-                if root.broker-state == 2: StatusBanner { kind: 2; message: root.broker-message; }
-                if root.new-card-text != "": StatusBanner {
-                    kind: 1;
-                    message: root.new-card-text;
-                    Button { icon: @image-url("assets/icons/wifi.svg"); text: Tr.t("app.share.shareThroughIt"); kind: 1; size: 1; clicked => { root.use-suggestion(); } }
-                    IconButton { icon: @image-url("assets/icons/x.svg"); tooltip: Tr.t("app.op.dismiss"); clicked => { root.new-card-text = ""; } }
+                spacing: Theme.gap;
+
+                // Header: page title, search where the page has a list, notifications, settings.
+                Panel {
+                    height: Theme.header-height;
+                    HorizontalLayout {
+                        padding-left: 26px;
+                        padding-right: 16px;
+                        spacing: 12px;
+                        Text { text: root.page-title; font-size: Theme.font-page; font-weight: 700; color: Theme.text; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+                        if root.searchable: VerticalLayout {
+                            alignment: center;
+                            TextField {
+                                width: 300px;
+                                pill: true;
+                                placeholder-text: Tr.t("app.search");
+                                leading-icon: @image-url("assets/icons/search.svg");
+                                text <=> root.query;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            bell := IconButton {
+                                icon: @image-url("assets/icons/bell.svg");
+                                tooltip: Tr.t("app.notifications");
+                                badge: root.notifications;
+                                clicked => { inbox.show(); }
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            IconButton { icon: @image-url("assets/icons/settings.svg"); tooltip: Tr.t("app.settings.title"); clicked => { root.go(9); } }
+                        }
+                    }
+                    inbox := PopupWindow {
+                        x: parent.width - self.width - 16px;
+                        y: parent.height + 6px;
+                        width: 380px;
+                        height: inbox-list.preferred-height;
+                        Rectangle {
+                            border-radius: Theme.radius-card;
+                            background: Theme.panel;
+                            border-width: 1px;
+                            border-color: Theme.divider;
+                            drop-shadow-color: #00000080;
+                            drop-shadow-blur: 20px;
+                            drop-shadow-offset-y: 8px;
+                        }
+                        inbox-list := VerticalLayout {
+                            padding: 16px;
+                            spacing: 12px;
+                            Text { text: Tr.t("app.notifications"); font-size: Theme.font-title; font-weight: 700; color: Theme.text; }
+                            if root.notifications == 0: Secondary { text: Tr.t("app.notifications.none"); }
+                            if root.broker-state == 2: ActivityItem { icon: @image-url("assets/icons/circle-x.svg"); tint: Theme.red; title: Tr.t("app.service.error"); subtitle: root.broker-message; }
+                            if root.op-state == 3: ActivityItem { icon: @image-url("assets/icons/triangle-alert.svg"); tint: Theme.amber; title: Tr.t("app.notifications.failed"); subtitle: root.op-message; }
+                            if root.app-update-available: HorizontalLayout {
+                                spacing: 10px;
+                                ActivityItem { icon: @image-url("assets/icons/sparkles.svg"); tint: Theme.green; title: Tr.t("app.update.navAvailable"); subtitle: root.app-update-text; horizontal-stretch: 1; }
+                                VerticalLayout { alignment: center; Button { text: Tr.t("app.notifications.open"); size: 1; clicked => { root.update-dialog-visible = true; } } }
+                            }
+                            if root.new-card-text != "": VerticalLayout {
+                                spacing: 8px;
+                                ActivityItem { icon: @image-url("assets/icons/wifi.svg"); tint: Theme.cyan; title: Tr.t("app.notifications.newCard"); subtitle: root.new-card-text; }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: end;
+                                    Button { text: Tr.t("app.op.dismiss"); kind: 3; size: 1; clicked => { root.new-card-text = ""; } }
+                                    Button { text: Tr.t("app.share.shareThroughIt"); kind: 1; size: 1; clicked => { root.go(0); root.use-suggestion(); } }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // 8 · Resumo
                 if root.page == 8: VerticalLayout {
-                    spacing: 14px;
+                    spacing: Theme.gap;
                     vertical-stretch: 1;
-                    PageHeader {
-                        title: Tr.t("app.page.dashboard.title");
-                        subtitle: Tr.t("app.dashboard.subtitle");
-                        Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
+                    KpiBand {
+                        for kpi[i] in root.kpis: KpiCard {
+                            horizontal-stretch: 1;
+                            tone: i;
+                            title: kpi.title;
+                            value: kpi.value;
+                            note: kpi.note;
+                            action: Tr.t("app.kpi.detail");
+                            activated => { root.go(kpi.page); }
+                        }
                     }
                     HorizontalLayout {
-                        spacing: 14px;
+                        spacing: Theme.gap;
                         vertical-stretch: 1;
-                        GlassPane {
-                            glass-id: "dash";
-                            horizontal-stretch: 1;
+                        Panel {
+                            horizontal-stretch: 65;
+                            preferred-width: 0px;
                             VerticalLayout {
-                                padding: 18px;
-                                padding-bottom: 6px;
-                                spacing: 12px;
-                                SectionHeader { title: Tr.t("app.dashboard.state"); caption: Tr.t("app.dashboard.stateCaption"); }
-                                Scroller {
-                                    VerticalLayout {
-                                        alignment: start;
-                                        padding-bottom: 12px;
-                                        // Two columns: even tiles left, odd tiles right (Slint layouts have no wrapping grid).
-                                        HorizontalLayout {
-                                            spacing: 10px;
-                                            for col in [0, 1]: VerticalLayout {
-                                                alignment: start;
-                                                // Equal columns: no preferred width, equal stretch.
-                                                preferred-width: 0px;
-                                                horizontal-stretch: 1;
-                                                for tile[i] in root.tiles: VerticalLayout {
-                                                    padding-bottom: Math.mod(i, 2) == col ? 10px : 0px;
-                                                    if Math.mod(i, 2) == col: DashTileCard { info: tile; open(p) => { root.page = p; } }
-                                                }
-                                            }
-                                        }
+                                padding: 22px;
+                                spacing: 14px;
+                                PanelTitle {
+                                    title: Tr.t("app.chart.title");
+                                    if root.charts.length > 0: Select {
+                                        pill: true;
+                                        model: [root.charts[0].name, root.charts.length > 1 ? root.charts[1].name : root.charts[0].name];
+                                        current-index <=> root.chart-index;
                                     }
                                 }
+                                if root.charts.length > root.chart-index && !root.charts[root.chart-index].empty: AreaChart {
+                                    vertical-stretch: 1;
+                                    line: root.charts[root.chart-index].line;
+                                    area: root.charts[root.chart-index].area;
+                                    x-labels: root.charts[root.chart-index].x-labels;
+                                    y-labels: root.charts[root.chart-index].y-labels;
+                                }
+                                if root.charts.length <= root.chart-index || root.charts[root.chart-index].empty: EmptyState {
+                                    vertical-stretch: 1;
+                                    icon: @image-url("assets/icons/activity.svg");
+                                    text: Tr.t("app.chart.empty");
+                                }
+                                HorizontalLayout {
+                                    alignment: center;
+                                    spacing: 12px;
+                                    Icon { y: (parent.height - self.height) / 2; source: @image-url("assets/icons/trending-up.svg"); tint: Theme.text-secondary; }
+                                    Text { text: root.charts.length > root.chart-index ? root.charts[root.chart-index].summary : ""; font-size: Theme.font-small; color: Theme.text-secondary; vertical-alignment: center; }
+                                    Button { text: Tr.t("app.kpi.detail"); size: 1; clicked => { root.go(3); } }
+                                }
                             }
                         }
-                        if root.wide: GlassPane {
-                            glass-id: "dash-side";
-                            width: root.side-w;
+                        Panel {
+                            horizontal-stretch: 35;
+                            preferred-width: 0px;
+                            min-width: 300px;
                             VerticalLayout {
-                                padding: 18px;
-                                spacing: 12px;
-                                SectionHeader { title: Tr.t("app.dashboard.service"); }
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    StatusDot { tone: root.broker-state == 2 ? 2 : root.broker-state == 1 ? 4 : 5; }
-                                    Body { text: root.broker-message; font-size: Theme.font-small; color: Theme.text-secondary; }
-                                }
-                                Divider { }
-                                SectionHeader { title: "bitBybit"; caption: root.about-version; }
-                                if root.app-update-text != "": Secondary { text: root.app-update-text; }
-                                HorizontalLayout {
-                                    alignment: start;
-                                    spacing: 6px;
-                                    if !root.app-update-available: Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.update.checkNow"); size: 1; loading: root.app-update-state == 1; clicked => { root.check-app-update(); } }
-                                    if root.app-update-available: Button { text: Tr.t("app.update.navAvailable"); kind: 1; size: 1; clicked => { root.update-dialog-visible = true; } }
-                                }
-                                Divider { }
-                                SectionHeader { title: Tr.t("app.dashboard.shortcuts"); }
-                                Button { icon: @image-url("assets/icons/stethoscope.svg"); text: Tr.t("app.diagnosis.run"); stretch: true; clicked => { root.page = 6; root.diagnose(); } }
-                                Button { icon: @image-url("assets/icons/wifi.svg"); text: Tr.t("app.share.title"); stretch: true; clicked => { root.page = 0; } }
-                                Button { icon: @image-url("assets/icons/search.svg"); text: Tr.t("app.page.updates.search"); stretch: true; clicked => { root.page = 7; root.refresh-drivers(); root.search-updates(); } }
-                                Rectangle { vertical-stretch: 1; }
-                            }
-                        }
-                    }
-                }
-
-                // 6 · Caso Realtek / DisplayPort
-                if root.page == 6: VerticalLayout {
-                    spacing: 14px;
-                    vertical-stretch: 1;
-                    PageHeader {
-                        title: Tr.t("app.page.case.title");
-                        subtitle: root.diagnosis-summary;
-                        Button { icon: @image-url("assets/icons/activity.svg"); text: Tr.t("app.diagnosis.run"); kind: 1; loading: root.diagnosis-running; enabled: !root.diagnosis-running; clicked => { root.diagnose(); } }
-                    }
-                    GlassPane {
-                        glass-id: "case";
-                        vertical-stretch: 1;
-                        VerticalLayout {
-                            padding: 6px;
-                            if root.diagnosis-running: VerticalLayout {
-                                padding: 12px;
-                                StatusBanner { kind: 4; message: Tr.t("app.diagnosis.running"); }
-                            }
-                            if root.findings.length == 0 && !root.diagnosis-running: EmptyState {
-                                vertical-stretch: 1;
-                                icon: @image-url("assets/icons/stethoscope.svg");
-                                text: Tr.t("app.diagnosis.notYet");
-                            }
-                            if root.findings.length > 0: Scroller {
-                                VerticalLayout {
-                                    alignment: start;
-                                    for finding[fi] in root.findings: FindingItem {
-                                        info: finding;
-                                        last: fi == root.findings.length - 1;
-                                        run(ai) => { root.run-finding-action(fi, ai); }
+                                padding: 22px;
+                                spacing: 16px;
+                                PanelTitle { title: Tr.t("app.activity.title"); }
+                                if root.changes.length == 0: EmptyState { vertical-stretch: 1; icon: @image-url("assets/icons/history.svg"); text: Tr.t("app.activity.empty"); }
+                                if root.changes.length > 0: Scroller {
+                                    vertical-stretch: 1;
+                                    VerticalLayout {
+                                        spacing: 16px;
+                                        for change[i] in root.changes: ActivityItem {
+                                            visible: i < 8;
+                                            height: i < 8 ? self.preferred-height : 0px;
+                                            icon: change.can-revert ? @image-url("assets/icons/history.svg") : @image-url("assets/icons/circle-check.svg");
+                                            tint: change.can-revert ? Theme.cyan : Theme.text-secondary;
+                                            title: change.kind;
+                                            subtitle: change.when + "  ·  " + change.status;
+                                        }
                                     }
                                 }
                             }
@@ -968,100 +822,108 @@ export component AppWindow inherits Window {
                 }
 
                 // 0 · Rede
-                if root.page == 0: VerticalLayout {
-                    spacing: 14px;
+                if root.page == 0: Scroller {
                     vertical-stretch: 1;
-                    PageHeader {
-                        title: Tr.t("app.page.network.title");
-                        subtitle: root.route-summary;
-                        Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
-                    }
-                    HorizontalLayout {
-                        spacing: 14px;
-                        vertical-stretch: 1;
-                        // Sharing: status and the start/stop control on top, then settings or the devices.
-                        GlassPane {
-                            glass-id: "share";
-                            horizontal-stretch: 1;
-                            VerticalLayout {
-                                padding: 18px;
-                                padding-bottom: 0px;
-                                spacing: 14px;
-                                HorizontalLayout {
-                                    spacing: 12px;
-                                    Rectangle {
-                                        width: 40px;
-                                        height: 40px;
-                                        y: (parent.height - self.height) / 2;
-                                        border-radius: 12px;
-                                        background: root.share-session != "" ? Theme.ok.with-alpha(0.16) : Theme.accent-soft;
-                                        Icon {
-                                            width: 20px;
-                                            height: 20px;
-                                            tint: root.share-session != "" ? Theme.ok : Theme.accent;
-                                            source: root.share-mode == 1 ? @image-url("assets/icons/router.svg") : root.share-mode == 2 ? @image-url("assets/icons/repeat-2.svg") : @image-url("assets/icons/wifi.svg");
+                    VerticalLayout {
+                        spacing: Theme.gap;
+                        KpiBand {
+                            KpiCard {
+                                horizontal-stretch: 1;
+                                tone: 0;
+                                title: Tr.t("app.share.kpi.state");
+                                value: root.share-session != "" ? Tr.t("app.share.kpi.on") : Tr.t("app.share.kpi.off");
+                                note: root.share-session != "" ? root.share-clients + " " + Tr.t("app.share.clientsCount") : Tr.t("app.share.off");
+                                action: Tr.t("app.share.tab.clients");
+                                activated => { root.share-tab = 1; }
+                            }
+                            KpiCard {
+                                horizontal-stretch: 1;
+                                tone: 1;
+                                title: Tr.t("app.share.flow.source");
+                                value: root.share-source-label;
+                                note: root.route-summary;
+                                action: Tr.t("app.button.refresh");
+                                activated => { root.refresh(); }
+                            }
+                            KpiCard {
+                                horizontal-stretch: 1;
+                                tone: 2;
+                                title: Tr.t("app.network.interfaces");
+                                value: root.interfaces.length;
+                                note: Tr.t("app.network.visible");
+                                action: Tr.t("app.kpi.detail");
+                                activated => { root.share-tab = 0; }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: Theme.gap;
+                            Panel {
+                                horizontal-stretch: 65;
+                                preferred-width: 0px;
+                                height: share-box.preferred-height;
+                                share-box := VerticalLayout {
+                                    padding: 22px;
+                                    spacing: 16px;
+                                    HorizontalLayout {
+                                        spacing: 14px;
+                                        Rectangle {
+                                            width: 42px;
+                                            height: 42px;
+                                            y: (parent.height - self.height) / 2;
+                                            border-radius: 10px;
+                                            background: Theme.inset;
+                                            Icon {
+                                                width: 18px;
+                                                height: 18px;
+                                                tint: root.share-session != "" ? Theme.green : Theme.cyan;
+                                                source: root.share-mode == 1 ? @image-url("assets/icons/router.svg") : root.share-mode == 2 ? @image-url("assets/icons/repeat-2.svg") : @image-url("assets/icons/wifi.svg");
+                                            }
                                         }
-                                    }
-                                    VerticalLayout {
-                                        spacing: 3px;
-                                        alignment: center;
-                                        horizontal-stretch: 1;
-                                        HorizontalLayout {
-                                            spacing: 8px;
+                                        VerticalLayout {
+                                            alignment: center;
+                                            spacing: 3px;
+                                            horizontal-stretch: 1;
                                             Text {
                                                 text: root.share-mode == 1 ? Tr.t("app.share.mode.wired") : (root.share-name != "" ? root.share-name : Tr.t("app.share.mode.hotspot"));
-                                                font-size: Theme.font-title + 1px;
+                                                font-size: Theme.font-title;
                                                 font-weight: 700;
                                                 color: Theme.text;
                                                 overflow: elide;
-                                                vertical-alignment: center;
                                             }
-                                            VerticalLayout {
-                                                alignment: center;
-                                                Badge { text: root.share-clients + " " + Tr.t("app.share.clientsCount"); tone: root.share-clients > 0 ? 4 : 0; dot: root.share-clients > 0; }
-                                            }
-                                            Rectangle { }
-                                        }
-                                        HorizontalLayout {
-                                            spacing: 7px;
-                                            StatusDot { tone: root.share-session != "" ? 4 : 0; }
-                                            Text {
-                                                text: root.share-session != "" ? Tr.t("app.share.sharingPrefix") + " " + root.share-sharing : Tr.t("app.share.off");
-                                                font-size: Theme.font-small;
-                                                font-weight: 500;
-                                                color: root.share-session != "" ? Theme.ok : Theme.text-secondary;
-                                                overflow: elide;
+                                            HorizontalLayout {
+                                                spacing: 6px;
+                                                StatusDot { tone: root.share-session != "" ? 4 : 0; }
+                                                Text {
+                                                    text: root.share-session != "" ? Tr.t("app.share.sharingPrefix") + " " + root.share-sharing : Tr.t("app.share.off");
+                                                    font-size: Theme.font-small;
+                                                    color: root.share-session != "" ? Theme.green : Theme.text-secondary;
+                                                    overflow: elide;
+                                                }
                                             }
                                         }
-                                    }
-                                    VerticalLayout {
-                                        alignment: center;
-                                        Button {
-                                            size: 2;
-                                            icon: @image-url("assets/icons/power.svg");
-                                            kind: root.share-session != "" ? 2 : 1;
-                                            text: root.share-session != "" ? Tr.t("app.share.stopBig") : (root.share-mode == 1 ? Tr.t("app.share.startRouter") : root.share-mode == 2 ? Tr.t("app.share.startRepeater") : Tr.t("app.share.startHotspot"));
-                                            clicked => { if (root.share-session != "") { root.stop-sharing(); } else { root.start-sharing(); } }
+                                        VerticalLayout {
+                                            alignment: center;
+                                            Button {
+                                                icon: @image-url("assets/icons/power.svg");
+                                                kind: root.share-session != "" ? 2 : 1;
+                                                text: root.share-session != "" ? Tr.t("app.share.stopBig") : (root.share-mode == 1 ? Tr.t("app.share.startRouter") : root.share-mode == 2 ? Tr.t("app.share.startRepeater") : Tr.t("app.share.startHotspot"));
+                                                clicked => { if (root.share-session != "") { root.stop-sharing(); } else { root.start-sharing(); } }
+                                            }
                                         }
                                     }
-                                }
-                                HorizontalLayout {
-                                    alignment: start;
-                                    Segmented {
-                                        items: [{ label: Tr.t("app.share.tab.settings") }, { label: Tr.t("app.share.tab.clients"), badge: root.share-clients > 0 ? root.share-clients : "" }];
-                                        selected <=> root.share-tab;
-                                        segment-min: 112px;
-                                    }
-                                }
-
-                                // ── Definições
-                                if root.share-tab == 0: Scroller {
-                                    vertical-stretch: 1;
-                                    VerticalLayout {
+                                    HorizontalLayout {
                                         alignment: start;
+                                        Segmented {
+                                            items: [{ label: Tr.t("app.share.tab.settings") }, { label: Tr.t("app.share.tab.clients"), badge: root.share-clients > 0 ? root.share-clients : "" }];
+                                            selected <=> root.share-tab;
+                                            segment-min: 120px;
+                                        }
+                                    }
+                                    Divider { }
+
+                                    // ── Definições
+                                    if root.share-tab == 0: VerticalLayout {
                                         spacing: 16px;
-                                        padding-bottom: 18px;
-                                        padding-right: 4px;
                                         if root.share-suggestion != "" && root.share-session == "": StatusBanner {
                                             kind: 0;
                                             message: root.share-suggestion;
@@ -1070,10 +932,8 @@ export component AppWindow inherits Window {
                                         Field {
                                             label: Tr.t("app.share.modeLabel");
                                             Segmented {
-                                                size: 1;
-                                                accent: true;
                                                 enabled: root.share-session == "";
-                                                segment-min: 136px;
+                                                segment-min: 150px;
                                                 items: [
                                                     { label: Tr.t("app.share.mode.hotspot"), icon: @image-url("assets/icons/wifi.svg") },
                                                     { label: Tr.t("app.share.mode.wired"), icon: @image-url("assets/icons/router.svg") },
@@ -1088,22 +948,8 @@ export component AppWindow inherits Window {
                                         }
                                         if root.share-mode != 1 && !root.share-has-wifi: StatusBanner { kind: 3; message: Tr.t("app.share.noWifi"); }
                                         if root.share-mode == 2 && root.share-has-wifi && root.share-repeater-source == "": StatusBanner { kind: 3; message: Tr.t("app.share.repeaterNoWifi"); }
-                                        // The signal path at a glance: where from, shared how, to whom.
-                                        SignalPath {
-                                            live: root.share-session != "";
-                                            internet: root.share-allow-internet;
-                                            source-icon: root.share-upstream-vpn ? @image-url("assets/icons/shield-check.svg") : @image-url("assets/icons/globe.svg");
-                                            source: root.share-allow-internet ? root.share-source-label : Tr.t("app.share.flow.localOnly");
-                                            source-role: Tr.t("app.share.flow.source");
-                                            via-icon: root.share-mode == 1 ? @image-url("assets/icons/router.svg") : root.share-mode == 2 ? @image-url("assets/icons/repeat-2.svg") : @image-url("assets/icons/wifi.svg");
-                                            via: root.share-target-label;
-                                            via-role: Tr.t("app.share.flow.via");
-                                            devices: root.share-session != "" && root.share-clients > 0 ? root.share-clients + " " + Tr.t("app.share.clientsCount") : Tr.t("app.share.flow.devices");
-                                            devices-role: Tr.t("app.share.flow.devicesDetail");
-                                        }
-                                        // Where from and where to.
                                         HorizontalLayout {
-                                            spacing: 12px;
+                                            spacing: 14px;
                                             if root.share-mode != 2: Field {
                                                 horizontal-stretch: 1;
                                                 label: Tr.t("app.share.internetToShare");
@@ -1113,6 +959,11 @@ export component AppWindow inherits Window {
                                                     current-index <=> root.share-upstream;
                                                     selected => { root.share-upstream-changed(); }
                                                 }
+                                            }
+                                            if root.share-mode == 2: Field {
+                                                horizontal-stretch: 1;
+                                                label: Tr.t("app.share.internetToShare");
+                                                TextField { enabled: false; text: root.share-source-label; }
                                             }
                                             if root.share-mode == 1: Field {
                                                 horizontal-stretch: 1;
@@ -1128,7 +979,10 @@ export component AppWindow inherits Window {
                                                 label: Tr.t("app.share.name");
                                                 TextField { enabled: root.share-session == ""; text <=> root.share-name; }
                                             }
-                                            if root.share-mode == 2: Field {
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 14px;
+                                            if root.share-mode != 1: Field {
                                                 horizontal-stretch: 1;
                                                 label: Tr.t("app.share.password");
                                                 TextField {
@@ -1137,51 +991,29 @@ export component AppWindow inherits Window {
                                                     placeholder-text: Tr.t("app.share.passwordHint");
                                                     text <=> root.share-password;
                                                     IconButton {
-                                                        y: 1px;
-                                                        width: 28px;
-                                                        height: 28px;
+                                                        width: 30px;
+                                                        height: 30px;
+                                                        y: 2px;
                                                         icon: root.share-show-password ? @image-url("assets/icons/eye-off.svg") : @image-url("assets/icons/eye.svg");
                                                         tooltip: root.share-show-password ? Tr.t("app.share.hide") : Tr.t("app.share.show");
                                                         clicked => { root.share-show-password = !root.share-show-password; }
                                                     }
                                                 }
                                             }
-                                        }
-                                        if root.share-mode == 0: HorizontalLayout {
-                                            spacing: 12px;
-                                            Field {
-                                                horizontal-stretch: 1;
-                                                label: Tr.t("app.share.password");
-                                                TextField {
-                                                    enabled: root.share-session == "";
-                                                    input-type: root.share-show-password ? InputType.text : InputType.password;
-                                                    placeholder-text: Tr.t("app.share.passwordHint");
-                                                    text <=> root.share-password;
-                                                    IconButton {
-                                                        y: 1px;
-                                                        width: 28px;
-                                                        height: 28px;
-                                                        icon: root.share-show-password ? @image-url("assets/icons/eye-off.svg") : @image-url("assets/icons/eye.svg");
-                                                        tooltip: root.share-show-password ? Tr.t("app.share.hide") : Tr.t("app.share.show");
-                                                        clicked => { root.share-show-password = !root.share-show-password; }
-                                                    }
-                                                }
-                                            }
-                                            Rectangle { horizontal-stretch: 1; }
-                                        }
-                                        if root.share-mode == 1: HorizontalLayout {
-                                            spacing: 12px;
-                                            Field {
+                                            if root.share-mode == 1: Field {
                                                 horizontal-stretch: 1;
                                                 label: Tr.t("app.share.subnet");
                                                 TextField { enabled: root.share-session == ""; placeholder-text: Tr.t("app.share.subnetAuto"); text <=> root.share-lan; }
                                             }
-                                            Rectangle { horizontal-stretch: 1; }
+                                            Field {
+                                                horizontal-stretch: 1;
+                                                label: Tr.t("app.share.access");
+                                                TextField { enabled: false; text: Tr.t("app.share.routedShort"); }
+                                            }
                                         }
-                                        // What the firewall lets through.
+                                        Divider { }
                                         VerticalLayout {
-                                            spacing: 2px;
-                                            Eyebrow { text: Tr.t("app.share.protection"); }
+                                            Text { text: Tr.t("app.share.protection"); font-size: Theme.font-title; font-weight: 700; color: Theme.text; }
                                             SettingRow {
                                                 label: Tr.t("app.share.allowInternet");
                                                 caption: Tr.t("app.share.allowInternetCaption");
@@ -1194,39 +1026,16 @@ export component AppWindow inherits Window {
                                                 Badge {
                                                     text: !root.share-upstream-vpn ? Tr.t("app.share.leakState.needsVpn") : root.share-leak ? Tr.t("app.share.leakState.on") : Tr.t("app.share.leakState.off");
                                                     tone: !root.share-upstream-vpn ? 0 : root.share-leak ? 4 : 1;
-                                                    dot: true;
                                                 }
                                                 Toggle { checked <=> root.share-leak; enabled: root.share-session == "" && root.share-upstream-vpn && root.share-allow-internet; accessible-label: Tr.t("app.share.leakShort"); }
                                             }
                                             if root.share-upstream-vpn && root.share-allow-internet && !root.share-leak: StatusBanner { kind: 3; message: Tr.t("app.share.leakOff"); }
                                         }
-                                        if !root.wide: VerticalLayout {
-                                            spacing: 8px;
-                                            Eyebrow { text: Tr.t("app.network.interfaces"); }
-                                            Group {
-                                                for row[i] in root.interfaces: ListRow {
-                                                    icon: row.vpn ? @image-url("assets/icons/shield-check.svg") : @image-url("assets/icons/network.svg");
-                                                    tone: row.up ? (row.vpn ? 3 : 4) : 0;
-                                                    title: row.name;
-                                                    subtitle: row.kind;
-                                                    detail: row.addresses;
-                                                    last: i == root.interfaces.length - 1;
-                                                    Badge { text: row.status; tone: row.up ? 4 : 0; dot: true; }
-                                                }
-                                            }
-                                            Secondary { text: root.hidden-summary; }
-                                        }
                                     }
-                                }
 
-                                // ── Clientes
-                                if root.share-tab == 1: Scroller {
-                                    vertical-stretch: 1;
-                                    VerticalLayout {
-                                        alignment: start;
+                                    // ── Clientes
+                                    if root.share-tab == 1: VerticalLayout {
                                         spacing: 12px;
-                                        padding-bottom: 18px;
-                                        padding-right: 4px;
                                         if root.share-session == "": EmptyState { icon: @image-url("assets/icons/smartphone.svg"); text: Tr.t("app.share.clientsOff"); }
                                         if root.share-session != "" && root.topo-nodes.length > 0: ShareDiagram {
                                             nodes: root.topo-nodes;
@@ -1236,43 +1045,64 @@ export component AppWindow inherits Window {
                                         }
                                         if root.share-session != "": Secondary { text: Tr.t("app.topo.hint"); }
                                         if root.share-session != "" && root.client-cards.length == 0: EmptyState { icon: @image-url("assets/icons/smartphone.svg"); text: Tr.t("app.client.none"); }
-                                        for card in root.client-cards: ClientCardView {
+                                        for card in root.client-cards: ClientPanel {
                                             info: card;
                                             apply(mac, internet, local, gaming, fixed) => { root.client-apply(mac, internet, local, gaming, fixed); }
                                         }
                                     }
                                 }
                             }
-                        }
-                        // The cards of this PC.
-                        if root.wide: GlassPane {
-                            glass-id: "ifaces";
-                            width: root.side-w;
-                            VerticalLayout {
-                                padding: 18px;
-                                padding-bottom: 0px;
-                                spacing: 10px;
-                                SectionHeader { title: Tr.t("app.network.interfaces"); caption: root.interfaces.length + " " + Tr.t("app.network.visible"); }
-                                Scroller {
-                                    vertical-stretch: 1;
-                                    VerticalLayout {
-                                        alignment: start;
+                            Panel {
+                                horizontal-stretch: 35;
+                                preferred-width: 0px;
+                                min-width: 300px;
+                                height: max(ifaces.preferred-height, share-box.preferred-height);
+                                ifaces := VerticalLayout {
+                                    padding: 22px;
+                                    spacing: 16px;
+                                    alignment: start;
+                                    PanelTitle { title: Tr.t("app.network.interfaces"); caption: root.interfaces.length + " " + Tr.t("app.network.visible"); }
+                                    for row in root.interfaces: HorizontalLayout {
                                         spacing: 10px;
-                                        padding-bottom: 18px;
-                                        Group {
-                                            for row[i] in root.interfaces: ListRow {
-                                                icon: row.vpn ? @image-url("assets/icons/shield-check.svg") : @image-url("assets/icons/network.svg");
-                                                tone: row.up ? (row.vpn ? 3 : 4) : 0;
-                                                title: row.name;
-                                                subtitle: row.kind;
-                                                detail: row.addresses;
-                                                last: i == root.interfaces.length - 1;
-                                                Badge { text: row.status; tone: row.up ? 4 : 0; dot: true; }
-                                            }
+                                        ActivityItem {
+                                            horizontal-stretch: 1;
+                                            icon: row.vpn ? @image-url("assets/icons/shield-check.svg") : @image-url("assets/icons/network.svg");
+                                            tint: row.up ? (row.vpn ? Theme.green : Theme.cyan) : Theme.text-muted;
+                                            title: row.name;
+                                            subtitle: row.addresses != "" ? row.addresses : row.kind;
                                         }
-                                        Secondary { text: root.hidden-summary; }
-                                        Secondary { text: Tr.t("app.network.intro"); color: Theme.text-tertiary; }
+                                        VerticalLayout { alignment: center; Badge { text: row.status; tone: row.up ? 4 : 0; } }
                                     }
+                                    if root.hidden-summary != "": Secondary { text: root.hidden-summary; color: Theme.text-muted; }
+                                    Secondary { text: Tr.t("app.network.intro"); color: Theme.text-muted; }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 6 · Caso Realtek / DisplayPort
+                if root.page == 6: Panel {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        padding: 22px;
+                        padding-bottom: 6px;
+                        spacing: 10px;
+                        PanelTitle {
+                            title: Tr.t("app.case.panel");
+                            caption: root.diagnosis-summary;
+                            Button { icon: @image-url("assets/icons/activity.svg"); text: Tr.t("app.diagnosis.run"); kind: 1; loading: root.diagnosis-running; enabled: !root.diagnosis-running; clicked => { root.diagnose(); } }
+                        }
+                        if root.diagnosis-running: StatusBanner { kind: 4; message: Tr.t("app.diagnosis.running"); }
+                        Divider { }
+                        if root.findings.length == 0 && !root.diagnosis-running: EmptyState { vertical-stretch: 1; icon: @image-url("assets/icons/stethoscope.svg"); text: Tr.t("app.diagnosis.notYet"); }
+                        if root.findings.length > 0: Scroller {
+                            vertical-stretch: 1;
+                            VerticalLayout {
+                                for finding[fi] in root.findings: FindingItem {
+                                    info: finding;
+                                    last: fi == root.findings.length - 1;
+                                    run(ai) => { root.run-finding-action(fi, ai); }
                                 }
                             }
                         }
@@ -1280,48 +1110,79 @@ export component AppWindow inherits Window {
                 }
 
                 // 1 · Dispositivos
-                if root.page == 1: VerticalLayout {
-                    spacing: 14px;
+                if root.page == 1: Panel {
                     vertical-stretch: 1;
-                    PageHeader {
-                        title: Tr.t("app.page.devices.title");
-                        subtitle: root.devices-summary;
-                        Button { icon: @image-url("assets/icons/search.svg"); text: Tr.t("app.devices.rescan"); clicked => { root.rescan(); } }
-                        Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
-                    }
-                    GlassPane {
-                        glass-id: "devices";
-                        vertical-stretch: 1;
-                        VerticalLayout {
-                            padding: 6px;
-                            if root.devices.length == 0: EmptyState { vertical-stretch: 1; icon: @image-url("assets/icons/cpu.svg"); text: root.devices-summary != "" ? root.devices-summary : Tr.t("app.devices.unavailable"); }
-                            if root.devices.length > 0: Scroller {
-                                VerticalLayout {
-                                    alignment: start;
-                                    padding-top: 4px;
-                                    padding-bottom: 4px;
-                                    for device[i] in root.devices: ListRow {
-                                        icon: device.problem ? @image-url("assets/icons/triangle-alert.svg") : @image-url("assets/icons/cpu.svg");
-                                        tone: device.problem ? 2 : 0;
-                                        title: device.name;
-                                        subtitle: device.status;
-                                        detail: device.driver;
-                                        last: i == root.devices.length - 1;
-                                        Badge { text: device.class; }
-                                        if device.can-restart: Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.devices.action.restart"); size: 1; clicked => { root.device-action(device.id, "Restart"); } }
-                                        MenuButton {
-                                            tooltip: Tr.t("app.more");
-                                            entries: [
-                                                { label: Tr.t("app.devices.action.enable"), icon: @image-url("assets/icons/power.svg"), destructive: false, enabled: device.can-enable },
-                                                { label: Tr.t("app.devices.action.disable"), icon: @image-url("assets/icons/circle-x.svg"), destructive: false, enabled: device.can-disable },
-                                                { label: Tr.t("app.devices.action.drivers"), icon: @image-url("assets/icons/package.svg"), destructive: false, enabled: device.can-change-driver },
-                                                { label: Tr.t("app.devices.action.uninstall"), icon: @image-url("assets/icons/trash-2.svg"), destructive: true, enabled: device.can-uninstall },
-                                            ];
-                                            activated(a) => {
-                                                if (a == 0) { root.device-action(device.id, "Enable"); }
-                                                if (a == 1) { root.device-action(device.id, "Disable"); }
-                                                if (a == 2) { root.device-drivers(device.id, device.name); }
-                                                if (a == 3) { root.device-action(device.id, "Uninstall"); }
+                    VerticalLayout {
+                        padding: 22px;
+                        padding-bottom: 6px;
+                        spacing: 14px;
+                        PanelTitle {
+                            title: Tr.t("app.devices.panel");
+                            caption: root.devices-summary;
+                            Button { icon: @image-url("assets/icons/search.svg"); text: Tr.t("app.devices.rescan"); size: 1; clicked => { root.rescan(); } }
+                            Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); size: 1; clicked => { root.refresh(); } }
+                        }
+                        TableHeader {
+                            HorizontalLayout {
+                                padding-left: 14px;
+                                padding-right: 14px;
+                                spacing: 12px;
+                                ColumnLabel { text: Tr.t("app.col.device"); horizontal-stretch: 1; }
+                                ColumnLabel { text: Tr.t("app.col.class"); width: 120px; }
+                                ColumnLabel { text: Tr.t("app.col.state"); width: 220px; }
+                                ColumnLabel { text: Tr.t("app.col.actions"); width: 150px; horizontal-alignment: right; }
+                            }
+                        }
+                        if root.devices.length == 0: EmptyState { vertical-stretch: 1; icon: @image-url("assets/icons/cpu.svg"); text: root.devices-summary != "" ? root.devices-summary : Tr.t("app.devices.unavailable"); }
+                        if root.devices.length > 0: Scroller {
+                            vertical-stretch: 1;
+                            VerticalLayout {
+                                for device[i] in root.devices: TableRow {
+                                    property <bool> shown: root.matches(device.name + " " + device.class + " " + device.status + " " + device.driver);
+                                    visible: self.shown;
+                                    height: self.shown ? row.preferred-height : 0px;
+                                    last: i == root.devices.length - 1;
+                                    row := HorizontalLayout {
+                                        padding: 14px;
+                                        padding-top: 11px;
+                                        padding-bottom: 11px;
+                                        spacing: 12px;
+                                        VerticalLayout {
+                                            horizontal-stretch: 1;
+                                            alignment: center;
+                                            spacing: 2px;
+                                            Text { text: device.name; font-size: Theme.font-body; font-weight: 500; color: Theme.text; overflow: elide; }
+                                            Text { text: device.driver; font-size: Theme.font-caption; color: Theme.text-muted; overflow: elide; }
+                                        }
+                                        Text { text: device.class; width: 120px; font-size: Theme.font-small; color: Theme.text-secondary; vertical-alignment: center; overflow: elide; }
+                                        HorizontalLayout {
+                                            width: 220px;
+                                            spacing: 8px;
+                                            StatusDot { tone: device.problem ? 2 : 4; }
+                                            Text { text: device.status; font-size: Theme.font-small; color: device.problem ? Theme.red : Theme.text-secondary; vertical-alignment: center; wrap: word-wrap; horizontal-stretch: 1; }
+                                        }
+                                        HorizontalLayout {
+                                            width: 150px;
+                                            spacing: 6px;
+                                            alignment: end;
+                                            if device.can-restart: VerticalLayout { alignment: center; Button { text: Tr.t("app.devices.action.restart"); size: 1; clicked => { root.device-action(device.id, "Restart"); } } }
+                                            VerticalLayout {
+                                                alignment: center;
+                                                MenuButton {
+                                                    tooltip: Tr.t("app.more");
+                                                    entries: [
+                                                        { label: Tr.t("app.devices.action.enable"), icon: @image-url("assets/icons/power.svg"), destructive: false, enabled: device.can-enable },
+                                                        { label: Tr.t("app.devices.action.disable"), icon: @image-url("assets/icons/circle-x.svg"), destructive: false, enabled: device.can-disable },
+                                                        { label: Tr.t("app.devices.action.drivers"), icon: @image-url("assets/icons/package.svg"), destructive: false, enabled: device.can-change-driver },
+                                                        { label: Tr.t("app.devices.action.uninstall"), icon: @image-url("assets/icons/trash-2.svg"), destructive: true, enabled: device.can-uninstall },
+                                                    ];
+                                                    activated(a) => {
+                                                        if (a == 0) { root.device-action(device.id, "Enable"); }
+                                                        if (a == 1) { root.device-action(device.id, "Disable"); }
+                                                        if (a == 2) { root.device-drivers(device.id, device.name); }
+                                                        if (a == 3) { root.device-action(device.id, "Uninstall"); }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -1332,95 +1193,155 @@ export component AppWindow inherits Window {
                 }
 
                 // 7 · Controladores
-                if root.page == 7: VerticalLayout {
-                    spacing: 14px;
+                if root.page == 7: Scroller {
                     vertical-stretch: 1;
-                    PageHeader {
-                        title: Tr.t("app.page.drivers.title");
-                        subtitle: Tr.t("app.page.drivers.subtitle");
-                    }
-                    GlassPane {
-                        glass-id: "drivers";
-                        vertical-stretch: 1;
-                        Scroller {
-                            VerticalLayout {
-                                alignment: start;
-                                padding: 18px;
-                                spacing: 12px;
-                                SectionHeader {
+                    VerticalLayout {
+                        spacing: Theme.gap;
+                        Panel {
+                            height: upd-box.preferred-height;
+                            upd-box := VerticalLayout {
+                                padding: 22px;
+                                spacing: 14px;
+                                PanelTitle {
                                     title: Tr.t("app.page.updates.title");
                                     caption: Tr.t("app.page.updates.intro");
-                                    Button { icon: @image-url("assets/icons/search.svg"); text: Tr.t("app.page.updates.search"); clicked => { root.search-updates(); } }
-                                    if root.update-items.length > 0: Button { text: Tr.t("app.drivers.installSelected"); kind: 1; clicked => { root.install-updates(); } }
+                                    Button { icon: @image-url("assets/icons/search.svg"); text: Tr.t("app.page.updates.search"); size: 1; clicked => { root.search-updates(); } }
+                                    if root.update-items.length > 0: Button { text: Tr.t("app.drivers.installSelected"); kind: 1; size: 1; clicked => { root.install-updates(); } }
                                 }
                                 if root.updates-searched && root.update-items.length == 0: StatusBanner { kind: 1; message: Tr.t("app.page.updates.noneToast"); }
-                                if root.update-items.length > 0: Group {
-                                    for u[i] in root.update-items: Rectangle {
-                                        height: upd.preferred-height;
-                                        if i < root.update-items.length - 1: Rectangle { x: 44px; y: parent.height - 1px; width: parent.width - 58px; height: 1px; background: Theme.hairline; }
-                                        upd := HorizontalLayout {
+                                if root.update-items.length > 0: VerticalLayout {
+                                    TableHeader {
+                                        HorizontalLayout {
+                                            padding-left: 14px;
+                                            padding-right: 14px;
+                                            ColumnLabel { text: Tr.t("app.col.driver"); }
+                                        }
+                                    }
+                                    for u[i] in root.update-items: TableRow {
+                                        property <bool> shown: root.matches(u.title + " " + u.detail);
+                                        visible: self.shown;
+                                        height: self.shown ? upd-row.preferred-height : 0px;
+                                        last: i == root.update-items.length - 1;
+                                        upd-row := HorizontalLayout {
                                             padding: 12px;
                                             padding-left: 14px;
                                             Check { text: u.title + " — " + u.detail; toggled => { root.toggle-update(u.id, self.checked); } }
                                         }
                                     }
                                 }
-                                Rectangle { height: 8px; }
-                                SectionHeader {
+                            }
+                        }
+                        Panel {
+                            height: cl-box.preferred-height;
+                            cl-box := VerticalLayout {
+                                padding: 22px;
+                                spacing: 14px;
+                                PanelTitle {
                                     title: Tr.t("app.page.cleanup.title");
                                     caption: Tr.t("app.cleanup.caption");
-                                    if root.cleanup-items.length > 0: Button { icon: @image-url("assets/icons/trash-2.svg"); text: Tr.t("app.cleanup.apply"); kind: 2; clicked => { root.apply-cleanup(); } }
+                                    if root.cleanup-items.length > 0: Button { icon: @image-url("assets/icons/trash-2.svg"); text: Tr.t("app.cleanup.apply"); kind: 2; size: 1; clicked => { root.apply-cleanup(); } }
                                 }
-                                if root.cleanup-items.length == 0: Group { EmptyState { padding: 16px; icon: @image-url("assets/icons/circle-check.svg"); text: Tr.t("app.cleanup.nothing"); } }
-                                if root.cleanup-items.length > 0: Group {
-                                    for c[i] in root.cleanup-items: Rectangle {
-                                        height: cl.preferred-height;
-                                        if i < root.cleanup-items.length - 1: Rectangle { x: 44px; y: parent.height - 1px; width: parent.width - 58px; height: 1px; background: Theme.hairline; }
-                                        cl := HorizontalLayout {
+                                if root.cleanup-items.length == 0: EmptyState { icon: @image-url("assets/icons/circle-check.svg"); text: Tr.t("app.cleanup.nothing"); }
+                                if root.cleanup-items.length > 0: VerticalLayout {
+                                    TableHeader {
+                                        HorizontalLayout {
+                                            padding-left: 42px;
+                                            padding-right: 14px;
+                                            spacing: 12px;
+                                            ColumnLabel { text: Tr.t("app.col.item"); horizontal-stretch: 1; }
+                                            ColumnLabel { text: Tr.t("app.col.impact"); width: 260px; }
+                                            ColumnLabel { text: Tr.t("app.col.risk"); width: 150px; }
+                                        }
+                                    }
+                                    for c[i] in root.cleanup-items: TableRow {
+                                        property <bool> shown: root.matches(c.title + " " + c.detail);
+                                        visible: self.shown;
+                                        height: self.shown ? cl-row.preferred-height : 0px;
+                                        last: i == root.cleanup-items.length - 1;
+                                        cl-row := HorizontalLayout {
                                             padding: 12px;
                                             padding-left: 14px;
+                                            padding-right: 14px;
                                             spacing: 12px;
-                                            VerticalLayout { alignment: start; padding-top: 1px; Check { accessible-label: c.title; toggled => { root.toggle-cleanup(c.id, c.device, self.checked); } } }
+                                            VerticalLayout { alignment: center; Check { accessible-label: c.title; toggled => { root.toggle-cleanup(c.id, c.device, self.checked); } } }
                                             VerticalLayout {
-                                                spacing: 3px;
                                                 horizontal-stretch: 1;
+                                                alignment: center;
+                                                spacing: 2px;
                                                 HorizontalLayout {
                                                     spacing: 8px;
-                                                    Text { text: c.title; font-size: Theme.font-body; font-weight: 600; color: Theme.text; wrap: word-wrap; horizontal-stretch: 1; }
-                                                    if c.recommended: VerticalLayout { alignment: start; Badge { text: Tr.t("app.cleanup.recommended"); tone: 4; dot: true; } }
+                                                    Text { text: c.title; font-size: Theme.font-body; font-weight: 500; color: Theme.text; overflow: elide; }
+                                                    if c.recommended: Badge { text: Tr.t("app.cleanup.recommended"); tone: 4; }
                                                 }
-                                                if c.detail != "": Secondary { text: c.detail; }
-                                                HorizontalLayout {
-                                                    spacing: 8px;
-                                                    Text { text: c.impact; font-size: Theme.font-small; color: Theme.warn; wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; }
-                                                    VerticalLayout { alignment: center; Badge { text: c.risk; tone: 1; } }
-                                                }
+                                                if c.detail != "": Text { text: c.detail; font-size: Theme.font-caption; color: Theme.text-muted; overflow: elide; }
+                                            }
+                                            Text { text: c.impact; width: 260px; font-size: Theme.font-small; color: Theme.amber; vertical-alignment: center; wrap: word-wrap; }
+                                            VerticalLayout { width: 150px; alignment: center; Badge { text: c.risk; tone: 1; } }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: Theme.gap;
+                            Panel {
+                                horizontal-stretch: 65;
+                                preferred-width: 0px;
+                                height: st-box.preferred-height;
+                                st-box := VerticalLayout {
+                                    padding: 22px;
+                                    spacing: 14px;
+                                    alignment: start;
+                                    PanelTitle { title: Tr.t("app.page.store.title"); caption: Tr.t("app.store.caption"); }
+                                    TableHeader {
+                                        HorizontalLayout {
+                                            padding-left: 14px;
+                                            padding-right: 14px;
+                                            spacing: 12px;
+                                            ColumnLabel { text: Tr.t("app.col.package"); horizontal-stretch: 1; }
+                                            ColumnLabel { text: Tr.t("app.col.usedBy"); width: 200px; }
+                                            ColumnLabel { text: Tr.t("app.col.actions"); width: 110px; horizontal-alignment: right; }
+                                        }
+                                    }
+                                    for p[i] in root.store-items: TableRow {
+                                        property <bool> shown: root.matches(p.title + " " + p.detail + " " + p.used-by);
+                                        visible: self.shown;
+                                        height: self.shown ? st-row.preferred-height : 0px;
+                                        last: i == root.store-items.length - 1;
+                                        st-row := HorizontalLayout {
+                                            padding: 12px;
+                                            padding-left: 14px;
+                                            padding-right: 14px;
+                                            spacing: 12px;
+                                            VerticalLayout {
+                                                horizontal-stretch: 1;
+                                                alignment: center;
+                                                spacing: 2px;
+                                                Text { text: p.title; font-size: Theme.font-body; font-weight: 500; color: Theme.text; overflow: elide; }
+                                                Text { text: p.detail; font-size: Theme.font-caption; color: Theme.text-muted; overflow: elide; }
+                                            }
+                                            Text { text: p.used-by != "" ? p.used-by : Tr.t("app.store.unused"); width: 200px; font-size: Theme.font-small; color: p.used-by != "" ? Theme.text-secondary : Theme.text-muted; vertical-alignment: center; wrap: word-wrap; }
+                                            HorizontalLayout {
+                                                width: 110px;
+                                                alignment: end;
+                                                if p.used-by == "": VerticalLayout { alignment: center; Button { text: Tr.t("app.store.remove"); kind: 2; size: 1; clicked => { root.remove-package(p.inf); } } }
                                             }
                                         }
                                     }
                                 }
-                                Rectangle { height: 8px; }
-                                SectionHeader { title: Tr.t("app.page.store.title"); caption: Tr.t("app.store.caption"); }
-                                if root.store-items.length > 0: Group {
-                                    for p[i] in root.store-items: ListRow {
-                                        icon: @image-url("assets/icons/package.svg");
-                                        title: p.title;
-                                        subtitle: p.detail;
-                                        detail: p.used-by;
-                                        last: i == root.store-items.length - 1;
-                                        if p.used-by == "": Button { icon: @image-url("assets/icons/trash-2.svg"); text: Tr.t("app.store.remove"); kind: 2; size: 1; clicked => { root.remove-package(p.inf); } }
-                                    }
-                                }
-                                Rectangle { height: 8px; }
-                                SectionHeader { title: Tr.t("app.page.backups.title"); }
-                                Group {
-                                    if root.backups-text != "": HorizontalLayout {
-                                        padding: 14px;
-                                        spacing: 12px;
-                                        Icon { source: @image-url("assets/icons/archive.svg"); y: 1px; }
-                                        Secondary { text: root.backups-text; }
-                                    }
-                                    if root.backups-text == "": EmptyState { padding: 16px; icon: @image-url("assets/icons/archive.svg"); text: Tr.t("app.page.backups.empty"); }
+                            }
+                            Panel {
+                                horizontal-stretch: 35;
+                                preferred-width: 0px;
+                                min-width: 300px;
+                                height: max(bk-box.preferred-height, st-box.preferred-height);
+                                bk-box := VerticalLayout {
+                                    padding: 22px;
+                                    spacing: 14px;
+                                    alignment: start;
+                                    PanelTitle { title: Tr.t("app.page.backups.title"); }
+                                    if root.backups-text != "": ActivityItem { icon: @image-url("assets/icons/archive.svg"); tint: Theme.cyan; title: Tr.t("app.page.backups.title"); subtitle: root.backups-text; }
+                                    if root.backups-text == "": EmptyState { icon: @image-url("assets/icons/archive.svg"); text: Tr.t("app.page.backups.empty"); }
                                 }
                             }
                         }
@@ -1428,45 +1349,54 @@ export component AppWindow inherits Window {
                 }
 
                 // 2 · Áudio
-                if root.page == 2: VerticalLayout {
-                    spacing: 14px;
+                if root.page == 2: Panel {
                     vertical-stretch: 1;
-                    PageHeader {
-                        title: Tr.t("app.page.audio.title");
-                        subtitle: root.audio-subtitle;
-                        Button { text: Tr.t("app.audio.restartServices"); clicked => { root.restart-audio-services(); } }
-                        Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
-                    }
-                    if root.audio-profile != "": StatusBanner {
-                        kind: 0;
-                        message: root.audio-profile;
-                        Button { text: Tr.t("app.audio.forgetProfile"); kind: 3; size: 1; clicked => { root.forget-profile(); } }
-                    }
-                    if root.audio-message != "": StatusBanner { kind: 0; message: root.audio-message; }
-                    GlassPane {
-                        glass-id: "audio";
-                        vertical-stretch: 1;
-                        VerticalLayout {
-                            padding: 6px;
-                            if root.audio.length == 0: EmptyState { vertical-stretch: 1; icon: @image-url("assets/icons/volume-2.svg"); text: Tr.t("app.audio.none"); }
-                            if root.audio.length > 0: Scroller {
-                                VerticalLayout {
-                                    alignment: start;
-                                    for endpoint[i] in root.audio: AudioItem {
-                                        info: endpoint;
-                                        last: i == root.audio.length - 1;
-                                        make-default(id) => { root.make-default(id); }
-                                        set-volume(id, v) => { root.set-volume(id, v); }
-                                        set-mute(id, m) => { root.set-mute(id, m); }
-                                        prefer(id) => { root.prefer-endpoint(id); }
-                                        force(id) => { root.force-output(id); }
+                    VerticalLayout {
+                        padding: 22px;
+                        padding-bottom: 6px;
+                        spacing: 14px;
+                        PanelTitle {
+                            title: Tr.t("app.audio.panel");
+                            caption: root.audio-subtitle;
+                            Button { text: Tr.t("app.audio.restartServices"); size: 1; clicked => { root.restart-audio-services(); } }
+                            Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); size: 1; clicked => { root.refresh(); } }
+                        }
+                        if root.audio-profile != "": StatusBanner {
+                            kind: 0;
+                            message: root.audio-profile;
+                            Button { text: Tr.t("app.audio.forgetProfile"); kind: 3; size: 1; clicked => { root.forget-profile(); } }
+                        }
+                        if root.audio-message != "": StatusBanner { kind: 0; message: root.audio-message; }
+                        if root.audio.length == 0: EmptyState { vertical-stretch: 1; icon: @image-url("assets/icons/volume-2.svg"); text: Tr.t("app.audio.none"); }
+                        if root.audio.length > 0: Scroller {
+                            vertical-stretch: 1;
+                            VerticalLayout {
+                                spacing: 14px;
+                                padding-bottom: 16px;
+                                // Two columns: even endpoints left, odd right (Slint layouts have no wrapping grid).
+                                HorizontalLayout {
+                                    spacing: 14px;
+                                    for col in [0, 1]: VerticalLayout {
+                                        alignment: start;
+                                        preferred-width: 0px;
+                                        horizontal-stretch: 1;
+                                        for endpoint[i] in root.audio: VerticalLayout {
+                                            padding-bottom: Math.mod(i, 2) == col ? 14px : 0px;
+                                            if Math.mod(i, 2) == col: AudioTile {
+                                                info: endpoint;
+                                                make-default(id) => { root.make-default(id); }
+                                                set-volume(id, v) => { root.set-volume(id, v); }
+                                                set-mute(id, m) => { root.set-mute(id, m); }
+                                                prefer(id) => { root.prefer-endpoint(id); }
+                                                force(id) => { root.force-output(id); }
+                                            }
+                                        }
                                     }
-                                    HorizontalLayout {
-                                        padding: 14px;
-                                        spacing: 8px;
-                                        Icon { source: @image-url("assets/icons/info.svg"); tint: Theme.text-tertiary; width: 13px; height: 13px; y: 1px; }
-                                        Text { text: Tr.t("app.action.undocumented"); font-size: Theme.font-caption; color: Theme.text-tertiary; wrap: word-wrap; }
-                                    }
+                                }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Icon { source: @image-url("assets/icons/info.svg"); tint: Theme.text-muted; width: 13px; height: 13px; y: 2px; }
+                                    Text { text: Tr.t("app.action.undocumented"); font-size: Theme.font-caption; color: Theme.text-muted; wrap: word-wrap; }
                                 }
                             }
                         }
@@ -1474,36 +1404,48 @@ export component AppWindow inherits Window {
                 }
 
                 // 5 · Ecrãs
-                if root.page == 5: VerticalLayout {
-                    spacing: 14px;
+                if root.page == 5: Panel {
                     vertical-stretch: 1;
-                    PageHeader {
-                        title: Tr.t("app.page.displays.title");
-                        subtitle: root.displays-summary;
-                        Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
-                    }
-                    GlassPane {
-                        glass-id: "displays";
-                        vertical-stretch: 1;
-                        VerticalLayout {
-                            padding: 6px;
-                            if root.displays.length == 0: EmptyState {
-                                vertical-stretch: 1;
-                                icon: @image-url("assets/icons/monitor.svg");
-                                text: root.displays-failed ? root.displays-summary : Tr.t("app.displays.empty");
+                    VerticalLayout {
+                        padding: 22px;
+                        padding-bottom: 6px;
+                        spacing: 14px;
+                        PanelTitle {
+                            title: Tr.t("app.displays.panel");
+                            caption: root.displays-summary;
+                            Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); size: 1; clicked => { root.refresh(); } }
+                        }
+                        TableHeader {
+                            HorizontalLayout {
+                                padding-left: 14px;
+                                padding-right: 14px;
+                                spacing: 12px;
+                                ColumnLabel { text: Tr.t("app.col.display"); horizontal-stretch: 1; }
+                                ColumnLabel { text: Tr.t("app.col.connection"); width: 240px; }
+                                ColumnLabel { text: Tr.t("app.col.mode"); width: 170px; }
+                                ColumnLabel { text: Tr.t("app.col.edid"); width: 200px; }
                             }
-                            if root.displays.length > 0: Scroller {
-                                VerticalLayout {
-                                    alignment: start;
-                                    padding-top: 4px;
-                                    for display[i] in root.displays: ListRow {
-                                        icon: display.warning != "" ? @image-url("assets/icons/triangle-alert.svg") : @image-url("assets/icons/monitor.svg");
-                                        tone: display.warning != "" ? 2 : 3;
-                                        title: display.name;
-                                        subtitle: display.warning != "" ? display.warning : display.connection;
-                                        detail: display.warning != "" ? display.connection + "\n" + display.edid : display.edid;
-                                        last: i == root.displays.length - 1;
-                                        Badge { text: display.mode; tone: 3; }
+                        }
+                        if root.displays.length == 0: EmptyState { vertical-stretch: 1; icon: @image-url("assets/icons/monitor.svg"); text: root.displays-failed ? root.displays-summary : Tr.t("app.displays.empty"); }
+                        if root.displays.length > 0: Scroller {
+                            vertical-stretch: 1;
+                            VerticalLayout {
+                                for display[i] in root.displays: TableRow {
+                                    height: d-row.preferred-height;
+                                    last: i == root.displays.length - 1;
+                                    d-row := HorizontalLayout {
+                                        padding: 14px;
+                                        spacing: 12px;
+                                        VerticalLayout {
+                                            horizontal-stretch: 1;
+                                            alignment: center;
+                                            spacing: 2px;
+                                            Text { text: display.name; font-size: Theme.font-body; font-weight: 500; color: Theme.text; overflow: elide; }
+                                            if display.warning != "": Text { text: display.warning; font-size: Theme.font-caption; color: Theme.red; wrap: word-wrap; }
+                                        }
+                                        Text { text: display.connection; width: 240px; font-size: Theme.font-small; color: Theme.text-secondary; vertical-alignment: center; wrap: word-wrap; }
+                                        VerticalLayout { width: 170px; alignment: center; Badge { text: display.mode; tone: 3; } }
+                                        Text { text: display.edid; width: 200px; font-size: Theme.font-small; color: Theme.text-secondary; vertical-alignment: center; wrap: word-wrap; }
                                     }
                                 }
                             }
@@ -1512,35 +1454,64 @@ export component AppWindow inherits Window {
                 }
 
                 // 3 · Alterações
-                if root.page == 3: VerticalLayout {
-                    spacing: 14px;
+                if root.page == 3: Panel {
                     vertical-stretch: 1;
-                    PageHeader {
-                        title: Tr.t("app.tab.changes");
-                        subtitle: Tr.t("app.changes.intro");
-                        Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); clicked => { root.refresh(); } }
-                    }
-                    if root.changes-message != "": StatusBanner { kind: 0; message: root.changes-message; }
-                    GlassPane {
-                        glass-id: "changes";
-                        vertical-stretch: 1;
-                        VerticalLayout {
-                            padding: 6px;
-                            if root.changes.length == 0: EmptyState { vertical-stretch: 1; icon: @image-url("assets/icons/history.svg"); text: Tr.t("app.changes.empty"); }
-                            if root.changes.length > 0: Scroller {
-                                VerticalLayout {
-                                    alignment: start;
-                                    padding-top: 4px;
-                                    for change[i] in root.changes: ListRow {
-                                        icon: @image-url("assets/icons/history.svg");
-                                        tone: change.can-revert ? 3 : 0;
-                                        title: change.kind;
-                                        subtitle: change.description;
-                                        detail: change.when;
-                                        last: i == root.changes.length - 1;
-                                        Badge { text: change.scope; }
-                                        Badge { text: change.status; tone: change.can-revert ? 4 : 0; dot: true; }
-                                        if change.can-revert: Button { icon: @image-url("assets/icons/undo-2.svg"); text: Tr.t("app.changes.revert"); size: 1; clicked => { root.revert(change.id); } }
+                    VerticalLayout {
+                        padding: 22px;
+                        padding-bottom: 6px;
+                        spacing: 14px;
+                        PanelTitle {
+                            title: Tr.t("app.changes.panel");
+                            caption: Tr.t("app.changes.intro");
+                            Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); size: 1; clicked => { root.refresh(); } }
+                        }
+                        if root.changes-message != "": StatusBanner { kind: 0; message: root.changes-message; }
+                        TableHeader {
+                            HorizontalLayout {
+                                padding-left: 14px;
+                                padding-right: 14px;
+                                spacing: 12px;
+                                ColumnLabel { text: Tr.t("app.col.when"); width: 150px; }
+                                ColumnLabel { text: Tr.t("app.col.change"); horizontal-stretch: 1; }
+                                ColumnLabel { text: Tr.t("app.col.scope"); width: 110px; }
+                                ColumnLabel { text: Tr.t("app.col.state"); width: 150px; }
+                                ColumnLabel { text: Tr.t("app.col.actions"); width: 110px; horizontal-alignment: right; }
+                            }
+                        }
+                        if root.changes.length == 0: EmptyState { vertical-stretch: 1; icon: @image-url("assets/icons/history.svg"); text: Tr.t("app.changes.empty"); }
+                        if root.changes.length > 0: Scroller {
+                            vertical-stretch: 1;
+                            VerticalLayout {
+                                for change[i] in root.changes: TableRow {
+                                    property <bool> shown: root.matches(change.kind + " " + change.description + " " + change.status + " " + change.scope);
+                                    visible: self.shown;
+                                    height: self.shown ? c-row.preferred-height : 0px;
+                                    last: i == root.changes.length - 1;
+                                    c-row := HorizontalLayout {
+                                        padding: 14px;
+                                        padding-top: 11px;
+                                        padding-bottom: 11px;
+                                        spacing: 12px;
+                                        HorizontalLayout {
+                                            width: 150px;
+                                            spacing: 8px;
+                                            StatusDot { tone: change.can-revert ? 3 : 0; }
+                                            Text { text: change.when; font-size: Theme.font-small; color: Theme.text-secondary; vertical-alignment: center; wrap: word-wrap; }
+                                        }
+                                        VerticalLayout {
+                                            horizontal-stretch: 1;
+                                            alignment: center;
+                                            spacing: 2px;
+                                            Text { text: change.kind; font-size: Theme.font-body; font-weight: 500; color: Theme.text; overflow: elide; }
+                                            Text { text: change.description; font-size: Theme.font-caption; color: Theme.text-muted; wrap: word-wrap; }
+                                        }
+                                        Text { text: change.scope; width: 110px; font-size: Theme.font-small; color: Theme.text-secondary; vertical-alignment: center; }
+                                        VerticalLayout { width: 150px; alignment: center; Badge { text: change.status; tone: change.can-revert ? 4 : 0; } }
+                                        HorizontalLayout {
+                                            width: 110px;
+                                            alignment: end;
+                                            if change.can-revert: VerticalLayout { alignment: center; Button { icon: @image-url("assets/icons/undo-2.svg"); text: Tr.t("app.changes.revert"); size: 1; clicked => { root.revert(change.id); } } }
+                                        }
                                     }
                                 }
                             }
@@ -1549,200 +1520,147 @@ export component AppWindow inherits Window {
                 }
 
                 // 9 · Definições
-                if root.page == 9: VerticalLayout {
-                    spacing: 14px;
+                if root.page == 9: Scroller {
                     vertical-stretch: 1;
-                    PageHeader { title: Tr.t("app.settings.title"); subtitle: Tr.t("app.settings.lookSaved"); }
-                    if root.settings-message != "": StatusBanner { kind: 2; message: root.settings-message; }
-                    HorizontalLayout {
-                        vertical-stretch: 1;
-                        GlassPane {
-                            glass-id: "settings";
-                            max-width: Theme.reading-max + 120px;
-                            horizontal-stretch: 1;
-                            Scroller {
-                                VerticalLayout {
-                                    alignment: start;
-                                    padding: 18px;
-                                    spacing: 10px;
-                                    Eyebrow { text: Tr.t("app.settings.look"); }
-                                    Group {
-                                        VerticalLayout {
-                                            padding-left: 14px;
-                                            padding-right: 12px;
-                                            SettingRow {
-                                                label: Tr.t("app.settings.themeLabel");
-                                                Segmented {
-                                                    items: [{ label: Tr.t("app.settings.theme.dark") }, { label: Tr.t("app.settings.theme.glass") }, { label: Tr.t("app.settings.theme.light") }, { label: Tr.t("app.settings.theme.custom") }];
-                                                    segment-min: 112px;
-                                                    selected <=> root.theme-index;
-                                                    changed(i) => { root.settings-changed(); }
-                                                }
-                                            }
-                                            if root.theme-index == 3: Divider { }
-                                            if root.theme-index == 3: SettingRow {
-                                                label: Tr.t("app.settings.customBase");
-                                                Segmented {
-                                                    items: [{ label: Tr.t("app.settings.theme.dark") }, { label: Tr.t("app.settings.theme.glass") }, { label: Tr.t("app.settings.theme.light") }];
-                                                    segment-min: 84px;
-                                                    selected <=> root.custom-base;
-                                                    changed(i) => { root.settings-changed(); }
-                                                }
-                                            }
-                                            if root.theme-index == 3: Divider { }
-                                            if root.theme-index == 3: SettingRow {
-                                                label: Tr.t("app.settings.colour.accent");
-                                                caption: Tr.t("app.settings.accentHint");
-                                                for swatch in [{ hex: "#1FC6F2", c: #1FC6F2 }, { hex: "#14B8A6", c: #14B8A6 }, { hex: "#388AFF", c: #388AFF }, { hex: "#7A5CFF", c: #7A5CFF }, { hex: "#F97316", c: #F97316 }]: Rectangle {
-                                                    width: 22px;
-                                                    height: 22px;
-                                                    border-radius: 11px;
-                                                    background: swatch.c;
-                                                    border-width: root.custom-accent == swatch.hex ? 2px : 1px;
-                                                    border-color: root.custom-accent == swatch.hex ? Theme.text : Theme.hairline;
-                                                    accessible-role: button;
-                                                    accessible-label: Tr.t("app.settings.suggestions") + " " + swatch.hex;
-                                                    accessible-action-default => { root.custom-accent = swatch.hex; root.settings-changed(); }
-                                                    TouchArea { mouse-cursor: pointer; clicked => { root.custom-accent = swatch.hex; root.settings-changed(); } }
-                                                }
-                                                TextField {
-                                                    width: 110px;
-                                                    placeholder-text: "#RRGGBB";
-                                                    text <=> root.custom-accent;
-                                                    accepted => { root.settings-changed(); }
-                                                }
-                                            }
+                    VerticalLayout {
+                        spacing: Theme.gap;
+                        if root.settings-message != "": StatusBanner { kind: 2; message: root.settings-message; }
+                        HorizontalLayout {
+                            spacing: Theme.gap;
+                            Panel {
+                                horizontal-stretch: 65;
+                                preferred-width: 0px;
+                                height: up-box.preferred-height;
+                                up-box := VerticalLayout {
+                                    padding: 22px;
+                                    padding-bottom: 12px;
+                                    PanelTitle { title: Tr.t("app.settings.updates"); caption: Tr.t("app.update.securityHint"); }
+                                    Rectangle { height: 8px; }
+                                    SettingRow {
+                                        label: Tr.t("app.update.channel");
+                                        caption: Tr.t("app.update.channelHint");
+                                        Segmented {
+                                            items: [{ label: Tr.t("app.update.channel.testing") }, { label: Tr.t("app.update.channel.stable") }];
+                                            segment-min: 170px;
+                                            selected <=> root.update-channel;
+                                            changed(i) => { root.settings-changed(); }
                                         }
                                     }
-                                    Secondary { text: Tr.t("app.settings.motion"); color: Theme.text-tertiary; }
-                                    Rectangle { height: 10px; }
-                                    Eyebrow { text: Tr.t("app.settings.updates"); }
-                                    Group {
-                                        VerticalLayout {
-                                            padding-left: 14px;
-                                            padding-right: 12px;
-                                            SettingRow {
-                                                label: Tr.t("app.update.channel");
-                                                caption: Tr.t("app.update.channelHint");
-                                                Segmented {
-                                                    items: [{ label: Tr.t("app.update.channel.testing") }, { label: Tr.t("app.update.channel.stable") }];
-                                                    segment-min: 176px;
-                                                    selected <=> root.update-channel;
-                                                    changed(i) => { root.settings-changed(); }
-                                                }
-                                            }
-                                            Divider { }
-                                            SettingRow {
-                                                label: Tr.t("app.update.auto");
-                                                Toggle { checked <=> root.update-auto; accessible-label: Tr.t("app.update.auto"); toggled => { root.settings-changed(); } }
-                                            }
-                                            Divider { }
-                                            SettingRow {
-                                                label: Tr.t("app.update.check");
-                                                caption: root.app-update-text;
-                                                Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.update.checkNow"); loading: root.app-update-state == 1; clicked => { root.check-app-update(); } }
-                                                if root.app-update-available: Button { text: Tr.t("app.update.install"); kind: 1; clicked => { root.install-app-update(); } }
-                                            }
-                                        }
+                                    Divider { }
+                                    SettingRow {
+                                        label: Tr.t("app.update.auto");
+                                        Toggle { checked <=> root.update-auto; accessible-label: Tr.t("app.update.auto"); toggled => { root.settings-changed(); } }
                                     }
-                                    HorizontalLayout {
-                                        spacing: 8px;
-                                        Icon { source: @image-url("assets/icons/shield.svg"); tint: Theme.text-tertiary; width: 13px; height: 13px; y: 1px; }
-                                        Text { text: Tr.t("app.update.securityHint"); font-size: Theme.font-caption; color: Theme.text-tertiary; wrap: word-wrap; }
+                                    Divider { }
+                                    SettingRow {
+                                        label: Tr.t("app.update.check");
+                                        caption: root.app-update-text;
+                                        Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.update.checkNow"); size: 1; loading: root.app-update-state == 1; clicked => { root.check-app-update(); } }
+                                        if root.app-update-available: Button { text: Tr.t("app.update.install"); kind: 1; size: 1; clicked => { root.install-app-update(); } }
                                     }
                                 }
                             }
+                            Panel {
+                                horizontal-stretch: 35;
+                                preferred-width: 0px;
+                                min-width: 300px;
+                                height: max(ac-box.preferred-height, up-box.preferred-height);
+                                ac-box := VerticalLayout {
+                                    padding: 22px;
+                                    spacing: 14px;
+                                    alignment: start;
+                                    PanelTitle { title: Tr.t("app.settings.accessibility"); }
+                                    ActivityItem { icon: @image-url("assets/icons/activity.svg"); title: Tr.t("app.settings.motionTitle"); subtitle: Theme.reduce-motion ? Tr.t("app.settings.motionOff") : Tr.t("app.settings.motionOn"); }
+                                    Secondary { text: Tr.t("app.settings.motion"); color: Theme.text-muted; }
+                                }
+                            }
                         }
-                        Rectangle { horizontal-stretch: 0.001; }
                     }
                 }
 
                 // 4 · Sobre
-                if root.page == 4: VerticalLayout {
-                    spacing: 14px;
+                if root.page == 4: Scroller {
                     vertical-stretch: 1;
-                    PageHeader { title: Tr.t("app.about.title"); }
-                    HorizontalLayout {
-                        GlassPane {
-                            glass-id: "about";
-                            max-width: Theme.reading-max;
-                            horizontal-stretch: 1;
-                            height: about-box.preferred-height;
-                            about-box := VerticalLayout {
-                                padding: 24px;
-                                spacing: 12px;
-                                HorizontalLayout {
+                    VerticalLayout {
+                        spacing: Theme.gap;
+                        HorizontalLayout {
+                            spacing: Theme.gap;
+                            Panel {
+                                horizontal-stretch: 65;
+                                preferred-width: 0px;
+                                height: about-box.preferred-height;
+                                about-box := VerticalLayout {
+                                    padding: 26px;
                                     spacing: 14px;
-                                    Image { source: @image-url("assets/logo-mark.png"); width: 48px; height: 48px; image-fit: contain; accessible-role: image; accessible-label: "bitBybit"; }
-                                    VerticalLayout {
-                                        alignment: center;
-                                        spacing: 2px;
-                                        HorizontalLayout {
-                                            alignment: start;
-                                            Text { text: "bit"; font-size: Theme.font-display; font-weight: 700; letter-spacing: -0.6px; color: Theme.text; }
-                                            Text { text: "Bybit"; font-size: Theme.font-display; font-weight: 700; letter-spacing: -0.6px; color: Theme.accent; }
+                                    HorizontalLayout {
+                                        spacing: 16px;
+                                        Image { source: @image-url("assets/logo-mark.png"); width: 64px; height: 64px; image-fit: contain; accessible-role: image; accessible-label: "bitBybit"; }
+                                        VerticalLayout {
+                                            alignment: center;
+                                            spacing: 2px;
+                                            Text { text: "bitBybit"; font-size: Theme.font-page; font-weight: 700; color: Theme.text; }
+                                            Secondary { text: root.about-version; }
                                         }
-                                        Secondary { text: root.about-version; }
+                                    }
+                                    Body { text: Tr.t("app.settings.aboutText"); color: Theme.text-secondary; }
+                                    Divider { }
+                                    ActivityItem { icon: @image-url("assets/icons/shield-check.svg"); tint: Theme.green; title: Tr.t("app.about.updatesTitle"); subtitle: Tr.t("app.about.privacy"); }
+                                    ActivityItem { icon: @image-url("assets/icons/archive.svg"); tint: Theme.cyan; title: Tr.t("app.about.logsTitle"); subtitle: root.logs-text; }
+                                    if root.app-update-text != "": StatusBanner { kind: root.app-update-state == 3 ? 2 : root.app-update-state == 2 ? 1 : 0; message: root.app-update-text; }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+                                        Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.update.check"); size: 1; loading: root.app-update-state == 1; clicked => { root.check-app-update(); } }
+                                        Button { icon: @image-url("assets/icons/archive.svg"); text: Tr.t("app.export.button"); size: 1; clicked => { root.export-logs(); } }
+                                        if root.app-update-available: Button { text: Tr.t("app.update.install"); kind: 1; size: 1; clicked => { root.install-app-update(); } }
                                     }
                                 }
-                                Body { text: Tr.t("app.settings.aboutText"); }
-                                Divider { }
-                                HorizontalLayout {
-                                    spacing: 10px;
-                                    Icon { source: @image-url("assets/icons/shield-check.svg"); tint: Theme.ok; y: 1px; }
-                                    Secondary { text: Tr.t("app.about.privacy"); }
-                                }
-                                HorizontalLayout {
-                                    spacing: 10px;
-                                    Icon { source: @image-url("assets/icons/archive.svg"); y: 1px; }
-                                    Secondary { text: root.logs-text; }
-                                }
-                                HorizontalLayout {
-                                    spacing: 10px;
-                                    Icon { source: @image-url("assets/icons/sparkles.svg"); y: 1px; }
-                                    Secondary { text: Tr.t("app.settings.creditsText"); }
-                                }
-                                if root.app-update-text != "": StatusBanner { kind: root.app-update-state == 3 ? 2 : root.app-update-state == 2 ? 1 : 0; message: root.app-update-text; }
-                                HorizontalLayout {
-                                    spacing: 8px;
+                            }
+                            Panel {
+                                horizontal-stretch: 35;
+                                preferred-width: 0px;
+                                min-width: 300px;
+                                height: max(cr-box.preferred-height, about-box.preferred-height);
+                                cr-box := VerticalLayout {
+                                    padding: 22px;
+                                    spacing: 14px;
                                     alignment: start;
-                                    padding-top: 4px;
-                                    Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.update.check"); loading: root.app-update-state == 1; clicked => { root.check-app-update(); } }
-                                    Button { icon: @image-url("assets/icons/archive.svg"); text: Tr.t("app.export.button"); clicked => { root.export-logs(); } }
-                                    if root.app-update-available: Button { text: Tr.t("app.update.install"); kind: 1; clicked => { root.install-app-update(); } }
+                                    PanelTitle { title: Tr.t("app.settings.credits"); }
+                                    Secondary { text: Tr.t("app.settings.creditsText"); }
                                 }
                             }
                         }
-                        Rectangle { horizontal-stretch: 0.001; }
                     }
-                    Rectangle { vertical-stretch: 1; }
                 }
             }
         }
     }
 
-    // ── Operation feedback: a floating glass toast at the bottom of the content column.
-    if root.op-state != 0 && !root.dialog-visible: GlassPane {
-        glass-id: "toast";
-        kind: 3;
-        width: min(root.content-w - 40px, 620px);
+    // ── Operation feedback: a panel at the bottom right of the workspace.
+    if root.op-state != 0 && !root.dialog-visible: Panel {
+        width: min(root.workspace-w - 40px, 560px);
         height: toast.preferred-height;
-        x: root.content-x + (root.content-w - self.width) / 2;
-        y: root.height - self.height - 20px;
+        x: root.width - self.width - 24px;
+        y: root.height - self.height - 24px;
+        border-width: 1px;
+        border-color: Theme.divider;
+        drop-shadow-color: #00000080;
+        drop-shadow-blur: 20px;
+        drop-shadow-offset-y: 8px;
         accessible-role: text;
         accessible-label: root.op-message;
         toast := HorizontalLayout {
-            padding: 10px;
-            padding-left: 14px;
-            spacing: 10px;
+            padding: 12px;
+            padding-left: 16px;
+            spacing: 12px;
             VerticalLayout {
                 alignment: center;
-                if root.op-state == 1: Spinner { tint: Theme.accent; size: 17px; }
+                if root.op-state == 1: Spinner { tint: Theme.cyan; size: 18px; }
                 if root.op-state != 1: Icon {
-                    width: 17px;
-                    height: 17px;
+                    width: 18px;
+                    height: 18px;
                     source: root.op-state == 3 ? @image-url("assets/icons/circle-x.svg") : @image-url("assets/icons/circle-check.svg");
-                    tint: root.op-state == 3 ? Theme.error : Theme.ok;
+                    tint: root.op-state == 3 ? Theme.red : Theme.green;
                 }
             }
             Text { text: root.op-message; wrap: word-wrap; color: Theme.text; font-size: Theme.font-body; vertical-alignment: center; horizontal-stretch: 1; min-height: 30px; }
@@ -1755,42 +1673,41 @@ export component AppWindow inherits Window {
     if root.driver-device-id != "" && !root.dialog-visible: Modal {
         width: root.width;
         height: root.height;
-        GlassPane {
-            glass-id: "drivers-dialog";
-            kind: 2;
-            width: min(root.width - 64px, 640px);
+        Panel {
+            width: min(root.width - 64px, 660px);
             height: min(root.height - 64px, drv.preferred-height);
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
+            border-width: 1px;
+            border-color: Theme.divider;
             accessible-role: groupbox;
             accessible-label: Tr.t("app.drivers.chooser") + " " + root.driver-device-name;
             drv := VerticalLayout {
-                padding: 22px;
-                spacing: 12px;
-                HorizontalLayout {
-                    spacing: 10px;
-                    VerticalLayout {
-                        horizontal-stretch: 1;
-                        spacing: 2px;
-                        Text { text: Tr.t("app.drivers.chooser") + " " + root.driver-device-name; font-size: Theme.font-title + 2px; font-weight: 650; color: Theme.text; wrap: word-wrap; }
-                    }
-                    VerticalLayout { alignment: start; IconButton { icon: @image-url("assets/icons/x.svg"); tooltip: Tr.t("app.op.dismiss"); clicked => { root.close-drivers(); } } }
+                padding: 24px;
+                spacing: 14px;
+                PanelTitle {
+                    title: Tr.t("app.drivers.chooser") + " " + root.driver-device-name;
+                    IconButton { icon: @image-url("assets/icons/x.svg"); tooltip: Tr.t("app.op.dismiss"); clicked => { root.close-drivers(); } }
                 }
                 Scroller {
                     min-height: min(list.preferred-height, 120px);
                     preferred-height: list.preferred-height;
                     list := VerticalLayout {
-                        alignment: start;
-                        Group {
-                            for choice[i] in root.driver-choices: ListRow {
-                                icon: @image-url("assets/icons/package.svg");
-                                tone: choice.current ? 3 : 0;
-                                title: choice.title;
-                                subtitle: choice.detail;
-                                wrap-title: true;
-                                last: i == root.driver-choices.length - 1;
-                                if choice.current: Badge { text: Tr.t("app.drivers.current"); tone: 3; dot: true; }
-                                if !choice.current: Button { text: Tr.t("app.drivers.install"); kind: 1; size: 1; clicked => { root.install-driver(root.driver-device-id, choice.inf); } }
+                        for choice[i] in root.driver-choices: TableRow {
+                            height: ch-row.preferred-height;
+                            last: i == root.driver-choices.length - 1;
+                            ch-row := HorizontalLayout {
+                                padding: 12px;
+                                spacing: 12px;
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: center;
+                                    spacing: 2px;
+                                    Text { text: choice.title; font-size: Theme.font-body; font-weight: 500; color: Theme.text; wrap: word-wrap; }
+                                    Text { text: choice.detail; font-size: Theme.font-caption; color: Theme.text-muted; wrap: word-wrap; }
+                                }
+                                if choice.current: VerticalLayout { alignment: center; Badge { text: Tr.t("app.drivers.current"); tone: 4; } }
+                                if !choice.current: VerticalLayout { alignment: center; Button { text: Tr.t("app.drivers.install"); kind: 1; size: 1; clicked => { root.install-driver(root.driver-device-id, choice.inf); } } }
                             }
                         }
                     }
@@ -1805,74 +1722,64 @@ export component AppWindow inherits Window {
         }
     }
 
-    // ── Confirmation dialog: the plan's summary, risk, steps, effects and warnings are always shown; a high-risk
-    // plan gets a red edge and a destructive confirm button so it never looks like a harmless operation.
+    // ── Confirmation dialog: summary, risk, warnings and effects, and the numbered steps. High risk gets a red edge
+    // and a destructive confirm button so it never looks like a harmless operation.
     if root.dialog-visible: Modal {
         width: root.width;
         height: root.height;
-        GlassPane {
-            glass-id: "confirm-dialog";
-            kind: 2;
-            width: min(root.width - 64px, 600px);
+        Panel {
+            width: min(root.width - 64px, 620px);
             height: min(root.height - 64px, dialog-box.preferred-height);
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
+            border-width: root.dialog-level >= 1 ? 1.5px : 1px;
+            border-color: root.dialog-level >= 2 ? Theme.red : root.dialog-level == 1 ? Theme.amber : Theme.divider;
             accessible-role: groupbox;
             accessible-label: root.dialog-summary;
-            if root.dialog-level >= 1: Rectangle {
-                border-radius: 22px;
-                border-width: 1.5px;
-                border-color: root.dialog-level >= 2 ? Theme.error.with-alpha(0.65) : Theme.warn.with-alpha(0.5);
-            }
             dialog-box := VerticalLayout {
                 padding: 24px;
-                spacing: 12px;
+                spacing: 14px;
                 HorizontalLayout {
-                    spacing: 12px;
+                    spacing: 14px;
                     Rectangle {
-                        width: 36px;
-                        height: 36px;
-                        border-radius: 11px;
-                        background: root.dialog-level >= 2 ? Theme.error.with-alpha(0.15) : root.dialog-level == 1 ? Theme.warn.with-alpha(0.15) : Theme.accent-soft;
+                        width: 42px;
+                        height: 42px;
+                        border-radius: 10px;
+                        background: Theme.inset;
                         Icon {
                             width: 18px;
                             height: 18px;
                             source: root.dialog-level >= 1 ? @image-url("assets/icons/triangle-alert.svg") : @image-url("assets/icons/shield-check.svg");
-                            tint: root.dialog-level >= 2 ? Theme.error : root.dialog-level == 1 ? Theme.warn : Theme.accent;
+                            tint: root.dialog-level >= 2 ? Theme.red : root.dialog-level == 1 ? Theme.amber : Theme.green;
                         }
                     }
-                    VerticalLayout {
-                        spacing: 3px;
-                        horizontal-stretch: 1;
-                        Text { text: root.dialog-summary; font-size: 17px; font-weight: 650; color: Theme.text; wrap: word-wrap; }
-                    }
+                    Text { text: root.dialog-summary; font-size: Theme.font-title + 1px; font-weight: 700; color: Theme.text; wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; }
                     VerticalLayout {
                         alignment: start;
                         Badge {
                             text: Tr.t("app.dialog.risk") + " " + root.dialog-risk;
                             tone: root.dialog-level >= 2 ? 2 : (root.dialog-level == 1 ? 1 : 4);
-                            dot: true;
                         }
                     }
                 }
                 // Warnings and effects never scroll out of sight: they sit in a fixed box above the steps.
                 if root.dialog-warnings.length + root.dialog-effects.length > 0: Rectangle {
-                    border-radius: Theme.radius-m;
-                    background: Theme.warn.with-alpha(0.09);
-                    border-width: 1px;
-                    border-color: Theme.warn.with-alpha(0.3);
+                    border-radius: Theme.radius-control;
+                    background: Theme.amber.with-alpha(0.12);
                     height: warn-box.preferred-height;
+                    Rectangle { x: 0; width: 3px; border-radius: 1.5px; background: Theme.amber; }
                     warn-box := VerticalLayout {
                         padding: 12px;
+                        padding-left: 16px;
                         spacing: 7px;
                         for warning in root.dialog-warnings: HorizontalLayout {
                             spacing: 9px;
-                            Icon { source: @image-url("assets/icons/triangle-alert.svg"); tint: Theme.warn; y: 1px; }
+                            Icon { source: @image-url("assets/icons/triangle-alert.svg"); tint: Theme.amber; y: 2px; }
                             Text { text: warning; wrap: word-wrap; font-size: Theme.font-body; font-weight: 600; color: Theme.text; }
                         }
                         for effect in root.dialog-effects: HorizontalLayout {
                             spacing: 9px;
-                            Icon { source: @image-url("assets/icons/info.svg"); tint: Theme.warn; y: 1px; }
+                            Icon { source: @image-url("assets/icons/info.svg"); tint: Theme.amber; y: 2px; }
                             Text { text: effect; wrap: word-wrap; font-size: Theme.font-body; color: Theme.text; }
                         }
                     }
@@ -1882,14 +1789,13 @@ export component AppWindow inherits Window {
                     preferred-height: steps.preferred-height;
                     steps := VerticalLayout {
                         spacing: 8px;
-                        alignment: start;
                         for step[i] in root.dialog-steps: HorizontalLayout {
                             spacing: 10px;
                             Rectangle {
-                                width: 20px;
-                                height: 20px;
-                                border-radius: 10px;
-                                background: Theme.fill-hover;
+                                width: 22px;
+                                height: 22px;
+                                border-radius: 11px;
+                                background: Theme.inset;
                                 Text { text: i + 1; font-size: Theme.font-caption; font-weight: 600; color: Theme.text-secondary; }
                             }
                             Body { text: step; vertical-alignment: center; }
@@ -1899,7 +1805,7 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     spacing: 8px;
                     alignment: end;
-                    padding-top: 6px;
+                    padding-top: 4px;
                     Button { text: Tr.t("app.dialog.cancel"); clicked => { root.dialog-answer(false); } }
                     Button {
                         text: root.dialog-level >= 2 ? Tr.t("app.dialog.confirmRisky") : Tr.t("app.dialog.confirm");
@@ -1916,39 +1822,38 @@ export component AppWindow inherits Window {
     if root.update-dialog-visible && !root.dialog-visible: Modal {
         width: root.width;
         height: root.height;
-        GlassPane {
-            glass-id: "update-dialog";
-            kind: 2;
+        Panel {
             width: min(root.width - 64px, 580px);
             height: min(root.height - 64px, updlg-box.preferred-height);
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
+            border-width: 1px;
+            border-color: Theme.divider;
             accessible-role: groupbox;
             accessible-label: Tr.t("app.update.dialogTitle") + " " + root.update-version;
             updlg-box := VerticalLayout {
                 padding: 24px;
-                spacing: 12px;
+                spacing: 14px;
                 HorizontalLayout {
-                    spacing: 12px;
+                    spacing: 14px;
                     Rectangle {
-                        width: 36px;
-                        height: 36px;
-                        border-radius: 11px;
-                        background: Theme.ok.with-alpha(0.15);
-                        Icon { width: 18px; height: 18px; source: @image-url("assets/icons/sparkles.svg"); tint: Theme.ok; }
+                        width: 42px;
+                        height: 42px;
+                        border-radius: 10px;
+                        background: Theme.inset;
+                        Icon { width: 18px; height: 18px; source: @image-url("assets/icons/sparkles.svg"); tint: Theme.green; }
                     }
                     VerticalLayout {
-                        spacing: 3px;
+                        spacing: 2px;
                         horizontal-stretch: 1;
-                        Text { text: Tr.t("app.update.dialogTitle") + " " + root.update-version; font-size: 17px; font-weight: 650; color: Theme.text; wrap: word-wrap; }
+                        alignment: center;
+                        Text { text: Tr.t("app.update.dialogTitle") + " " + root.update-version; font-size: Theme.font-title + 1px; font-weight: 700; color: Theme.text; wrap: word-wrap; }
                         Secondary { text: Tr.t("app.update.installed") + " " + root.version; }
                     }
                 }
                 Rectangle {
-                    border-radius: Theme.radius-m;
-                    background: Theme.fill-subtle;
-                    border-width: 1px;
-                    border-color: Theme.hairline;
+                    border-radius: Theme.radius-control;
+                    background: Theme.inset;
                     min-height: 80px;
                     preferred-height: 200px;
                     Scroller {
@@ -1956,21 +1861,14 @@ export component AppWindow inherits Window {
                         y: 8px;
                         width: parent.width - 24px;
                         height: parent.height - 16px;
-                        VerticalLayout {
-                            alignment: start;
-                            Body { text: root.update-notes != "" ? root.update-notes : Tr.t("app.update.noNotes"); font-size: Theme.font-small; color: Theme.text-secondary; }
-                        }
+                        Body { text: root.update-notes != "" ? root.update-notes : Tr.t("app.update.noNotes"); font-size: Theme.font-small; color: Theme.text-secondary; }
                     }
                 }
                 if root.app-update-state == 1 || root.app-update-state == 3: StatusBanner {
                     kind: root.app-update-state == 3 ? 2 : 4;
                     message: root.app-update-text;
                 }
-                HorizontalLayout {
-                    spacing: 8px;
-                    Icon { source: @image-url("assets/icons/shield-check.svg"); tint: Theme.text-tertiary; width: 13px; height: 13px; y: 1px; }
-                    Text { text: Tr.t("app.update.securityHint"); font-size: Theme.font-caption; color: Theme.text-tertiary; wrap: word-wrap; }
-                }
+                Secondary { text: Tr.t("app.update.securityHint"); color: Theme.text-muted; }
                 HorizontalLayout {
                     spacing: 8px;
                     alignment: end;

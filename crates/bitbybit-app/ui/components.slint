@@ -1,31 +1,18 @@
-// Layout and display pieces of the bitBybit design system. Status is never colour-only: every state carries text
-// (and, for banners, an icon).
+// Layout and display pieces of the bitBybit design system (the specification's dark navy dashboard): panels,
+// coloured KPI cards, the area chart, activity items, tables, status badges, banners and navigation entries.
+// Status is never colour-only: badges and banners always carry text.
 
 import { Theme } from "theme.slint";
-import { GlassEngine, GlassFrame } from "glass.slint";
-import { Icon, Spinner } from "controls.slint";
+import { Icon, Spinner, Button } from "controls.slint";
 import { ScrollView } from "std-widgets.slint";
 
-// Vertical scrolling at the visible width: content never widens the pane, wrapped text wraps.
+// Vertical scrolling at the visible width: content never widens the page, wrapped text wraps.
 export component Scroller inherits ScrollView {
     VerticalLayout {
         width: root.visible-width;
         alignment: start;
         @children
     }
-}
-
-export component SectionTitle inherits Text {
-    font-size: Theme.font-title;
-    font-weight: 650;
-    color: Theme.text;
-}
-
-// Label of a group of rows or fields (sidebar groups, form groups) — only where it names what follows.
-export component Eyebrow inherits Text {
-    font-size: Theme.font-small;
-    font-weight: 600;
-    color: Theme.text-tertiary;
 }
 
 export component Secondary inherits Text {
@@ -42,13 +29,228 @@ export component Body inherits Text {
 
 export component Divider inherits Rectangle {
     height: 1px;
-    background: Theme.hairline;
+    background: Theme.divider;
 }
 
-// A status dot. tone: 0 neutral, 1 warning, 2 problem, 3 accent/info, 4 ok, 5 pending (pulsing ring).
+// A panel of the workspace.
+export component Panel inherits Rectangle {
+    border-radius: Theme.radius-panel;
+    background: Theme.panel;
+}
+
+// The title row of a panel: bold title (and a caption), trailing controls on the right.
+export component PanelTitle inherits HorizontalLayout {
+    in property <string> title;
+    in property <string> caption;
+    spacing: 12px;
+    VerticalLayout {
+        horizontal-stretch: 1;
+        alignment: center;
+        spacing: 2px;
+        Text { text: root.title; font-size: Theme.font-title; font-weight: 700; color: Theme.text; overflow: elide; }
+        if root.caption != "": Text { text: root.caption; font-size: Theme.font-small; color: Theme.text-secondary; wrap: word-wrap; }
+    }
+    HorizontalLayout {
+        horizontal-stretch: 0;
+        spacing: 8px;
+        alignment: end;
+        VerticalLayout {
+            alignment: center;
+            HorizontalLayout {
+                spacing: 8px;
+                @children
+            }
+        }
+    }
+}
+
+// A coloured summary card. tone: 0 green, 1 cyan, 2 indigo.
+export component KpiCard inherits Rectangle {
+    in property <int> tone;
+    in property <string> title;
+    in property <string> value;
+    in property <string> note;
+    in property <string> action;
+    callback activated;
+    // Equal shares of the row whatever the text length (every text elides).
+    preferred-width: 0px;
+    min-width: 180px;
+    border-radius: Theme.radius-card;
+    background: root.tone == 1 ? Theme.cyan : root.tone == 2 ? Theme.indigo : Theme.green;
+    accessible-role: groupbox;
+    accessible-label: root.title + ": " + root.value + ", " + root.note;
+    VerticalLayout {
+        padding: 20px;
+        padding-bottom: 16px;
+        spacing: 6px;
+        Text { text: root.title; font-size: Theme.font-body; font-weight: 500; color: #FFFFFFE6; overflow: elide; }
+        Text { text: root.value; font-size: Theme.font-value; font-weight: 700; color: #FFFFFF; overflow: elide; }
+        Rectangle { vertical-stretch: 1; min-height: 4px; }
+        HorizontalLayout {
+            spacing: 8px;
+            if root.note != "": Icon { y: (parent.height - self.height) / 2; source: @image-url("assets/icons/trending-up.svg"); tint: #FFFFFFE6; width: 15px; height: 15px; }
+            Text { text: root.note; font-size: Theme.font-small; color: #FFFFFFE6; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+            Button { text: root.action; kind: 4; size: 1; clicked => { root.activated(); } }
+        }
+    }
+}
+
+// The specification's area chart: a smooth amber line over a fading fill, value labels on the left and period
+// labels below. `line` and `area` are SVG path data in a 1000×300 box (src/view.rs, `chart_paths`).
+export component AreaChart {
+    in property <string> line;
+    in property <string> area;
+    in property <[string]> x-labels;
+    in property <[string]> y-labels;
+    property <length> axis-w: 40px;
+    property <length> label-h: 22px;
+    property <length> plot-w: root.width - root.axis-w;
+    property <length> plot-h: root.height - root.label-h - 8px;
+    min-height: 160px;
+    accessible-role: image;
+    Path {
+        x: root.axis-w;
+        y: 4px;
+        width: root.plot-w;
+        height: root.plot-h;
+        viewbox-width: 1000;
+        viewbox-height: 300;
+        fit: fill;
+        commands: root.area;
+        fill: Theme.amber.with-alpha(0.55);
+        stroke: transparent;
+    }
+    // Fades the fill towards the axis. A gradient over the panel colour, not a gradient fill on the path:
+    // the software renderer paints path fills with a single colour.
+    Rectangle {
+        x: root.axis-w;
+        y: 4px;
+        width: root.plot-w;
+        height: root.plot-h + 1px;
+        background: @linear-gradient(180deg, Theme.panel.with-alpha(0) 0%, Theme.panel.with-alpha(0.65) 55%, Theme.panel 100%);
+    }
+    for label[i] in root.y-labels: Rectangle {
+        x: root.axis-w;
+        y: 4px + i * root.plot-h / max(1, root.y-labels.length - 1);
+        width: root.plot-w;
+        height: 1px;
+        background: Theme.divider.with-alpha(0.6);
+    }
+    for label[i] in root.y-labels: Text {
+        x: 0;
+        y: 4px + i * root.plot-h / max(1, root.y-labels.length - 1) - 8px;
+        width: root.axis-w - 10px;
+        height: 16px;
+        text: label;
+        font-size: Theme.font-caption;
+        color: Theme.text-muted;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+    Path {
+        x: root.axis-w;
+        y: 4px;
+        width: root.plot-w;
+        height: root.plot-h;
+        viewbox-width: 1000;
+        viewbox-height: 300;
+        fit: fill;
+        commands: root.line;
+        fill: transparent;
+        stroke: Theme.amber;
+        stroke-width: 3px;
+    }
+    for label[i] in root.x-labels: Text {
+        x: root.axis-w + i * root.plot-w / max(1, root.x-labels.length - 1) - 20px;
+        y: root.height - root.label-h;
+        width: 40px;
+        height: root.label-h;
+        text: label;
+        font-size: Theme.font-caption;
+        color: Theme.text-muted;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// An entry of the "recent activity" list: an icon tile, a title and its category or time.
+export component ActivityItem inherits HorizontalLayout {
+    in property <image> icon;
+    in property <string> title;
+    in property <string> subtitle;
+    in property <color> tint: Theme.text-secondary;
+    spacing: 14px;
+    Rectangle {
+        width: 42px;
+        height: 42px;
+        border-radius: 10px;
+        background: Theme.inset;
+        Icon { width: 18px; height: 18px; source: root.icon; tint: root.tint; }
+    }
+    VerticalLayout {
+        alignment: center;
+        spacing: 2px;
+        Text { text: root.title; font-size: Theme.font-body; font-weight: 500; color: Theme.text; overflow: elide; }
+        Text { text: root.subtitle; font-size: Theme.font-caption; color: Theme.text-muted; overflow: elide; }
+    }
+}
+
+// A table header label.
+export component ColumnLabel inherits Text {
+    font-size: Theme.font-small;
+    font-weight: 600;
+    color: Theme.text-muted;
+    vertical-alignment: center;
+    overflow: elide;
+}
+
+// The header band of a table (put ColumnLabels in a HorizontalLayout inside).
+export component TableHeader inherits Rectangle {
+    height: 40px;
+    border-radius: Theme.radius-control;
+    background: Theme.inset;
+}
+
+// A table row: hairline below (except the last), lighter on hover.
+export component TableRow inherits Rectangle {
+    in property <bool> last;
+    background: hover.has-hover ? Theme.control.with-alpha(0.45) : transparent;
+    hover := TouchArea { }
+    if !root.last: Rectangle { y: parent.height - 1px; height: 1px; background: Theme.divider; }
+    @children
+}
+
+// A status pill. tone: 0 neutral, 1 warning, 2 problem, 3 info, 4 ok.
+export component Badge inherits Rectangle {
+    in property <string> text;
+    in property <int> tone;
+    property <color> c: root.tone == 2 ? Theme.red : root.tone == 1 ? Theme.amber : root.tone == 3 ? Theme.cyan : root.tone == 4 ? Theme.green : Theme.text-secondary;
+    height: 22px;
+    width: row.preferred-width;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: self.height / 2;
+    background: root.c.with-alpha(root.tone == 0 ? 0.12 : 0.16);
+    accessible-role: AccessibleRole.text;
+    accessible-label: root.text;
+    row := HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 10px;
+        spacing: 6px;
+        Rectangle {
+            width: 6px;
+            height: 6px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 3px;
+            background: root.c;
+        }
+        Text { text: root.text; font-size: Theme.font-caption; font-weight: 600; color: root.tone == 0 ? Theme.text-secondary : root.c; vertical-alignment: center; }
+    }
+}
+
+// A status dot that centres itself vertically. tone as Badge.
 export component StatusDot {
     in property <int> tone;
-    property <color> c: root.tone == 2 ? Theme.error : root.tone == 1 ? Theme.warn : root.tone == 3 || root.tone == 5 ? Theme.accent : root.tone == 4 ? Theme.ok : Theme.text-tertiary;
     width: 8px;
     min-height: 8px;
     accessible-role: none;
@@ -57,69 +259,27 @@ export component StatusDot {
         width: 8px;
         height: 8px;
         border-radius: 4px;
-        background: root.c;
-        if root.tone == 5 && !Theme.reduce-motion: Rectangle {
-            property <float> phase: Math.mod(animation-tick() / 1ms, 1400) / 1400;
-            x: -4px * self.phase;
-            y: -4px * self.phase;
-            width: 8px + 8px * self.phase;
-            height: self.width;
-            border-radius: self.width / 2;
-            border-width: 1.5px;
-            border-color: Theme.accent.with-alpha(0.6 * (1 - self.phase));
-        }
+        background: root.tone == 2 ? Theme.red : root.tone == 1 ? Theme.amber : root.tone == 3 ? Theme.cyan : root.tone == 4 ? Theme.green : Theme.text-muted;
     }
 }
 
-// Small status capsule with text. tone: 0 neutral, 1 warning, 2 problem, 3 accent/info, 4 ok.
-export component Badge inherits Rectangle {
-    in property <string> text;
-    in property <int> tone;
-    in property <bool> dot;
-    property <color> c: root.tone == 2 ? Theme.error : root.tone == 1 ? Theme.warn : root.tone == 3 ? Theme.accent : root.tone == 4 ? Theme.ok : Theme.text-secondary;
-    height: 20px;
-    width: row.preferred-width;
-    horizontal-stretch: 0;
-    vertical-stretch: 0;
-    border-radius: self.height / 2;
-    background: root.c.with-alpha(root.tone == 0 ? 0.10 : 0.13);
-    border-width: 1px;
-    border-color: root.c.with-alpha(0.26);
-    accessible-role: AccessibleRole.text;
-    accessible-label: root.text;
-    row := HorizontalLayout {
-        padding-left: root.dot ? 7px : 8px;
-        padding-right: 8px;
-        spacing: 5px;
-        if root.dot: Rectangle {
-            width: 6px;
-            height: 6px;
-            y: (parent.height - self.height) / 2;
-            border-radius: 3px;
-            background: root.c;
-        }
-        Text { text: root.text; font-size: Theme.font-caption; font-weight: 600; color: root.c; vertical-alignment: center; }
-    }
-}
-
-// Inline message. kind: 0 info/working, 1 ok, 2 problem, 3 warning, 4 pending (spinner). Trailing actions go inside.
+// Inline message. kind: 0 info, 1 ok, 2 problem, 3 warning, 4 working (spinner). Trailing actions go inside.
 export component StatusBanner inherits Rectangle {
     in property <int> kind;
     in property <string> message;
-    property <color> c: root.kind == 2 ? Theme.error : root.kind == 1 ? Theme.ok : root.kind == 3 ? Theme.warn : Theme.accent;
+    property <color> c: root.kind == 2 ? Theme.red : root.kind == 1 ? Theme.green : root.kind == 3 ? Theme.amber : Theme.cyan;
     min-height: row.preferred-height;
-    border-radius: Theme.radius-m;
-    background: root.c.with-alpha(Theme.dark ? 0.09 : 0.08);
-    border-width: 1px;
-    border-color: root.c.with-alpha(0.24);
+    border-radius: Theme.radius-control;
+    background: root.c.with-alpha(0.12);
     accessible-role: text;
     accessible-label: root.message;
+    Rectangle { x: 0; width: 3px; border-radius: 1.5px; background: root.c; }
     row := HorizontalLayout {
-        padding-top: 7px;
-        padding-bottom: 7px;
-        padding-left: 11px;
-        padding-right: 7px;
-        spacing: 9px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        padding-left: 14px;
+        padding-right: 8px;
+        spacing: 10px;
         VerticalLayout {
             alignment: center;
             if root.kind == 4: Spinner { tint: root.c; size: 15px; }
@@ -135,109 +295,27 @@ export component StatusBanner inherits Rectangle {
     }
 }
 
-// A calm content card with the glass bevel lighting. tone tints the edge for states (1 warning, 2 problem,
-// 3 accent, 4 ok); interactive cards light up on hover.
-export component Card inherits Rectangle {
-    in property <int> tone;
-    in property <bool> interactive;
-    in property <bool> selected;
-    out property <bool> hovered: touch.has-hover;
-    callback clicked;
-    border-radius: Theme.radius-l;
-    GlassFrame {
-        f: GlassEngine.card;
-        inner-width: root.width;
-        inner-height: root.height;
-    }
-    body := Rectangle {
-        border-radius: Theme.radius-l;
-        background: root.selected ? Theme.accent.with-alpha(0.10) : root.interactive && touch.has-hover ? Theme.surface-hover : Theme.surface;
-        border-width: 1px;
-        border-color: root.tone == 2 ? Theme.error.with-alpha(0.42) : root.tone == 1 ? Theme.warn.with-alpha(0.38) : root.selected || (root.interactive && touch.has-hover) ? Theme.accent.with-alpha(0.42) : Theme.hairline;
-        animate background, border-color { duration: Theme.quick; easing: ease-out; }
-    }
-    touch := TouchArea {
-        enabled: root.interactive;
-        mouse-cursor: root.interactive ? pointer : default;
-        clicked => { root.clicked(); }
-    }
-    @children
-}
-
-// Page title, an optional one-line subtitle and the page's actions at the top right.
-export component PageHeader inherits HorizontalLayout {
-    in property <string> title;
-    in property <string> subtitle;
-    spacing: Theme.space-l;
-    padding-bottom: Theme.space-xs;
-    VerticalLayout {
-        horizontal-stretch: 1;
-        spacing: 3px;
-        alignment: center;
-        Text { text: root.title; font-size: Theme.font-page; font-weight: 700; color: Theme.text; letter-spacing: -0.5px; accessible-role: text; }
-        if root.subtitle != "": Text { text: root.subtitle; color: Theme.text-secondary; wrap: word-wrap; font-size: Theme.font-small; }
-    }
-    HorizontalLayout {
-        horizontal-stretch: 0;
-        spacing: Theme.space-s;
-        alignment: end;
-        VerticalLayout {
-            alignment: center;
-            HorizontalLayout {
-                spacing: Theme.space-s;
-                @children
-            }
-        }
-    }
-}
-
-// A titled group inside a pane: title (+ optional caption) on the left, actions on the right.
-export component SectionHeader inherits HorizontalLayout {
-    in property <string> title;
-    in property <string> caption;
-    spacing: Theme.space-m;
-    VerticalLayout {
-        horizontal-stretch: 1;
-        spacing: 2px;
-        alignment: center;
-        Text { text: root.title; font-size: Theme.font-emphasis; font-weight: 650; color: Theme.text; }
-        if root.caption != "": Secondary { text: root.caption; }
-    }
-    HorizontalLayout {
-        horizontal-stretch: 0;
-        spacing: Theme.space-s;
-        alignment: end;
-        VerticalLayout {
-            alignment: center;
-            HorizontalLayout {
-                spacing: Theme.space-s;
-                @children
-            }
-        }
-    }
-}
-
-// Nothing to show (yet): an icon and a quiet sentence.
+// Nothing to show (yet): an icon and a sentence.
 export component EmptyState inherits VerticalLayout {
     in property <string> text;
     in property <image> icon: @image-url("assets/icons/info.svg");
-    padding: Theme.space-2xl;
-    spacing: Theme.space-s;
+    padding: 28px;
+    spacing: 10px;
     alignment: center;
     HorizontalLayout {
         alignment: center;
         Rectangle {
-            width: 36px;
-            height: 36px;
-            border-radius: 18px;
-            background: Theme.fill-subtle;
-            Icon { source: root.icon; width: 17px; height: 17px; tint: Theme.text-tertiary; }
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            background: Theme.inset;
+            Icon { source: root.icon; width: 18px; height: 18px; tint: Theme.text-muted; }
         }
     }
     Text { text: root.text; color: Theme.text-secondary; font-size: Theme.font-body; wrap: word-wrap; horizontal-alignment: center; }
 }
 
-// A labelled field: the label above the control, so columns of fields stay compact.
+// A labelled field: the label above the control.
 export component Field inherits VerticalLayout {
     in property <string> label;
     spacing: 6px;
@@ -245,13 +323,13 @@ export component Field inherits VerticalLayout {
     @children
 }
 
-// A settings-style row: label (and caption) on the left, the control on the right.
+// A settings row: label and caption on the left, the control on the right.
 export component SettingRow inherits HorizontalLayout {
     in property <string> label;
     in property <string> caption;
-    spacing: Theme.space-l;
-    padding-top: Theme.space-s;
-    padding-bottom: Theme.space-s;
+    spacing: 16px;
+    padding-top: 12px;
+    padding-bottom: 12px;
     VerticalLayout {
         horizontal-stretch: 1;
         spacing: 2px;
@@ -262,36 +340,32 @@ export component SettingRow inherits HorizontalLayout {
     HorizontalLayout {
         horizontal-stretch: 0;
         alignment: end;
-        spacing: Theme.space-s;
+        spacing: 8px;
         VerticalLayout {
             alignment: center;
             HorizontalLayout {
-                spacing: Theme.space-s;
+                spacing: 8px;
                 @children
             }
         }
     }
 }
 
-// Sidebar entry: the selected page sits on a softly lit capsule with an accent indicator.
+// Sidebar entry: the selected page is a darker band with an amber dot at its left edge.
 export component NavItem inherits Rectangle {
     in property <string> label;
     in property <image> icon;
     in property <bool> selected;
-    in property <string> note;
-    in property <int> note-tone;
     callback clicked;
     property <bool> kbd;
-    height: 34px;
-    border-radius: Theme.radius-m;
-    background: root.selected ? Theme.accent.with-alpha(Theme.dark ? 0.14 : 0.10) : (touch.has-hover ? Theme.fill-hover : transparent);
-    border-width: root.kbd ? 2px : (root.selected ? 1px : 0px);
-    border-color: root.kbd ? Theme.focus-ring : Theme.accent.with-alpha(0.22);
-    animate background { duration: Theme.quick; easing: ease-out; }
+    height: 40px;
+    background: root.selected ? Theme.app-bg : (touch.has-hover ? Theme.control.with-alpha(0.55) : transparent);
+    animate background { duration: Theme.quick; }
     accessible-role: tab;
     accessible-label: root.label;
     accessible-item-selected: root.selected;
     accessible-action-default => { root.clicked(); }
+    if root.kbd: Rectangle { border-width: 2px; border-color: Theme.focus; }
     FocusScope {
         focus-gained(reason) => { root.kbd = reason == FocusReason.tab-navigation; }
         focus-lost => { root.kbd = false; }
@@ -307,106 +381,40 @@ export component NavItem inherits Rectangle {
         mouse-cursor: pointer;
         clicked => { root.clicked(); }
     }
-    Rectangle {
-        x: 0;
+    if root.selected: Rectangle {
+        x: 10px;
         y: (parent.height - self.height) / 2;
-        width: 3px;
-        height: root.selected ? 16px : 0px;
-        border-radius: 1.5px;
-        background: Theme.accent;
-        animate height { duration: Theme.smooth; easing: ease-out; }
+        width: 8px;
+        height: 8px;
+        border-radius: 4px;
+        background: Theme.amber;
     }
     HorizontalLayout {
-        padding-left: 11px;
-        padding-right: 8px;
-        spacing: 10px;
+        padding-left: 28px;
+        padding-right: 12px;
+        spacing: 12px;
         Icon {
             y: (parent.height - self.height) / 2;
             source: root.icon;
-            width: 16px;
-            height: 16px;
-            tint: root.selected ? Theme.accent : (touch.has-hover ? Theme.text : Theme.text-secondary);
+            tint: root.selected ? Theme.text : (touch.has-hover ? Theme.text : Theme.text-secondary);
         }
         Text {
             text: root.label;
             font-size: Theme.font-body;
-            font-weight: root.selected ? 600 : 500;
-            color: root.selected ? Theme.text : Theme.text-secondary;
+            font-weight: root.selected ? 600 : 400;
+            color: root.selected || touch.has-hover ? Theme.text : Theme.text-secondary;
             vertical-alignment: center;
             overflow: elide;
-            horizontal-stretch: 1;
-        }
-        if root.note != "": VerticalLayout {
-            alignment: center;
-            Badge { text: root.note; tone: root.note-tone; }
         }
     }
 }
 
-// A row of a grouped list inside a pane: leading icon chip, title and lines, trailing actions; a hairline
-// separates it from the next row.
-export component ListRow inherits Rectangle {
-    in property <string> title;
-    in property <string> subtitle;
-    in property <string> detail;
-    in property <image> icon;
-    // 0 neutral, 1 warning, 2 problem, 3 accent, 4 ok.
-    in property <int> tone;
-    in property <bool> last;
-    in property <bool> wrap-title;
-    property <color> c: root.tone == 2 ? Theme.error : root.tone == 1 ? Theme.warn : root.tone == 4 ? Theme.ok : Theme.accent;
-    min-height: row.preferred-height;
-    accessible-role: list-item;
-    accessible-label: root.title;
-    if !root.last: Rectangle {
-        x: root.icon.width > 0 ? 52px : 14px;
-        y: parent.height - 1px;
-        width: parent.width - self.x - 14px;
-        height: 1px;
-        background: Theme.hairline;
-    }
-    row := HorizontalLayout {
-        padding-left: 14px;
-        padding-right: 12px;
-        padding-top: 10px;
-        padding-bottom: 10px;
-        spacing: 12px;
-        if root.icon.width > 0: VerticalLayout {
-            alignment: start;
-            Rectangle {
-                width: 28px;
-                height: 28px;
-                border-radius: 8px;
-                background: root.tone == 0 ? Theme.fill-hover : root.c.with-alpha(0.14);
-                Icon { source: root.icon; width: 15px; height: 15px; tint: root.tone == 0 ? Theme.text-secondary : root.c; }
-            }
-        }
-        VerticalLayout {
-            horizontal-stretch: 1;
-            spacing: 2px;
-            alignment: center;
-            Text {
-                text: root.title;
-                font-size: Theme.font-body;
-                font-weight: 600;
-                color: Theme.text;
-                overflow: elide;
-                wrap: root.wrap-title ? word-wrap : no-wrap;
-            }
-            if root.subtitle != "": Text { text: root.subtitle; font-size: Theme.font-small; color: root.tone == 2 ? Theme.error : root.tone == 1 ? Theme.warn : Theme.text-secondary; wrap: word-wrap; }
-            if root.detail != "": Text { text: root.detail; font-size: Theme.font-small; color: Theme.text-tertiary; wrap: word-wrap; }
-        }
-        HorizontalLayout {
-            horizontal-stretch: 0;
-            spacing: 6px;
-            alignment: end;
-            VerticalLayout {
-                alignment: center;
-                HorizontalLayout {
-                    spacing: 6px;
-                    @children
-                }
-            }
-        }
-    }
+// The heading of a group of sidebar entries.
+export component NavGroup inherits Text {
+    x: 28px;
+    height: 30px;
+    font-size: Theme.font-body;
+    font-weight: 600;
+    color: Theme.text;
+    vertical-alignment: center;
 }

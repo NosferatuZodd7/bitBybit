@@ -965,89 +965,155 @@ pub fn active_sharing_session(changes: &[ReportedChange]) -> Option<uuid::Uuid> 
         .and_then(|c| c.record.correlation_id)
 }
 
+/// A coloured summary card of the dashboard: a real figure, or "—" with a note when it cannot be read.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Tile {
+pub struct Kpi {
     pub title: String,
     pub value: String,
-    /// 0 ok, 1 attention, 2 problem, 3 unknown.
-    pub state: i32,
-    /// Page the tile opens.
+    pub note: String,
+    /// Page the card's "Detalhe" opens.
     pub page: i32,
 }
 
-/// Dashboard tiles from what the app already loaded (no extra sources).
-pub fn dashboard_tiles(
+/// The three dashboard cards: network interfaces, devices, and bitBybit's own changes (driver/system state).
+pub fn dashboard_kpis(
     network: Option<&NetworkOverview>,
     devices: &[DeviceSummary],
-    audio: &[AudioEndpoint],
-    displays: Option<usize>,
     changes: &[ReportedChange],
     catalog: &TextCatalog,
-) -> Vec<Tile> {
+) -> Vec<Kpi> {
     let r = |t: bitbybit_core::LocalizedText| catalog.resolve(&t);
-    let present = devices.iter().filter(|d| d.is_present == Some(true));
-    let problems = present.clone().filter(|d| d.problem_code.is_some()).count();
-    let default_out = audio
-        .iter()
-        .find(|e| e.flow == AudioDataFlow::Render && e.default_roles.console)
-        .map(AudioEndpoint::display_name);
+    let unknown = || r(text!("app.dash.unknown", "Not available"));
+    let interfaces = network.map(|o| {
+        let rows = interface_rows(o, catalog).0;
+        (rows.iter().filter(|i| i.up).count(), rows.len(), rows.iter().filter(|i| i.up && i.vpn).count())
+    });
+    let present = devices.iter().filter(|d| d.is_present == Some(true)).count();
+    let problems = devices.iter().filter(|d| d.is_present == Some(true) && d.problem_code.is_some()).count();
     let active = changes.iter().filter(|c| c.record.is_active()).count();
     let attention = changes.iter().filter(|c| c.record.status == ChangeStatus::RevertFailed).count();
     vec![
-        Tile {
-            title: r(text!("app.page.devices.title", "Devices")),
-            value: if devices.is_empty() {
-                r(text!("app.dash.unknown", "Not available"))
-            } else {
-                r(text!(
-                    "app.dash.devices",
-                    "{0} connected · {1} with a problem",
-                    present.count().to_string(),
-                    problems.to_string()
-                ))
-            },
-            state: if devices.is_empty() {
-                3
+        Kpi {
+            title: r(text!("app.kpi.interfaces", "Network interfaces up")),
+            value: interfaces.map_or_else(|| "—".to_owned(), |(up, ..)| up.to_string()),
+            note: interfaces.map_or_else(unknown, |(_, total, vpn)| {
+                r(text!("app.kpi.interfacesNote", "of {0}, {1} through a VPN", total.to_string(), vpn.to_string()))
+            }),
+            page: 0,
+        },
+        Kpi {
+            title: r(text!("app.kpi.devices", "Connected devices")),
+            value: if devices.is_empty() { "—".to_owned() } else { present.to_string() },
+            note: if devices.is_empty() {
+                unknown()
             } else if problems > 0 {
-                1
+                r(text!("app.kpi.devicesProblems", "{0} with a problem", problems.to_string()))
             } else {
-                0
+                r(text!("app.kpi.devicesOk", "No problems"))
             },
             page: 1,
         },
-        Tile {
-            title: r(text!("app.page.network.title", "Network")),
-            value: network.map_or_else(|| r(text!("app.dash.unknown", "Not available")), |o| route_summary(o, catalog)),
-            state: if network.is_none() { 3 } else { 0 },
-            page: 0,
-        },
-        Tile {
-            title: r(text!("app.page.audio.title", "Audio")),
-            value: default_out.unwrap_or_else(|| r(text!("app.dash.noDefault", "No default playback device"))),
-            state: if audio.is_empty() { 3 } else { 0 },
-            page: 2,
-        },
-        Tile {
-            title: r(text!("app.page.displays.title", "Displays")),
-            value: displays.map_or_else(
-                || r(text!("app.dash.unknown", "Not available")),
-                |n| r(text!("app.dash.displays", "{0} active", n.to_string())),
-            ),
-            state: if displays.is_none() { 3 } else { 0 },
-            page: 5,
-        },
-        Tile {
-            title: r(text!("app.tab.changes", "bitBybit changes")),
-            value: r(text!(
-                "app.dash.changes",
-                "{0} active · {1} need attention",
-                active.to_string(),
-                attention.to_string()
-            )),
-            state: if attention > 0 { 2 } else { 0 },
+        Kpi {
+            title: r(text!("app.kpi.changes", "Active bitBybit changes")),
+            value: active.to_string(),
+            note: if attention > 0 {
+                r(text!("app.kpi.changesAttention", "{0} need attention", attention.to_string()))
+            } else {
+                r(text!("app.kpi.changesOk", "All can be reverted"))
+            },
             page: 3,
         },
     ]
+}
+
+/// One series of the dashboard chart: how many changes bitBybit recorded per month or per day.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChartSeries {
+    pub name: String,
+    /// One label per point ("" where a label would crowd the axis).
+    pub labels: Vec<String>,
+    pub values: Vec<u32>,
+    pub summary: String,
+}
+
+/// The last 12 months and the last 30 days, counted from the changes' creation times (in `now`'s offset).
+pub fn change_series(changes: &[ReportedChange], now: time::OffsetDateTime, catalog: &TextCatalog) -> Vec<ChartSeries> {
+    let r = |t: bitbybit_core::LocalizedText| catalog.resolve(&t);
+    let dates: Vec<time::Date> = changes.iter().map(|c| c.record.created_at.to_offset(now.offset()).date()).collect();
+    let today = now.date();
+    // Months: (year, month) of the last 12, oldest first.
+    let mut months = Vec::new();
+    let (mut y, mut m) = (today.year(), u8::from(today.month()));
+    for _ in 0..12 {
+        months.push((y, m));
+        (y, m) = if m == 1 { (y - 1, 12) } else { (y, m - 1) };
+    }
+    months.reverse();
+    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let month_values: Vec<u32> = months
+        .iter()
+        .map(|&(y, m)| dates.iter().filter(|d| d.year() == y && u8::from(d.month()) == m).count() as u32)
+        .collect();
+    let month_labels: Vec<String> = months
+        .iter()
+        .map(|&(_, m)| {
+            let key = format!("app.month.{m}");
+            catalog.template(&key).map_or_else(|| MONTHS[usize::from(m) - 1].to_owned(), str::to_owned)
+        })
+        .collect();
+    let days: Vec<time::Date> =
+        (0..30).rev().filter_map(|back| today.checked_sub(time::Duration::days(back))).collect();
+    let day_values: Vec<u32> = days.iter().map(|day| dates.iter().filter(|d| *d == day).count() as u32).collect();
+    // Every fifth day and the last one are labelled (day of the month).
+    let day_labels: Vec<String> = days
+        .iter()
+        .enumerate()
+        .map(|(i, d)| if i % 5 == 4 || i + 1 == days.len() { d.day().to_string() } else { String::new() })
+        .collect();
+    let total = |v: &[u32]| v.iter().sum::<u32>().to_string();
+    vec![
+        ChartSeries {
+            name: r(text!("app.chart.months", "Last 12 months")),
+            summary: r(text!("app.chart.monthsSummary", "{0} changes in the last 12 months", total(&month_values))),
+            labels: month_labels,
+            values: month_values,
+        },
+        ChartSeries {
+            name: r(text!("app.chart.days", "Last 30 days")),
+            summary: r(text!("app.chart.daysSummary", "{0} changes in the last 30 days", total(&day_values))),
+            labels: day_labels,
+            values: day_values,
+        },
+    ]
+}
+
+/// The top of the value axis: at least 4, rounded up to a multiple of 4 (so the 5 axis labels are whole numbers).
+pub fn chart_max(values: &[u32]) -> u32 {
+    values.iter().copied().max().unwrap_or(0).max(4).div_ceil(4) * 4
+}
+
+/// SVG path data of a smooth line through `values` in a `w`×`h` box (y down, `max` at the top) and the same line
+/// closed to the baseline (the area under it). Catmull-Rom segments as cubic Béziers, kept inside the box.
+pub fn chart_paths(values: &[u32], max: u32, w: f32, h: f32) -> (String, String) {
+    if values.is_empty() {
+        return (String::new(), String::new());
+    }
+    let n = values.len();
+    let step = if n > 1 { w / (n - 1) as f32 } else { 0.0 };
+    let pts: Vec<(f32, f32)> =
+        values.iter().enumerate().map(|(i, v)| (i as f32 * step, h - (*v as f32 / max.max(1) as f32) * h)).collect();
+    let clamp = |y: f32| y.clamp(0.0, h);
+    let mut line = format!("M {:.1} {:.1}", pts[0].0, pts[0].1);
+    for i in 0..n.saturating_sub(1) {
+        let p0 = pts[i.saturating_sub(1)];
+        let (p1, p2) = (pts[i], pts[i + 1]);
+        let p3 = pts[(i + 2).min(n - 1)];
+        let c1 = (p1.0 + (p2.0 - p0.0) / 6.0, clamp(p1.1 + (p2.1 - p0.1) / 6.0));
+        let c2 = (p2.0 - (p3.0 - p1.0) / 6.0, clamp(p2.1 - (p3.1 - p1.1) / 6.0));
+        line += &format!(" C {:.1} {:.1} {:.1} {:.1} {:.1} {:.1}", c1.0, c1.1, c2.0, c2.1, p2.0, p2.1);
+    }
+    let area = format!("{line} L {:.1} {h:.1} L 0 {h:.1} Z", pts[n - 1].0);
+    (line, area)
 }
 
 /// How a proposed action runs: a broker operation, a per-user audio change done in the app, or a manual step.
@@ -1084,6 +1150,45 @@ pub fn action_route(a: &bitbybit_domain::diagnostics::ProposedAction) -> ActionR
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_chart_counts_changes_per_month_and_per_day() {
+        use bitbybit_journal::{ChangeCategory, ChangeRecord};
+        let now = time::macros::datetime!(2026-11-17 12:00 UTC);
+        let at = |d: time::OffsetDateTime| ReportedChange {
+            record: ChangeRecord::new(ChangeCategory::Network, "sharing.ics", "x", "test", d),
+            user_scope: false,
+        };
+        let changes = [
+            at(now),
+            at(now - time::Duration::days(1)),
+            at(time::macros::datetime!(2026-01-03 09:00 UTC)),
+            at(time::macros::datetime!(2025-11-30 09:00 UTC)), // 12 months back: outside the window
+        ];
+        let series = change_series(&changes, now, TextCatalog::default_catalog());
+        let months = &series[0].values;
+        assert_eq!(months.len(), 12);
+        assert_eq!(months[11], 2, "this month");
+        assert_eq!(months[1], 1, "January");
+        assert_eq!(months.iter().sum::<u32>(), 3);
+        let days = &series[1].values;
+        assert_eq!((days.len(), days[29], days[28]), (30, 1, 1));
+        assert_eq!(series[1].labels[29], "17");
+    }
+
+    #[test]
+    fn the_chart_line_stays_inside_its_box_and_the_area_is_closed() {
+        assert_eq!(chart_max(&[0, 1, 2]), 4);
+        assert_eq!(chart_max(&[0, 9]), 12);
+        let (line, area) = chart_paths(&[0, 12, 0, 12, 3], 12, 1000.0, 300.0);
+        assert!(line.starts_with("M 0.0 300.0"));
+        assert!(area.ends_with('Z'));
+        let numbers: Vec<f32> = line.split(' ').filter_map(|t| t.parse::<f32>().ok()).collect();
+        for pair in numbers.chunks(2) {
+            assert!((0.0..=1000.0).contains(&pair[0]) && (0.0..=300.0).contains(&pair[1]), "{pair:?}");
+        }
+        assert_eq!(chart_paths(&[], 4, 10.0, 10.0), (String::new(), String::new()));
+    }
+
     use super::*;
     use bitbybit_network::model::{
         IfType, IpInterfaceSettings, NetworkInterface, NetworkSnapshot, OperStatus, Route, UnicastAddress,
@@ -1521,16 +1626,21 @@ mod tests {
     }
 
     #[test]
-    fn dashboard_flags_problems_and_unknown_sources() {
-        let broken = DeviceSummary {
-            instance_id: "X".into(),
+    fn the_cards_count_present_devices_and_problems_and_say_when_data_is_missing() {
+        let device = |id: &str, problem: Option<u32>| DeviceSummary {
+            instance_id: id.into(),
             is_present: Some(true),
-            problem_code: Some(43),
+            problem_code: problem,
             ..DeviceSummary::default()
         };
-        let tiles = dashboard_tiles(None, &[broken], &[], None, &[], TextCatalog::default_catalog());
-        assert_eq!(tiles.iter().map(|t| t.state).collect::<Vec<_>>(), [1, 3, 3, 3, 0]);
-        assert!(tiles[0].value.contains('1'));
+        let kpis =
+            dashboard_kpis(None, &[device("A", None), device("B", Some(43))], &[], TextCatalog::default_catalog());
+        assert_eq!(kpis.iter().map(|k| k.page).collect::<Vec<_>>(), [0, 1, 3]);
+        assert_eq!(kpis[0].value, "—", "no network data: no number");
+        assert_eq!(kpis[1].value, "2");
+        assert!(kpis[1].note.contains('1'), "{}", kpis[1].note);
+        assert_eq!(kpis[2].value, "0");
+        assert_eq!(dashboard_kpis(None, &[], &[], TextCatalog::default_catalog())[1].value, "—");
     }
 
     #[test]

@@ -17,7 +17,6 @@ mod demo;
 mod devices_actions;
 mod drivers_page;
 mod export_logs;
-mod glass;
 mod ops;
 mod settings_page;
 mod sharing_page;
@@ -238,25 +237,13 @@ fn load(weak: slint::Weak<AppWindow>) {
         let changes = bitbybit_audio::report::ReportedChange::load(&bitbybit_core::paths::AppPaths::from_environment());
         let _ = slint::invoke_from_event_loop(move || {
             let Some(ui) = weak.upgrade() else { return };
-            let tiles = view::dashboard_tiles(
+            apply_dashboard(
+                &ui,
                 result.as_ref().ok().map(|d| &d.network),
                 result.as_ref().map(|d| d.devices.as_slice()).unwrap_or_default(),
-                audio.as_ref().map(Vec::as_slice).unwrap_or_default(),
-                displays.as_ref().ok().map(Vec::len),
                 &changes,
                 catalog,
             );
-            ui.set_tiles(ModelRc::from(Rc::new(VecModel::from(
-                tiles
-                    .into_iter()
-                    .map(|t| ui::DashTile {
-                        title: t.title.into(),
-                        value: t.value.into(),
-                        state: t.state,
-                        page: t.page,
-                    })
-                    .collect::<Vec<_>>(),
-            ))));
             apply_audio(&ui, audio, catalog);
             apply_displays(&ui, displays, catalog);
             apply_changes(&ui, &changes, catalog);
@@ -397,6 +384,43 @@ fn apply_displays(ui: &AppWindow, displays: Result<Vec<MonitorSummary>, Localize
             ui.set_displays_summary(catalog.resolve(&problem).into());
         }
     }
+}
+
+/// The dashboard: the three cards and the chart of bitBybit's changes (real data only).
+fn apply_dashboard(
+    ui: &AppWindow,
+    network: Option<&NetworkOverview>,
+    devices: &[bitbybit_domain::snapshot::DeviceSummary],
+    changes: &[bitbybit_audio::report::ReportedChange],
+    catalog: &TextCatalog,
+) {
+    fn model<T: Clone + 'static>(v: Vec<T>) -> ModelRc<T> {
+        ModelRc::from(Rc::new(VecModel::from(v)))
+    }
+    let kpis: Vec<ui::Kpi> = view::dashboard_kpis(network, devices, changes, catalog)
+        .into_iter()
+        .map(|k| ui::Kpi { title: k.title.into(), value: k.value.into(), note: k.note.into(), page: k.page })
+        .collect();
+    ui.set_kpis(model(kpis));
+    let now = time::OffsetDateTime::now_local().unwrap_or_else(|_| time::OffsetDateTime::now_utc());
+    let charts: Vec<ui::ChartData> = view::change_series(changes, now, catalog)
+        .into_iter()
+        .map(|s| {
+            let max = view::chart_max(&s.values);
+            let (line, area) = view::chart_paths(&s.values, max, 1000.0, 300.0);
+            let labels = |v: Vec<String>| model(v.into_iter().map(slint::SharedString::from).collect());
+            ui::ChartData {
+                name: s.name.into(),
+                line: line.into(),
+                area: area.into(),
+                x_labels: labels(s.labels),
+                y_labels: labels((0..5).rev().map(|q| (max * q / 4).to_string()).collect()),
+                summary: s.summary.into(),
+                empty: s.values.iter().all(|v| *v == 0),
+            }
+        })
+        .collect();
+    ui.set_charts(model(charts));
 }
 
 fn apply_changes(ui: &AppWindow, changes: &[bitbybit_audio::report::ReportedChange], catalog: &TextCatalog) {

@@ -2,7 +2,8 @@
 //! high-risk confirmation; `=adapter` shows the sharing panel in adapter mode, `=drivers` opens the driver chooser, `=toast` shows a failed operation) so the layout can be checked where no Windows broker exists. Never in release builds.
 
 use crate::ui::{
-    AppWindow, AudioRow, ChangeRow, DeviceRow, DisplayRow, DriverChoice, FindingRow, InterfaceRow, StoreItem,
+    AppWindow, AudioRow, ChangeRow, ChartData, DeviceRow, DisplayRow, DriverChoice, FindingRow, InterfaceRow, Kpi,
+    StoreItem,
 };
 use slint::{ModelRc, SharedString, VecModel};
 use std::rc::Rc;
@@ -116,15 +117,86 @@ pub fn fill(ui: &AppWindow, mode: &str) {
         actions: "Recomendado: repor o controlador anterior.".into(),
         buttons: strings(&["Repor o controlador anterior"]),
     }]));
-    ui.set_changes(model(vec![ChangeRow {
-        id: "c".into(),
-        when: "Hoje 10:41".into(),
-        kind: "Troca de controlador".into(),
-        description: "Realtek High Definition Audio: 6.0.9600.1 → 6.0.9381.1 (demo)".into(),
-        status: "Ativa".into(),
-        scope: "Máquina".into(),
-        can_revert: true,
-    }]));
+    ui.set_broker_state(1);
+    let kpi = |title: &str, value: &str, note: &str, page: i32| Kpi {
+        title: title.into(),
+        value: value.into(),
+        note: note.into(),
+        page,
+    };
+    ui.set_kpis(model(vec![
+        kpi("Interfaces de rede ativas", "3", "de 5, 1 através de VPN (demo)", 0),
+        kpi("Dispositivos ligados", "212", "1 com problema (demo)", 1),
+        kpi("Alterações ativas do bitBybit", "4", "Todas podem ser revertidas (demo)", 3),
+    ]));
+    let series = |name: &str, labels: &[&str], values: &[u32], summary: &str| {
+        let max = crate::view::chart_max(values);
+        let (line, area) = crate::view::chart_paths(values, max, 1000.0, 300.0);
+        ChartData {
+            name: name.into(),
+            line: line.into(),
+            area: area.into(),
+            x_labels: strings(labels),
+            y_labels: model((0..5).rev().map(|q| SharedString::from((max * q / 4).to_string())).collect()),
+            summary: summary.into(),
+            empty: false,
+        }
+    };
+    ui.set_charts(model(vec![
+        series(
+            "Últimos 12 meses",
+            &["dez", "jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov"],
+            &[2, 5, 3, 8, 6, 4, 9, 5, 7, 3, 6, 12],
+            "70 alterações nos últimos 12 meses (demo)",
+        ),
+        series(
+            "Últimos 30 dias",
+            &[
+                "19", "", "", "", "", "24", "", "", "", "", "29", "", "", "", "", "4", "", "", "", "", "9", "", "", "",
+                "", "14", "", "", "", "17",
+            ],
+            &[0, 1, 0, 2, 0, 0, 1, 3, 0, 0, 0, 1, 0, 0, 2, 0, 1, 0, 0, 0, 4, 0, 0, 1, 0, 0, 2, 0, 1, 1],
+            "21 alterações nos últimos 30 dias (demo)",
+        ),
+    ]));
+    ui.set_changes(model(vec![
+        ChangeRow {
+            id: "c".into(),
+            when: "Hoje 10:41".into(),
+            kind: "Troca de controlador".into(),
+            description: "Realtek High Definition Audio: 6.0.9600.1 → 6.0.9381.1 (demo)".into(),
+            status: "Ativa".into(),
+            scope: "Máquina".into(),
+            can_revert: true,
+        },
+        ChangeRow {
+            id: "d".into(),
+            when: "Ontem 18:02".into(),
+            kind: "Partilha de Internet".into(),
+            description: "Hotspot bitBybit-demo a partilhar Ethernet (demo)".into(),
+            status: "Revertida".into(),
+            scope: "Rede".into(),
+            can_revert: false,
+        },
+        ChangeRow {
+            id: "e".into(),
+            when: "12 nov 09:15".into(),
+            kind: "Regra de firewall".into(),
+            description: "Grupo bitBybit: bloquear acesso local de um cliente (demo)".into(),
+            status: "Ativa".into(),
+            scope: "Rede".into(),
+            can_revert: true,
+        },
+        ChangeRow {
+            id: "f".into(),
+            when: "3 nov 21:40".into(),
+            kind: "Dispositivo predefinido".into(),
+            description: "Saída de áudio: Colunas Realtek (demo)".into(),
+            status: "Revertida".into(),
+            scope: "Utilizador".into(),
+            can_revert: false,
+        },
+    ]));
     let choice =
         |luid: u64, label: &str, vpn: bool| crate::view::ShareChoice { luid, label: label.into(), vpn, wifi: false };
     crate::sharing_page::show(

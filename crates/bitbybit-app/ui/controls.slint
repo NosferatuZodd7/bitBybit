@@ -1,11 +1,9 @@
-// Controls of the bitBybit design system. Every control has hover, pressed, keyboard-focus, disabled and (where
-// it applies) loading states; the focus ring shows for keyboard focus only (Tab), never after a mouse click.
-// Icons are Lucide SVGs (ISC, third-party/lucide) tinted with `colorize`.
+// Controls of the bitBybit design system: flat, compact, pill-shaped like the specification's "Detail" buttons and
+// search field. Every control has hover, pressed, keyboard-focus (Tab only), disabled and, where it applies,
+// loading states, and an accessible role. Icons are Lucide SVGs (ISC, third-party/lucide).
 
 import { Theme } from "theme.slint";
-import { GlassEngine, GlassFrame } from "glass.slint";
 
-// A 16-px icon from assets/icons.
 export component Icon inherits Image {
     in property <color> tint: Theme.text-secondary;
     width: 16px;
@@ -31,10 +29,8 @@ export component Spinner {
     }
 }
 
-// The keyboard focus ring around a capsule or rounded control.
 component FocusRing inherits Rectangle {
     in property <length> radius;
-    // Size of the element the ring surrounds.
     in property <length> around-width;
     in property <length> around-height;
     x: -3px;
@@ -43,11 +39,11 @@ component FocusRing inherits Rectangle {
     height: root.around-height + 6px;
     border-radius: root.radius + 3px;
     border-width: 2px;
-    border-color: Theme.focus-ring;
+    border-color: Theme.focus;
 }
 
-// Capsule button. kind: 0 secondary (glass), 1 primary (accent), 2 destructive, 3 quiet (text only).
-// size: 0 regular (32 px), 1 small (28 px), 2 large (40 px).
+// Pill button. kind: 0 neutral, 1 primary (green), 2 danger, 3 text only, 4 on a coloured card.
+// size: 0 regular (34 px), 1 small (28 px).
 export component Button {
     in property <string> text;
     in property <image> icon;
@@ -55,41 +51,34 @@ export component Button {
     in property <int> size;
     in property <bool> enabled: true;
     in property <bool> loading;
-    // true: the button takes the width its layout gives it (otherwise it is never wider than its label).
+    // true: takes the width its layout gives it (otherwise never wider than its label).
     in property <bool> stretch;
     callback clicked;
     property <bool> active: root.enabled && !root.loading;
     property <bool> kbd;
-    property <length> h: root.size == 1 ? Theme.control-height-s : root.size == 2 ? Theme.control-height-l : Theme.control-height;
-    property <color> fg: root.kind == 1 ? Theme.on-accent : root.kind == 2 ? Theme.error : Theme.text;
-    property <bool> has-icon: root.icon.width > 0 || root.loading;
+    property <length> h: root.size == 1 ? Theme.control-height-s : Theme.control-height;
+    property <color> fg: root.kind == 1 ? #FFFFFF : root.kind == 2 ? Theme.red : Theme.text;
     height: root.h;
     min-width: row.preferred-width;
     max-width: root.stretch ? 100000px : row.preferred-width;
     horizontal-stretch: root.stretch ? 1 : 0;
     vertical-stretch: 0;
-    opacity: root.enabled ? 1 : 0.42;
+    opacity: root.enabled ? 1 : 0.45;
     accessible-role: button;
     accessible-label: root.text;
     accessible-enabled: root.active;
     accessible-action-default => { if (root.active) { root.clicked(); } }
-    if root.kind != 3: GlassFrame {
-        f: root.size == 1 ? GlassEngine.thumb : root.size == 2 ? GlassEngine.large : GlassEngine.control;
-        inner-width: root.width;
-        inner-height: root.height;
-    }
-    body := Rectangle {
+    Rectangle {
         border-radius: root.h / 2;
-        background: root.kind == 1 ? (touch.pressed ? Theme.accent.darker(0.12) : touch.has-hover && root.active ? Theme.accent-hover : Theme.accent)
-            : root.kind == 2 ? (touch.pressed ? Theme.error.with-alpha(0.3) : touch.has-hover && root.active ? Theme.error.with-alpha(0.22) : Theme.error.with-alpha(0.13))
-            : root.kind == 3 ? (touch.pressed ? Theme.fill-press : touch.has-hover && root.active ? Theme.fill-hover : transparent)
-            : (touch.pressed ? Theme.fill-press : touch.has-hover && root.active ? Theme.fill-hover : Theme.fill-subtle);
-        border-width: root.kind == 2 ? 1px : 0px;
-        border-color: Theme.error.with-alpha(0.4);
-        animate background { duration: Theme.quick; easing: ease-out; }
+        background: root.kind == 1 ? (touch.pressed ? Theme.green.darker(0.15) : touch.has-hover && root.active ? Theme.green.brighter(0.08) : Theme.green)
+            : root.kind == 2 ? (touch.pressed ? Theme.red.with-alpha(0.32) : touch.has-hover && root.active ? Theme.red.with-alpha(0.24) : Theme.red.with-alpha(0.15))
+            : root.kind == 3 ? (touch.pressed ? Theme.control-press : touch.has-hover && root.active ? Theme.control : transparent)
+            : root.kind == 4 ? (touch.pressed ? #FFFFFF47 : touch.has-hover && root.active ? #FFFFFF3D : #FFFFFF2E)
+            : (touch.pressed ? Theme.control-press : touch.has-hover && root.active ? Theme.control-hover : Theme.control);
+        animate background { duration: Theme.quick; }
     }
     if root.kbd: FocusRing { radius: root.h / 2; around-width: root.width; around-height: root.height; }
-    focus := FocusScope {
+    FocusScope {
         enabled: root.active;
         focus-gained(reason) => { root.kbd = reason == FocusReason.tab-navigation; }
         focus-lost => { root.kbd = false; }
@@ -107,8 +96,8 @@ export component Button {
         clicked => { root.clicked(); }
     }
     row := HorizontalLayout {
-        padding-left: root.kind == 3 ? 10px : (root.size == 1 ? 12px : 16px);
-        padding-right: root.kind == 3 ? 10px : (root.size == 1 ? 12px : 16px);
+        padding-left: root.kind == 3 ? 10px : (root.size == 1 ? 14px : 18px);
+        padding-right: root.kind == 3 ? 10px : (root.size == 1 ? 14px : 18px);
         spacing: 7px;
         alignment: center;
         if root.loading: Spinner { y: (parent.height - self.height) / 2; tint: root.fg; size: 14px; }
@@ -116,49 +105,61 @@ export component Button {
             y: (parent.height - self.height) / 2;
             source: root.icon;
             tint: root.fg;
-            width: root.size == 1 ? 14px : 15px;
-            height: self.width;
+            width: 14px;
+            height: 14px;
         }
         Text {
             text: root.text;
             font-size: root.size == 1 ? Theme.font-small : Theme.font-body;
-            font-weight: root.kind == 1 || root.kind == 2 ? 600 : 500;
+            font-weight: 600;
             color: root.fg;
             vertical-alignment: center;
         }
     }
 }
 
-// A round icon-only button with a tooltip (the tooltip is also its accessible name).
+// Square icon-only button with a tooltip (also its accessible name). badge: a count shown on the icon (0 = none).
 export component IconButton {
     in property <image> icon;
     in property <string> tooltip;
     in property <bool> enabled: true;
-    in property <bool> destructive;
+    in property <int> badge;
+    in property <color> tint: Theme.text-secondary;
     callback clicked;
     property <bool> kbd;
     property <bool> hovering: touch.has-hover;
-    width: 30px;
-    height: 30px;
+    width: 34px;
+    height: 34px;
     accessible-role: button;
     accessible-label: root.tooltip;
     accessible-enabled: root.enabled;
     accessible-action-default => { if (root.enabled) { root.clicked(); } }
-    opacity: root.enabled ? 1 : 0.42;
+    opacity: root.enabled ? 1 : 0.45;
     changed hovering => {
         if (!self.hovering) {
             tip.close();
         }
     }
     Rectangle {
-        border-radius: self.height / 2;
-        background: touch.pressed ? Theme.fill-press : touch.has-hover && root.enabled ? Theme.fill-hover : transparent;
+        border-radius: Theme.radius-control;
+        background: touch.pressed ? Theme.control-press : touch.has-hover && root.enabled ? Theme.control : transparent;
         animate background { duration: Theme.quick; }
     }
-    if root.kbd: FocusRing { radius: root.height / 2; around-width: root.width; around-height: root.height; }
+    if root.kbd: FocusRing { radius: Theme.radius-control; around-width: root.width; around-height: root.height; }
     Icon {
+        width: 18px;
+        height: 18px;
         source: root.icon;
-        tint: root.destructive ? Theme.error : (touch.has-hover ? Theme.text : Theme.text-secondary);
+        tint: touch.has-hover ? Theme.text : root.tint;
+    }
+    if root.badge > 0: Rectangle {
+        x: parent.width - 14px;
+        y: 3px;
+        width: max(15px, count.preferred-width + 8px);
+        height: 15px;
+        border-radius: 7.5px;
+        background: Theme.red;
+        count := Text { text: root.badge; font-size: 9px; font-weight: 700; color: #FFFFFF; }
     }
     FocusScope {
         enabled: root.enabled;
@@ -191,14 +192,14 @@ export component IconButton {
     tip := PopupWindow {
         close-policy: no-auto-close;
         x: (root.width - self.width) / 2;
-        y: -self.height - 6px;
+        y: root.height + 6px;
         width: tip-text.preferred-width + 16px;
         height: 24px;
         Rectangle {
-            border-radius: Theme.radius-xs;
-            background: Theme.glass-strong;
+            border-radius: 6px;
+            background: Theme.app-bg;
             border-width: 1px;
-            border-color: Theme.edge;
+            border-color: Theme.divider;
             tip-text := Text { text: root.tooltip; font-size: Theme.font-small; color: Theme.text; }
         }
     }
@@ -218,31 +219,26 @@ export component Toggle {
     accessible-label: root.text;
     accessible-enabled: root.enabled;
     accessible-action-default => { if (root.enabled) { root.checked = !root.checked; root.toggled(); } }
-    opacity: root.enabled ? 1 : 0.42;
+    opacity: root.enabled ? 1 : 0.45;
     HorizontalLayout {
         spacing: 10px;
-        track := Rectangle {
-            width: 36px;
-            height: 20px;
+        Rectangle {
+            width: 38px;
+            height: 22px;
             y: (parent.height - self.height) / 2;
-            border-radius: 10px;
-            background: root.checked ? (touch.has-hover && root.enabled ? Theme.accent-hover : Theme.accent) : (touch.has-hover && root.enabled ? Theme.fill-press : Theme.fill-hover);
-            border-width: root.checked ? 0px : 1px;
-            border-color: Theme.field-edge;
+            border-radius: 11px;
+            background: root.checked ? Theme.green : (touch.has-hover && root.enabled ? Theme.control-hover : Theme.control);
             animate background { duration: Theme.quick; }
             Rectangle {
                 x: root.checked ? 18px : 2px;
                 y: 2px;
-                width: 16px;
-                height: 16px;
-                border-radius: 8px;
-                background: root.checked ? #FFFFFF : (Theme.dark ? #DCE6F0 : #FFFFFF);
-                drop-shadow-color: #00000059;
-                drop-shadow-blur: 3px;
-                drop-shadow-offset-y: 1px;
-                animate x { duration: Theme.smooth; easing: ease-out; }
+                width: 18px;
+                height: 18px;
+                border-radius: 9px;
+                background: root.checked ? #FFFFFF : Theme.text-secondary;
+                animate x { duration: Theme.quick; easing: ease-out; }
             }
-            if root.kbd: FocusRing { radius: 10px; around-width: 36px; around-height: 20px; }
+            if root.kbd: FocusRing { radius: 11px; around-width: 38px; around-height: 22px; }
         }
         if root.text != "": Text {
             text: root.text;
@@ -289,20 +285,19 @@ export component Check {
     accessible-label: root.text;
     accessible-enabled: root.enabled;
     accessible-action-default => { if (root.enabled) { root.checked = !root.checked; root.toggled(); } }
-    opacity: root.enabled ? 1 : 0.42;
+    opacity: root.enabled ? 1 : 0.45;
     HorizontalLayout {
         spacing: 10px;
         alignment: start;
-        box := Rectangle {
+        Rectangle {
             width: 18px;
             height: 18px;
             y: (parent.height - self.height) / 2;
             border-radius: 5px;
-            background: root.checked ? (touch.has-hover && root.enabled ? Theme.accent-hover : Theme.accent) : (touch.has-hover && root.enabled ? Theme.fill-hover : Theme.field);
-            border-width: root.checked ? 0px : 1px;
-            border-color: touch.has-hover ? Theme.accent.with-alpha(0.6) : Theme.field-edge;
-            animate background { duration: Theme.quick; }
-            if root.checked: Icon { width: 12px; height: 12px; source: @image-url("assets/icons/check.svg"); tint: Theme.on-accent; }
+            background: root.checked ? Theme.green : Theme.inset;
+            border-width: root.checked ? 0px : 1.5px;
+            border-color: touch.has-hover ? Theme.text-secondary : Theme.text-muted;
+            if root.checked: Icon { width: 12px; height: 12px; source: @image-url("assets/icons/check.svg"); tint: #FFFFFF; }
             if root.kbd: FocusRing { radius: 5px; around-width: 18px; around-height: 18px; }
         }
         if root.text != "": Text {
@@ -336,12 +331,14 @@ export component Check {
     }
 }
 
-// Single-line text field. Trailing children (e.g. a show/hide button) sit inside the field on the right.
+// Single-line text field. `pill` gives the rounded search-field shape; trailing children sit inside on the right.
 export component TextField {
     in-out property <string> text <=> input.text;
     in property <string> placeholder-text;
     in property <InputType> input-type: InputType.text;
     in property <bool> enabled: true;
+    in property <bool> pill;
+    in property <image> leading-icon;
     callback accepted(string);
     callback edited(string);
     property <bool> focused: input.has-focus;
@@ -349,32 +346,24 @@ export component TextField {
     min-width: 96px;
     horizontal-stretch: 1;
     opacity: root.enabled ? 1 : 0.5;
-    if root.focused: Rectangle {
-        x: -3px;
-        y: -3px;
-        width: parent.width + 6px;
-        height: parent.height + 6px;
-        border-radius: Theme.radius-m + 3px;
-        background: Theme.accent.with-alpha(0.16);
-    }
     Rectangle {
-        border-radius: Theme.radius-m;
-        background: Theme.field;
+        border-radius: root.pill ? self.height / 2 : Theme.radius-control;
+        background: Theme.control;
         border-width: 1px;
-        border-color: root.focused ? Theme.accent : (hover.has-hover && root.enabled ? Theme.text-secondary.with-alpha(0.45) : Theme.field-edge);
+        border-color: root.focused ? Theme.cyan : (hover.has-hover && root.enabled ? Theme.control-press : Theme.control);
         animate border-color { duration: Theme.quick; }
     }
     hover := TouchArea { enabled: root.enabled; mouse-cursor: MouseCursor.text; clicked => { input.focus(); } }
     HorizontalLayout {
-        padding-left: 11px;
-        padding-right: 4px;
-        spacing: 4px;
+        padding-left: root.pill ? 16px : 12px;
+        padding-right: root.pill ? 12px : 4px;
+        spacing: 8px;
         Rectangle {
             horizontal-stretch: 1;
             if root.text == "": Text {
                 width: parent.width;
                 text: root.placeholder-text;
-                color: Theme.text-tertiary;
+                color: Theme.text-muted;
                 font-size: Theme.font-body;
                 vertical-alignment: center;
                 overflow: elide;
@@ -386,7 +375,7 @@ export component TextField {
                 vertical-alignment: center;
                 font-size: Theme.font-body;
                 color: Theme.text;
-                selection-background-color: Theme.accent.with-alpha(0.35);
+                selection-background-color: Theme.cyan.with-alpha(0.4);
                 selection-foreground-color: Theme.text;
                 input-type: root.input-type;
                 single-line: true;
@@ -396,21 +385,24 @@ export component TextField {
                 edited => { root.edited(self.text); }
             }
         }
+        if root.leading-icon.width > 0: Icon { y: (parent.height - self.height) / 2; source: root.leading-icon; tint: Theme.text-muted; }
         @children
     }
 }
 
-// Drop-down list (same contract as std ComboBox: model, current-index, `selected(value)`).
+// Drop-down list (same contract as std ComboBox: model, current-index, `selected(value)`). `pill`: the compact
+// rounded selector of the specification's chart panel.
 export component Select {
     in property <[string]> model;
     in-out property <int> current-index;
     out property <string> current-value: root.model[root.current-index];
     in property <bool> enabled: true;
+    in property <bool> pill;
     callback selected(string);
     property <bool> kbd;
-    height: Theme.control-height;
-    min-width: 140px;
-    horizontal-stretch: 1;
+    height: root.pill ? Theme.control-height-s : Theme.control-height;
+    min-width: root.pill ? row.preferred-width : 140px;
+    horizontal-stretch: root.pill ? 0 : 1;
     opacity: root.enabled ? 1 : 0.5;
     accessible-role: combobox;
     accessible-value: root.current-value;
@@ -422,21 +414,20 @@ export component Select {
             root.selected(root.model[i]);
         }
     }
-    if root.kbd: FocusRing { radius: Theme.radius-m; around-width: root.width; around-height: root.height; }
+    if root.kbd: FocusRing { radius: root.pill ? root.height / 2 : Theme.radius-control; around-width: root.width; around-height: root.height; }
     Rectangle {
-        border-radius: Theme.radius-m;
-        background: touch.pressed ? Theme.fill-press : Theme.field;
-        border-width: 1px;
-        border-color: touch.has-hover && root.enabled ? Theme.text-secondary.with-alpha(0.45) : Theme.field-edge;
-        animate border-color { duration: Theme.quick; }
+        border-radius: root.pill ? self.height / 2 : Theme.radius-control;
+        background: touch.pressed ? Theme.control-press : touch.has-hover && root.enabled ? Theme.control-hover : Theme.control;
+        animate background { duration: Theme.quick; }
     }
-    HorizontalLayout {
-        padding-left: 11px;
-        padding-right: 9px;
-        spacing: 6px;
+    row := HorizontalLayout {
+        padding-left: root.pill ? 14px : 12px;
+        padding-right: 10px;
+        spacing: 8px;
         Text {
             text: root.current-value;
-            font-size: Theme.font-body;
+            font-size: root.pill ? Theme.font-small : Theme.font-body;
+            font-weight: root.pill ? 600 : 400;
             color: Theme.text;
             vertical-alignment: center;
             overflow: elide;
@@ -475,18 +466,18 @@ export component Select {
         clicked => { popup.show(); }
     }
     popup := PopupWindow {
-        x: 0;
+        x: root.pill ? root.width - self.width : 0;
         y: root.height + 4px;
         width: max(root.width, 200px);
         height: min(list.preferred-height, 300px);
         Rectangle {
-            border-radius: Theme.radius-l;
-            background: Theme.glass-strong;
+            border-radius: Theme.radius-card;
+            background: Theme.panel;
             border-width: 1px;
-            border-color: Theme.edge;
-            drop-shadow-color: Theme.shadow;
-            drop-shadow-blur: 24px;
-            drop-shadow-offset-y: 10px;
+            border-color: Theme.divider;
+            drop-shadow-color: #00000066;
+            drop-shadow-blur: 16px;
+            drop-shadow-offset-y: 6px;
         }
         Flickable {
             content-height: list.preferred-height;
@@ -494,9 +485,9 @@ export component Select {
                 padding: 5px;
                 spacing: 1px;
                 for item[i] in root.model: Rectangle {
-                    height: 30px;
-                    border-radius: Theme.radius-s;
-                    background: item-touch.has-hover ? Theme.fill-hover : transparent;
+                    height: 32px;
+                    border-radius: 6px;
+                    background: item-touch.has-hover ? Theme.control : transparent;
                     accessible-role: list-item;
                     accessible-label: item;
                     accessible-item-selected: i == root.current-index;
@@ -514,7 +505,7 @@ export component Select {
                         spacing: 8px;
                         Rectangle {
                             width: 14px;
-                            if i == root.current-index: Icon { width: 14px; height: 14px; source: @image-url("assets/icons/check.svg"); tint: Theme.accent; }
+                            if i == root.current-index: Icon { width: 14px; height: 14px; source: @image-url("assets/icons/check.svg"); tint: Theme.green; }
                         }
                         Text {
                             text: item;
@@ -531,25 +522,21 @@ export component Select {
     }
 }
 
-// badge: a short count shown as a pill after the label ("" = none).
+// badge: a short count after the label ("" = none).
 export struct SegItem { label: string, icon: image, badge: string }
 
-// Segmented control: a glass thumb slides to the chosen segment. size: 0 regular (34 px), 1 large (46 px).
-// accent: the thumb carries the accent (for a primary choice such as the sharing mode).
+// Segmented tabs: a dark track with the chosen segment raised (the specification's period selector).
 export component Segmented {
     in property <[SegItem]> items;
     in-out property <int> selected;
-    in property <int> size;
-    in property <bool> accent;
     in property <bool> enabled: true;
-    in property <length> segment-min: 88px;
+    in property <length> segment-min: 96px;
     callback changed(int);
     property <length> pad: 3px;
-    property <length> h: root.size == 1 ? 46px : 34px;
     property <int> n: max(1, root.items.length);
     property <length> seg-w: (root.width - 2 * root.pad) / root.n;
     property <bool> kbd;
-    height: root.h;
+    height: 36px;
     min-width: root.n * root.segment-min + 2 * root.pad;
     preferred-width: self.min-width;
     opacity: root.enabled ? 1 : 0.5;
@@ -561,35 +548,24 @@ export component Segmented {
         }
     }
     Rectangle {
-        border-radius: root.h / 2;
-        background: Theme.fill-subtle;
-        border-width: 1px;
-        border-color: Theme.hairline;
+        border-radius: self.height / 2;
+        background: Theme.inset;
     }
-    if root.kbd: FocusRing { radius: root.h / 2; around-width: root.width; around-height: root.height; }
-    thumb := Rectangle {
+    if root.kbd: FocusRing { radius: root.height / 2; around-width: root.width; around-height: root.height; }
+    Rectangle {
         x: root.pad + root.selected * root.seg-w;
         y: root.pad;
         width: root.seg-w;
-        height: root.h - 2 * root.pad;
-        animate x { duration: Theme.smooth; easing: cubic-bezier(0.2, 0.9, 0.3, 1.0); }
-        GlassFrame {
-            f: root.size == 1 ? GlassEngine.large : GlassEngine.thumb;
-            inner-width: parent.width;
-            inner-height: parent.height;
-        }
-        Rectangle {
-            border-radius: self.height / 2;
-            background: root.accent ? Theme.accent.with-alpha(Theme.dark ? 0.22 : 0.14) : (Theme.dark ? #FFFFFF1A : #FFFFFF);
-            border-width: root.accent ? 1px : 0px;
-            border-color: Theme.accent.with-alpha(0.45);
-        }
+        height: root.height - 2 * root.pad;
+        border-radius: self.height / 2;
+        background: Theme.control-hover;
+        animate x { duration: Theme.quick; easing: ease-out; }
     }
     for item[i] in root.items: Rectangle {
         x: root.pad + i * root.seg-w;
         y: root.pad;
         width: root.seg-w;
-        height: root.h - 2 * root.pad;
+        height: root.height - 2 * root.pad;
         accessible-role: tab;
         accessible-label: item.label;
         accessible-item-selected: i == root.selected;
@@ -599,10 +575,6 @@ export component Segmented {
             mouse-cursor: pointer;
             clicked => { root.choose(i); }
         }
-        if i != root.selected && seg-touch.has-hover: Rectangle {
-            border-radius: self.height / 2;
-            background: Theme.fill-subtle;
-        }
         HorizontalLayout {
             alignment: center;
             spacing: 7px;
@@ -611,25 +583,25 @@ export component Segmented {
             if item.icon.width > 0: Icon {
                 y: (parent.height - self.height) / 2;
                 source: item.icon;
-                tint: i == root.selected ? (root.accent ? Theme.accent : Theme.text) : Theme.text-secondary;
-                width: root.size == 1 ? 17px : 15px;
-                height: self.width;
+                tint: i == root.selected ? Theme.green : (seg-touch.has-hover ? Theme.text : Theme.text-secondary);
+                width: 15px;
+                height: 15px;
             }
             Text {
                 text: item.label;
-                font-size: Theme.font-body;
+                font-size: Theme.font-small;
                 font-weight: i == root.selected ? 600 : 500;
-                color: i == root.selected ? Theme.text : Theme.text-secondary;
+                color: i == root.selected ? Theme.text : (seg-touch.has-hover ? Theme.text : Theme.text-secondary);
                 vertical-alignment: center;
                 overflow: elide;
             }
             if item.badge != "": Rectangle {
                 y: (parent.height - self.height) / 2;
-                height: 18px;
-                width: max(18px, count.preferred-width + 10px);
-                border-radius: 9px;
-                background: i == root.selected ? Theme.accent : Theme.fill-press;
-                count := Text { text: item.badge; font-size: Theme.font-caption; font-weight: 700; color: i == root.selected ? Theme.on-accent : Theme.text-secondary; }
+                height: 17px;
+                width: max(17px, count.preferred-width + 10px);
+                border-radius: 8.5px;
+                background: i == root.selected ? Theme.green : Theme.control;
+                count := Text { text: item.badge; font-size: 10px; font-weight: 700; color: i == root.selected ? #FFFFFF : Theme.text-secondary; }
             }
         }
     }
@@ -664,7 +636,7 @@ export component Slider {
     height: 22px;
     min-width: 120px;
     horizontal-stretch: 1;
-    opacity: root.enabled ? 1 : 0.42;
+    opacity: root.enabled ? 1 : 0.45;
     accessible-role: slider;
     accessible-value: Math.round(root.value);
     accessible-value-minimum: root.minimum;
@@ -684,7 +656,7 @@ export component Slider {
         y: (parent.height - self.height) / 2;
         height: 4px;
         border-radius: 2px;
-        background: Theme.fill-press;
+        background: Theme.control;
     }
     Rectangle {
         x: 0;
@@ -692,21 +664,18 @@ export component Slider {
         width: 8px + root.ratio * (root.width - 16px);
         height: 4px;
         border-radius: 2px;
-        background: Theme.accent;
+        background: Theme.green;
     }
-    knob := Rectangle {
+    Rectangle {
         x: root.ratio * (root.width - 16px);
         y: (parent.height - self.height) / 2;
         width: 16px;
         height: 16px;
         border-radius: 8px;
         background: #FFFFFF;
-        drop-shadow-color: #00000066;
-        drop-shadow-blur: 4px;
-        drop-shadow-offset-y: 1px;
         if root.kbd: FocusRing { radius: 8px; around-width: 16px; around-height: 16px; }
     }
-    touch := TouchArea {
+    TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
         pointer-event(event) => {
@@ -743,13 +712,13 @@ export component Slider {
 
 export struct MenuEntry { label: string, icon: image, destructive: bool, enabled: bool }
 
-// "More actions" button opening a glass menu; `activated(index)` reports the entry.
+// "More actions" button opening a menu; `activated(index)` reports the entry.
 export component MenuButton {
     in property <[MenuEntry]> entries;
     in property <string> tooltip;
     callback activated(int);
-    width: 30px;
-    height: 30px;
+    width: 34px;
+    height: 34px;
     IconButton {
         icon: @image-url("assets/icons/ellipsis.svg");
         tooltip: root.tooltip;
@@ -761,21 +730,21 @@ export component MenuButton {
         width: 236px;
         height: entries-box.preferred-height;
         Rectangle {
-            border-radius: Theme.radius-l;
-            background: Theme.glass-strong;
+            border-radius: Theme.radius-card;
+            background: Theme.panel;
             border-width: 1px;
-            border-color: Theme.edge;
-            drop-shadow-color: Theme.shadow;
-            drop-shadow-blur: 24px;
-            drop-shadow-offset-y: 10px;
+            border-color: Theme.divider;
+            drop-shadow-color: #00000066;
+            drop-shadow-blur: 16px;
+            drop-shadow-offset-y: 6px;
         }
         entries-box := VerticalLayout {
             padding: 5px;
             spacing: 1px;
             for e[i] in root.entries: Rectangle {
                 height: 32px;
-                border-radius: Theme.radius-s;
-                background: e.enabled && entry-touch.has-hover ? (e.destructive ? Theme.error.with-alpha(0.14) : Theme.fill-hover) : transparent;
+                border-radius: 6px;
+                background: e.enabled && entry-touch.has-hover ? (e.destructive ? Theme.red.with-alpha(0.15) : Theme.control) : transparent;
                 opacity: e.enabled ? 1 : 0.4;
                 accessible-role: button;
                 accessible-label: e.label;
@@ -793,18 +762,8 @@ export component MenuButton {
                     padding-left: 10px;
                     padding-right: 10px;
                     spacing: 10px;
-                    Icon {
-                        y: (parent.height - self.height) / 2;
-                        source: e.icon;
-                        tint: e.destructive ? Theme.error : Theme.text-secondary;
-                    }
-                    Text {
-                        text: e.label;
-                        font-size: Theme.font-body;
-                        color: e.destructive ? Theme.error : Theme.text;
-                        vertical-alignment: center;
-                        overflow: elide;
-                    }
+                    Icon { y: (parent.height - self.height) / 2; source: e.icon; tint: e.destructive ? Theme.red : Theme.text-secondary; }
+                    Text { text: e.label; font-size: Theme.font-body; color: e.destructive ? Theme.red : Theme.text; vertical-alignment: center; overflow: elide; }
                 }
             }
         }

@@ -36,7 +36,7 @@ User guide: [PREVIEW.md](PREVIEW.md).
 
 ## Preview 0.3 (OrbisLink-style UI, design increment 1) — 🧪
 
-* WPF restyle after OrbisLink's design system (see `docs/design/DESIGN.md`): runtime themes Dark / Glass / Light /
+* WPF restyle after OrbisLink's design system (in git history; `docs/design/DESIGN.md` now describes the Slint design): runtime themes Dark / Glass / Light /
   Custom (`BitByBit.Core.Appearance.ThemePalette`, unit-tested), Inter font (OFL) and Lucide icons (ISC) under
   `third-party/`, DWM title bar following the theme.
 * Shell: top bar (identity, diagnosis chip, Administrator / Windows Update / System Restore / Internet indicators,
