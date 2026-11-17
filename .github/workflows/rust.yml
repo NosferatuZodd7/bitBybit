@@ -134,8 +134,8 @@ jobs:
             cargo build -p bitbybit-app --locked
             $env:BITBYBIT_DEV_BROKER = '1'
             Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-            # Network (0), case analysis (6, runs its read-only analysis) and displays (5).
-            foreach ($page in @('0', '6', '5')) {
+            # Dashboard (8, real data on the runner), network (0), case analysis (6, runs its read-only analysis) and displays (5).
+            foreach ($page in @('8', '0', '6', '5')) {
               $env:BITBYBIT_UI_PAGE = $page
               $app = Start-Process -FilePath target\debug\bitBybit.exe -PassThru
               Start-Sleep -Seconds $(if ($page -eq '6') { 40 } else { 12 })
