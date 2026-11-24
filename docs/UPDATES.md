@@ -39,3 +39,26 @@ is never moved to a testing build. The app never installs an older or equal vers
   Actions). `*.pem` files are git-ignored except `TrustedUpdateKeys/*.pub.pem`.
 * Rotation: add the new public key next to the old one, ship a build, then switch the secret; remove the old public key in
   a later build.
+
+## Code signing (Authenticode) — not configured
+
+Two different signatures exist; only the first one is in place:
+
+| Signature | State | What it protects |
+|---|---|---|
+| ECDSA P-256 over `bitbybit-manifest.json` | **Configured**: the secret `BITBYBIT_UPDATE_SIGNING_KEY` is set (the `publish` job's "Signing key configured?" step only runs, as a warning, when it is missing) and every release since dev.21 is signed and verified with the embedded public key | the in-app updater refuses any file whose hash is not in a correctly signed manifest |
+| Authenticode on `bitBybit.exe`, `bitbybit-service.exe`, `bitbybit-cli.exe`, `bitBybit.msi` | **Not configured**: the workflow has no signing step and uploads the artifact `bitBybit-win-x64-unsigned` | what Windows shows the user: without it SmartScreen and UAC show "Unknown publisher" on first download/run |
+
+Authenticode needs an external code-signing certificate that the project does not have; nothing can be generated
+in the repository to replace it (a self-signed certificate would not be trusted by other machines and is therefore
+not used). To enable it, the owner must obtain one of:
+
+* an OV or EV code-signing certificate from a public CA (EV/HSM-backed certificates cannot be exported to a file:
+  they need the CA's cloud signing service or a hardware token on a self-hosted runner), or
+* a Microsoft Trusted Signing (Azure Artifact Signing) account.
+
+Then add a step in the `windows` job, after the release build and before the MSI and the `bitbybit-release manifest`
+step (the manifest hashes must be computed over the signed files), that signs the three executables and then the
+MSI with `signtool sign /fd SHA256 /tr <CA timestamp URL> /td SHA256 …`, reading the certificate or service
+credentials only from Actions secrets, and skips signing (keeping today's behaviour) when the secrets are absent.
+No key or certificate may be committed.
