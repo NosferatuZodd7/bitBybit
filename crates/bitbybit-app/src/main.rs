@@ -17,6 +17,7 @@ mod demo;
 mod devices_actions;
 mod drivers_page;
 mod export_logs;
+mod netdiag_page;
 mod ops;
 mod settings_page;
 mod sharing_page;
@@ -74,6 +75,7 @@ fn main() -> Result<(), slint::PlatformError> {
     devices_actions::wire(&ui);
     drivers_page::wire(&ui);
     sharing_page::wire(&ui);
+    netdiag_page::wire(&ui);
     settings_page::wire(&ui);
     if std::env::args().any(|a| a == updater::AFTER_UPDATE_FLAG)
         && let Ok(exe) = std::env::current_exe()

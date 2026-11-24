@@ -16,7 +16,7 @@ use windows::Win32::Foundation::{ERROR_BUFFER_OVERFLOW, NO_ERROR, WIN32_ERROR};
 use windows::Win32::NetworkManagement::IpHelper::{
     FreeMibTable, GAA_FLAG_INCLUDE_GATEWAYS, GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_MULTICAST, GetAdaptersAddresses,
     GetIfTable2, GetIpForwardTable2, GetIpInterfaceTable, IP_ADAPTER_ADDRESSES_LH, IP_ADAPTER_DHCP_ENABLED,
-    MIB_IF_ROW2, MIB_IF_TABLE2, MIB_IPFORWARD_TABLE2, MIB_IPINTERFACE_TABLE,
+    MIB_IF_ROW2, MIB_IF_TABLE2, MIB_IPFORWARD_ROW2, MIB_IPFORWARD_TABLE2, MIB_IPINTERFACE_TABLE,
 };
 use windows::Win32::Networking::WinSock::{
     ADDRESS_FAMILY, AF_INET, AF_INET6, AF_UNSPEC, SOCKADDR_IN, SOCKADDR_IN6, SOCKADDR_INET, SOCKET_ADDRESS,
@@ -50,7 +50,7 @@ unsafe fn pwstr(p: windows::core::PWSTR) -> Option<String> {
     (!p.is_null()).then(|| unsafe { p.to_string() }.ok()).flatten().filter(|s| !s.is_empty())
 }
 
-fn ip_from_inet(a: &SOCKADDR_INET) -> Option<IpAddr> {
+pub(crate) fn ip_from_inet(a: &SOCKADDR_INET) -> Option<IpAddr> {
     // SAFETY: `si_family` overlaps the family field of both variants; the variant read matches it.
     unsafe {
         match a.si_family {
@@ -94,7 +94,7 @@ fn oper(v: i32) -> OperStatus {
     }
 }
 
-fn mac(bytes: &[u8], len: u32) -> Option<String> {
+pub(crate) fn mac(bytes: &[u8], len: u32) -> Option<String> {
     let b = bytes.get(..usize::try_from(len).ok()?)?;
     (b.len() == 6 && b.iter().any(|x| *x != 0))
         .then(|| b.iter().map(|x| format!("{x:02X}")).collect::<Vec<_>>().join(":"))
@@ -249,29 +249,27 @@ fn ip_settings(family: ADDRESS_FAMILY) -> Result<HashMap<u64, IpInterfaceSetting
         .collect())
 }
 
-fn routes() -> Result<Vec<Route>> {
+pub(crate) fn route_from_row(r: &MIB_IPFORWARD_ROW2) -> Option<Route> {
+    let destination = IpPrefix::new(ip_from_inet(&r.DestinationPrefix.Prefix)?, r.DestinationPrefix.PrefixLength)?;
+    Some(Route {
+        destination,
+        next_hop: ip_from_inet(&r.NextHop)?,
+        // SAFETY: plain u64 union.
+        interface_luid: unsafe { r.InterfaceLuid.Value },
+        interface_index: r.InterfaceIndex,
+        metric: r.Metric,
+        protocol: RouteProtocol(u32::try_from(r.Protocol.0).unwrap_or(1)),
+    })
+}
+
+pub(crate) fn routes() -> Result<Vec<Route>> {
     let mut table: *mut MIB_IPFORWARD_TABLE2 = std::ptr::null_mut();
     // SAFETY: out-pointer to a local; freed by MibTable.
     check(unsafe { GetIpForwardTable2(AF_UNSPEC, &mut table) }, "GetIpForwardTable2")?;
     let _guard = MibTable(table);
     // SAFETY: on success the table holds NumEntries contiguous rows.
     let rows = unsafe { std::slice::from_raw_parts((*table).Table.as_ptr(), (*table).NumEntries as usize) };
-    Ok(rows
-        .iter()
-        .filter_map(|r| {
-            let destination =
-                IpPrefix::new(ip_from_inet(&r.DestinationPrefix.Prefix)?, r.DestinationPrefix.PrefixLength)?;
-            Some(Route {
-                destination,
-                next_hop: ip_from_inet(&r.NextHop)?,
-                // SAFETY: plain u64 union.
-                interface_luid: unsafe { r.InterfaceLuid.Value },
-                interface_index: r.InterfaceIndex,
-                metric: r.Metric,
-                protocol: RouteProtocol(u32::try_from(r.Protocol.0).unwrap_or(1)),
-            })
-        })
-        .collect())
+    Ok(rows.iter().filter_map(route_from_row).collect())
 }
 
 /// One consistent read of interfaces, addresses, per-family settings and routes.

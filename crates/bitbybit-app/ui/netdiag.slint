@@ -1,0 +1,99 @@
+// "Diagnóstico" panel of the network page: ping, traceroute, DNS lookup and gateway check. Rust (netdiag_page.rs)
+// runs the test off the UI thread and streams the rows into the NetDiag global; one test at a time.
+
+import { Theme } from "theme.slint";
+import { Tr } from "tr.slint";
+import { Spinner, Button, TextField } from "controls.slint";
+import { Secondary, Panel, PanelTitle, ColumnLabel, TableHeader, TableRow, Badge } from "components.slint";
+
+export struct NetDiagRow {
+    item: string,
+    address: string,
+    time: string,
+    detail: string,
+    status: string,
+    // As Badge: 0 neutral, 1 warning, 2 problem, 3 info, 4 ok.
+    tone: int,
+}
+
+export global NetDiag {
+    in-out property <string> target;
+    in property <bool> running;
+    in property <bool> cancelling;
+    // The test on screen: -1 none, 0 ping, 1 traceroute, 2 DNS, 3 gateway.
+    in property <int> kind: -1;
+    in property <[NetDiagRow]> rows;
+    in property <string> summary;
+    callback run(int);
+    callback cancel();
+}
+
+export component NetDiagPanel inherits Panel {
+    property <bool> has-target: NetDiag.target != "";
+    height: box.preferred-height;
+    box := VerticalLayout {
+        padding: 22px;
+        spacing: 14px;
+        PanelTitle {
+            title: Tr.t("network.diag.title");
+            caption: Tr.t("network.diag.caption");
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            TextField {
+                placeholder-text: Tr.t("network.diag.placeholder");
+                text <=> NetDiag.target;
+                enabled: !NetDiag.running;
+                leading-icon: @image-url("assets/icons/search.svg");
+                accepted => { if root.has-target && !NetDiag.running { NetDiag.run(0); } }
+            }
+            Button { text: Tr.t("network.diag.ping"); kind: 1; enabled: root.has-target && !NetDiag.running; loading: NetDiag.running && NetDiag.kind == 0; clicked => { NetDiag.run(0); } }
+            Button { text: Tr.t("network.diag.trace"); enabled: root.has-target && !NetDiag.running; loading: NetDiag.running && NetDiag.kind == 1; clicked => { NetDiag.run(1); } }
+            Button { text: Tr.t("network.diag.dns"); enabled: root.has-target && !NetDiag.running; loading: NetDiag.running && NetDiag.kind == 2; clicked => { NetDiag.run(2); } }
+            Button { icon: @image-url("assets/icons/router.svg"); text: Tr.t("network.diag.gateway"); enabled: !NetDiag.running; loading: NetDiag.running && NetDiag.kind == 3; clicked => { NetDiag.run(3); } }
+            if NetDiag.running: Button { icon: @image-url("assets/icons/x.svg"); text: Tr.t("network.diag.cancel"); kind: 2; enabled: !NetDiag.cancelling; clicked => { NetDiag.cancel(); } }
+        }
+        if NetDiag.kind < 0: Secondary { text: Tr.t("network.diag.intro"); color: Theme.text-muted; }
+        if NetDiag.summary != "" || NetDiag.running: HorizontalLayout {
+            spacing: 8px;
+            if NetDiag.running: Spinner { y: (parent.height - self.height) / 2; tint: Theme.cyan; }
+            Secondary { horizontal-stretch: 1; text: NetDiag.running && NetDiag.summary == "" ? Tr.t("network.diag.running") : NetDiag.summary; }
+        }
+        if NetDiag.kind >= 0 && NetDiag.rows.length > 0: VerticalLayout {
+            TableHeader {
+                HorizontalLayout {
+                    padding-left: 14px;
+                    padding-right: 14px;
+                    spacing: 12px;
+                    ColumnLabel {
+                        width: 150px;
+                        text: NetDiag.kind == 0 ? Tr.t("network.diag.col.reply") : NetDiag.kind == 1 ? Tr.t("network.diag.col.hop") : NetDiag.kind == 2 ? Tr.t("network.diag.col.kind") : Tr.t("network.diag.col.interface");
+                    }
+                    ColumnLabel { horizontal-stretch: 1; text: Tr.t("network.diag.col.address"); }
+                    ColumnLabel { width: 90px; text: Tr.t("network.diag.col.time"); }
+                    ColumnLabel {
+                        width: 170px;
+                        text: NetDiag.kind == 0 ? Tr.t("network.diag.col.ttl") : NetDiag.kind == 3 ? Tr.t("network.diag.col.mac") : Tr.t("network.diag.col.detail");
+                    }
+                    ColumnLabel { width: 170px; text: Tr.t("network.diag.col.status"); }
+                }
+            }
+            for row[i] in NetDiag.rows: TableRow {
+                height: r.preferred-height;
+                last: i == NetDiag.rows.length - 1;
+                r := HorizontalLayout {
+                    padding-left: 14px;
+                    padding-right: 14px;
+                    padding-top: 8px;
+                    padding-bottom: 8px;
+                    spacing: 12px;
+                    Text { width: 150px; text: row.item; font-size: Theme.font-small; color: Theme.text; vertical-alignment: center; overflow: elide; }
+                    Text { horizontal-stretch: 1; text: row.address; font-size: Theme.font-small; color: Theme.text; vertical-alignment: center; wrap: word-wrap; }
+                    Text { width: 90px; text: row.time; font-size: Theme.font-small; color: Theme.text-secondary; vertical-alignment: center; }
+                    Text { width: 170px; text: row.detail; font-size: Theme.font-small; color: Theme.text-secondary; vertical-alignment: center; wrap: word-wrap; }
+                    VerticalLayout { width: 170px; alignment: center; if row.status != "": Badge { text: row.status; tone: row.tone; } }
+                }
+            }
+        }
+    }
+}
