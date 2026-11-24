@@ -31,7 +31,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | DEV-02 | Problem codes as text | `Core/Devices/DeviceProblemCodes.cs` | `bitbybit-devices::problem` | Built | table | all CM_PROB codes mapped |
 | DEV-03 | DeviceActionGuard | `Core/Devices/DeviceActionGuard.cs` | `bitbybit-devices::guard` | Built | ported 6 tests | same verdicts |
 | DEV-04 | Restart / enable / disable / uninstall / rescan, journaled | `Platform/Devices`, `Operations/DeviceOperations.cs` | `platform-windows::devices`, `bitbybit-service::ops::devices` | Built | opt-in system test | guard enforced in broker; revert handlers |
-| DEV-05 | Device details and actions UI | `App/DeviceWindow`, `DeviceDetailViewModel` | `ui/pages/devices.slint`, `bitbybit-app` | Built | view-model tests, render | every action wired or disabled with reason |
+| DEV-05 | Device details and actions UI | `App/DeviceWindow`, `DeviceDetailViewModel` | `ui/app.slint` page 1 (Dispositivos) + driver chooser modal, `bitbybit-app::devices_actions` | Built | view-model tests, render | every action wired or disabled with reason |
 | DRV-01 | Installed driver per device | `WindowsDriverSelection.ReadInstalled` | `platform-windows::drivers` | Built | Windows read-only | DEVPKEY driver facts |
 | DRV-02 | Driver Store list (INF parser) | `Core/Drivers/InfVersionParser.cs`, collector | `bitbybit-drivers::inf`, `platform-windows::drivers` | Built | ported parser tests | packages with provider/class/version/hwids |
 | DRV-03 | Compatible drivers + install chosen | `WindowsDriverSelection` | `platform-windows::drivers` | Built | enumeration on CI | install journaled and verified |
@@ -123,21 +123,21 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | Id | Feature | C# origin | Rust module | State | Tests | Done when |
 |---|---|---|---|---|---|---|
 | UI-01 | Shell, navigation, status, toasts, banners | `MainWindow.xaml`, `MainViewModel.Shell.cs` | `ui/app.slint`, `ui/components.slint` | Built | headless render | all pages reachable; dashboard design system (`docs/design/DESIGN.md`) |
-| UI-02 | Themes (light, dark, glass, custom accent) | `Theme.xaml`, `ThemeManager.cs`, `ThemePalette.cs` | `ui/theme.slint`, `bitbybit-app::theme` | Built | palette tests, WCAG contrast test | readable in every theme; reduce-motion |
-| UI-03 | Diagnosis page (findings, evidence, actions) | case page | `ui/pages/diagnosis.slint` | Built | render | evidence kinds visually distinct |
-| UI-04 | Devices page + details | devices page, device window | `ui/pages/devices.slint` | Built | render | search, categories, actions |
-| UI-05 | Drivers: store, backups, compatible, test | store/backups pages | `ui/pages/drivers.slint` | Built | render | |
-| UI-06 | Cleanup page (multi-select, impact) | cleanup page | `ui/pages/cleanup.slint` | Built | render | |
-| UI-07 | Audio page | audio page | `ui/pages/audio.slint` | Built | render | default, enable, volume |
-| UI-08 | Displays page | displays page | `ui/pages/displays.slint` | Built | render | |
-| UI-09 | Network pages (adapters, hotspot, sharing, NAT, VPN, leak, DHCP, DNS, firewall, clients, topology) | network page (read-only) | `ui/pages/network*.slint` | Built | render | real data only |
-| UI-10 | Updates page (drivers from Windows Update + app update) | updates page, settings | `ui/pages/updates.slint` | Built | render | select some/all |
-| UI-11 | Journal page (changes, revert) | changes page | `ui/pages/journal.slint` | Built | render | revert button only when active |
+| UI-02 | Theme tokens: one dark navy palette (`docs/design/DESIGN.md`); the light/dark/glass/custom themes were removed at the user's request (2026-11-17) | `Theme.xaml`, `ThemeManager.cs`, `ThemePalette.cs` | `ui/theme.slint`, `bitbybit-app::theme` | Built | palette WCAG contrast test | readable text on every surface; follows Windows "Show animations" |
+| UI-03 | Diagnosis page (findings, evidence, actions) | case page | `ui/app.slint` page 6 (Caso Realtek / DP) | Built | render | evidence kinds visually distinct |
+| UI-04 | Devices page + details | devices page, device window | `ui/app.slint` page 1 | Built | render | search, categories, actions |
+| UI-05 | Drivers: store, backups, compatible, test | store/backups pages | `ui/app.slint` page 7 (Controladores) + driver chooser | Built | render | |
+| UI-06 | Cleanup page (multi-select, impact) | cleanup page | `ui/app.slint` page 7 (Limpeza panel) | Built | render | |
+| UI-07 | Audio page | audio page | `ui/app.slint` page 2 | Built | render | default, enable, volume |
+| UI-08 | Displays page | displays page | `ui/app.slint` page 5 | Built | render | |
+| UI-09 | Network pages (adapters, hotspot, sharing, NAT, VPN, leak, DHCP, DNS, firewall, clients, topology) | network page (read-only) | `ui/app.slint` page 0 (Rede), `bitbybit-app::sharing_page` | Built | render | real data only |
+| UI-10 | Updates page (drivers from Windows Update + app update) | updates page, settings | `ui/app.slint` page 7 (Atualizações panel) + update dialog | Built | render | select some/all |
+| UI-11 | Journal page (changes, revert) | changes page | `ui/app.slint` page 3 (Alterações) | Built | render | revert button only when active |
 | UI-12 | Recovery page | new | `ui/pages/recovery.slint` | Built | render | interrupted operations |
 | UI-13 | Operation queue | new | `ui/pages/queue.slint`, `bitbybit-domain::operations` | Limited | queue tests | state, progress, risk, result |
-| UI-14 | Dashboard | new | `ui/pages/dashboard.slint` | Built | render | real sources only |
-| UI-15 | Settings and About | `SettingsWindow.xaml` | `ui/app.slint` pages 9 and 4, `bitbybit-app::settings_page` | Built | key test | channel, theme, custom base + accent |
-| UI-16 | History and system pages, app log | history/system/log pages | `ui/pages/diagnosis.slint` tabs | Limited | render | |
+| UI-14 | Dashboard | new | `ui/app.slint` page 8 (Resumo), `bitbybit-app::view::{dashboard_kpis, change_series}` | Built | render | real sources only |
+| UI-15 | Settings and About | `SettingsWindow.xaml` | `ui/app.slint` pages 9 and 4, `bitbybit-app::settings_page` | Built | key test | update channel, automatic check |
+| UI-16 | History and system pages, app log | history/system/log pages | not a page: driver history is in the `diagnose` report (CLI); logs exported from Sobre | Limited | — | |
 | UI-17 | Background mode (tray) for the audio profile | `App.xaml.cs` | service watchdog (SVC-06) | Limited | — | replaced by the service |
 | UI-18 | Headless smoke test with contrast check | `UiSmoke.cs` | `bitbybit-app::smoke` | Todo | CI + Linux | every page rendered |
 | CLI-01 | `diagnose` report | `CliEntryPoint.cs` | `bitbybit-cli` | CI | arg tests, CI run | text + JSON |
