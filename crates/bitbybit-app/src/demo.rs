@@ -1,5 +1,5 @@
 //! Debug builds only: `BITBYBIT_UI_DEMO=1` fills the pages with FAKE sample rows (and `=dialog` also opens a
-//! high-risk confirmation; `=adapter` shows the sharing panel in adapter mode, `=drivers` opens the driver chooser, `=toast` shows a failed operation) so the layout can be checked where no Windows broker exists. Never in release builds.
+//! high-risk confirmation; `=adapter` shows the sharing panel in adapter mode, `=drivers` opens the driver chooser, `=toast` shows a failed operation, `=netdiag` a finished ping) so the layout can be checked where no Windows broker exists. Never in release builds.
 
 use crate::ui::{
     AppWindow, AudioRow, ChangeRow, ChartData, DeviceRow, DisplayRow, DriverChoice, FindingRow, InterfaceRow, Kpi,
@@ -287,6 +287,30 @@ pub fn fill(ui: &AppWindow, mode: &str) {
     }
     if mode == "adapter" {
         ui.set_share_mode(1);
+    }
+    // Network diagnostics (netdiag.slint): a finished ping.
+    if mode == "netdiag" {
+        use slint::ComponentHandle;
+        let g = ui.global::<crate::ui::NetDiag>();
+        let row = |n: &str, time: &str, status: &str, tone| crate::ui::NetDiagRow {
+            item: n.into(),
+            address: if tone == 4 { "192.168.1.1".into() } else { "".into() },
+            time: time.into(),
+            detail: if tone == 4 { "64".into() } else { "".into() },
+            status: status.into(),
+            tone,
+        };
+        g.set_target("192.168.1.1".into());
+        g.set_kind(0);
+        g.set_rows(model(vec![
+            row("1", "3 ms", "Respondeu", 4),
+            row("2", "2 ms", "Respondeu", 4),
+            row("3", "", "Sem resposta", 1),
+            row("4", "4 ms", "Respondeu", 4),
+        ]));
+        g.set_summary(
+            "192.168.1.1: 4 enviados, 3 recebidos, 25 % perdidos · mín. 2 ms / méd. 3 ms / máx. 4 ms (demo)".into(),
+        );
     }
     if dialog {
         ui.set_dialog_summary("Desinstalar o dispositivo Monitor DisplayPort (demo)".into());

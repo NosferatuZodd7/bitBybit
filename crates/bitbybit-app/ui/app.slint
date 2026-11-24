@@ -12,11 +12,11 @@ import "assets/fonts/Poppins-Medium.ttf";
 import "assets/fonts/Poppins-SemiBold.ttf";
 import "assets/fonts/Poppins-Bold.ttf";
 
-export { Theme }
+// Network diagnostics panel (netdiag.slint) and the catalog lookup shared with feature files (tr.slint).
+import { Tr } from "tr.slint";
+import { NetDiag, NetDiagPanel } from "netdiag.slint";
 
-export global Tr {
-    pure callback t(string) -> string;
-}
+export { Theme, Tr, NetDiag }
 
 export struct InterfaceRow {
     name: string,
@@ -1078,6 +1078,8 @@ export component AppWindow inherits Window {
                                 }
                             }
                         }
+                        // Network diagnostics: ping, traceroute, DNS, gateway.
+                        NetDiagPanel { }
                     }
                 }
 
