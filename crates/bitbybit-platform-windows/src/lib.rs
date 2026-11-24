@@ -13,6 +13,8 @@ pub mod diagnostics;
 #[cfg(windows)]
 pub mod display;
 #[cfg(windows)]
+pub mod display_config;
+#[cfg(windows)]
 pub mod drivers;
 #[cfg(windows)]
 pub mod elevation;

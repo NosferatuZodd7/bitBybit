@@ -298,8 +298,13 @@ pub struct ChangeRow {
 }
 
 /// Change kinds the app can revert in the user's session (machine-wide ones go through the service).
-pub const USER_REVERTIBLE_KINDS: [&str; 2] =
-    [bitbybit_audio::changes::DEFAULT_ENDPOINT_KIND, bitbybit_audio::changes::ENDPOINT_ENABLED_KIND];
+pub const USER_REVERTIBLE_KINDS: [&str; 5] = [
+    bitbybit_audio::changes::DEFAULT_ENDPOINT_KIND,
+    bitbybit_audio::changes::ENDPOINT_ENABLED_KIND,
+    bitbybit_audio::format::DEVICE_FORMAT_KIND,
+    bitbybit_display::change::MODE_KIND,
+    bitbybit_display::change::TOPOLOGY_KIND,
+];
 
 /// Machine-wide change kinds the service can revert (`journal.revert`, elevated).
 pub const MACHINE_REVERTIBLE_KINDS: [&str; 13] = [
@@ -352,6 +357,15 @@ pub fn change_rows(changes: &[ReportedChange], catalog: &TextCatalog) -> Vec<Cha
                 }
                 bitbybit_audio::changes::ENDPOINT_ENABLED_KIND => {
                     catalog.resolve(&text!("app.changes.kind.audioEnabled", "Enable/disable audio device"))
+                }
+                bitbybit_audio::format::DEVICE_FORMAT_KIND => {
+                    catalog.resolve(&text!("app.changes.kind.audioFormat", "Audio device format"))
+                }
+                bitbybit_display::change::MODE_KIND => {
+                    catalog.resolve(&text!("app.changes.kind.displayMode", "Display resolution / refresh rate"))
+                }
+                bitbybit_display::change::TOPOLOGY_KIND => {
+                    catalog.resolve(&text!("app.changes.kind.displayTopology", "Display arrangement"))
                 }
                 "device.enabledState" => {
                     catalog.resolve(&text!("app.changes.kind.deviceEnabled", "Enable/disable device"))

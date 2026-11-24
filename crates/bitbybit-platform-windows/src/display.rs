@@ -8,7 +8,8 @@ use windows::Win32::Devices::Display::{
     DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME, DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME,
     DISPLAYCONFIG_DEVICE_INFO_HEADER, DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE,
     DISPLAYCONFIG_PATH_INFO, DISPLAYCONFIG_SOURCE_DEVICE_NAME, DISPLAYCONFIG_TARGET_DEVICE_NAME,
-    DisplayConfigGetDeviceInfo, GetDisplayConfigBufferSizes, QDC_ONLY_ACTIVE_PATHS, QueryDisplayConfig,
+    DISPLAYCONFIG_TOPOLOGY_ID, DisplayConfigGetDeviceInfo, GetDisplayConfigBufferSizes, QDC_DATABASE_CURRENT,
+    QDC_ONLY_ACTIVE_PATHS, QUERY_DISPLAY_CONFIG_FLAGS, QueryDisplayConfig,
 };
 use windows::Win32::Foundation::{ERROR_INSUFFICIENT_BUFFER, ERROR_SUCCESS, LUID};
 
@@ -42,7 +43,7 @@ fn target_name(adapter: LUID, id: u32) -> Option<(String, String)> {
         .then(|| (wide(&request.monitorFriendlyDeviceName), wide(&request.monitorDevicePath)))
 }
 
-fn source_name(adapter: LUID, id: u32) -> Option<String> {
+pub(crate) fn source_name(adapter: LUID, id: u32) -> Option<String> {
     let mut request = DISPLAYCONFIG_SOURCE_DEVICE_NAME {
         header: header(
             DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME,
@@ -61,12 +62,16 @@ fn read_edid(instance_id: &str) -> Option<Vec<u8>> {
     crate::reg::binary(&format!(r"SYSTEM\CurrentControlSet\Enum\{instance_id}\Device Parameters"), "EDID")
 }
 
-fn query() -> Result<(Vec<DISPLAYCONFIG_PATH_INFO>, Vec<DISPLAYCONFIG_MODE_INFO>)> {
+/// Paths, modes and (for `QDC_DATABASE_CURRENT` only) the topology Windows reports.
+pub(crate) type Config = (Vec<DISPLAYCONFIG_PATH_INFO>, Vec<DISPLAYCONFIG_MODE_INFO>, DISPLAYCONFIG_TOPOLOGY_ID);
+
+pub(crate) fn query(flags: QUERY_DISPLAY_CONFIG_FLAGS) -> Result<Config> {
     // The topology can change between the size query and the read: bounded retries.
     for _ in 0..5 {
         let (mut path_count, mut mode_count) = (0u32, 0u32);
+        let mut topology = DISPLAYCONFIG_TOPOLOGY_ID::default();
         // SAFETY: out-parameters only.
-        let err = unsafe { GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &mut path_count, &mut mode_count) };
+        let err = unsafe { GetDisplayConfigBufferSizes(flags, &mut path_count, &mut mode_count) };
         if err != ERROR_SUCCESS {
             return Err(Error::platform("GetDisplayConfigBufferSizes failed", err.0 as i32));
         }
@@ -75,12 +80,13 @@ fn query() -> Result<(Vec<DISPLAYCONFIG_PATH_INFO>, Vec<DISPLAYCONFIG_MODE_INFO>
         // SAFETY: buffers sized by the counts passed in; the API writes back the counts it used.
         let err = unsafe {
             QueryDisplayConfig(
-                QDC_ONLY_ACTIVE_PATHS,
+                flags,
                 &mut path_count,
                 paths.as_mut_ptr(),
                 &mut mode_count,
                 modes.as_mut_ptr(),
-                None,
+                // Required for the database query, forbidden for the others.
+                (flags == QDC_DATABASE_CURRENT).then_some(&raw mut topology),
             )
         };
         if err == ERROR_INSUFFICIENT_BUFFER {
@@ -91,14 +97,14 @@ fn query() -> Result<(Vec<DISPLAYCONFIG_PATH_INFO>, Vec<DISPLAYCONFIG_MODE_INFO>
         }
         paths.truncate(path_count as usize);
         modes.truncate(mode_count as usize);
-        return Ok((paths, modes));
+        return Ok((paths, modes, topology));
     }
     Err(Error::platform("QueryDisplayConfig kept changing size", ERROR_INSUFFICIENT_BUFFER.0 as i32))
 }
 
 /// One entry per active path.
 pub fn collect() -> Result<Vec<MonitorSummary>> {
-    let (paths, modes) = query()?;
+    let (paths, modes, _) = query(QDC_ONLY_ACTIVE_PATHS)?;
     Ok(paths
         .iter()
         .map(|path| {

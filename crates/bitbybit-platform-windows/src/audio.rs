@@ -1,20 +1,22 @@
 //! Core Audio implementation of `bitbybit_audio::changes::AudioDevices`: MMDevice API for reading endpoints and
 //! defaults; the UNDOCUMENTED `IPolicyConfig` interface (CPolicyConfigClient) for setting the default device and
-//! enabling/disabling an endpoint, the same interface the Windows Sound panel uses. Undocumented means it may
-//! change between Windows builds: every write is verified by reading the state back.
+//! enabling/disabling an endpoint and setting its device format, the same interface the Windows Sound panel uses.
+//! Undocumented means it may change between Windows builds: every write is verified by reading the state back.
+//! Formats are read with documented APIs (the endpoint property store and `IAudioClient::IsFormatSupported`).
 
 use bitbybit_audio::changes::{AudioDevices, AudioRole, DefaultAssignment};
+use bitbybit_audio::format::{AudioFormat, AudioFormats, candidates};
 use bitbybit_audio::profile::{AudioDataFlow, AudioEndpoint, AudioRoles, EndpointStatus, FormFactor, JackKind};
 use bitbybit_core::{Error, ErrorCode, Result};
-use windows::Win32::Foundation::PROPERTYKEY;
+use windows::Win32::Foundation::{E_ACCESSDENIED, PROPERTYKEY, S_OK};
 use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::{
-    DEVICE_STATE, DEVICE_STATEMASK_ALL, EDataFlow, ERole, IMMDevice, IMMDeviceEnumerator, MMDeviceEnumerator, eCapture,
+    AUDCLNT_SHAREMODE_EXCLUSIVE, DEVICE_STATE, IAudioClient, DEVICE_STATEMASK_ALL, EDataFlow, ERole, IMMDevice, IMMDeviceEnumerator, MMDeviceEnumerator, eCapture,
     eCommunications, eConsole, eMultimedia, eRender,
 };
 use windows::Win32::System::Com::StructuredStorage::{PROPVARIANT, PropVariantClear};
 use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, CoTaskMemFree, STGM_READ};
-use windows::Win32::System::Variant::{VT_CLSID, VT_LPWSTR, VT_UI4};
+use windows::Win32::System::Variant::{VT_BLOB, VT_CLSID, VT_LPWSTR, VT_UI4};
 use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
 use windows::core::{GUID, HSTRING, PCWSTR};
 
@@ -24,7 +26,8 @@ mod policy {
     use std::ffi::c_void;
     use windows::core::{HRESULT, IUnknown, IUnknown_Vtbl, PCWSTR, interface};
 
-    /// UNDOCUMENTED (Windows 7+ Sound panel interface). Vtable order matters; only the last two methods are used.
+    /// UNDOCUMENTED (Windows 7+ Sound panel interface). Vtable order matters; SetDeviceFormat and the last two
+    /// methods are used.
     #[interface("f8679f50-850a-41cf-9c72-430f290290c8")]
     pub unsafe trait IPolicyConfig: IUnknown {
         fn GetMixFormat(&self, id: PCWSTR, format: *mut c_void) -> HRESULT;
@@ -55,6 +58,13 @@ mod policy {
     }
 
     /// # Safety
+    /// `id` must point to a NUL-terminated UTF-16 endpoint id, the formats to complete WAVEFORMATEXTENSIBLEs.
+    pub unsafe fn set_device_format(p: &IPolicyConfig, id: PCWSTR, endpoint: *mut c_void, mix: *mut c_void) -> HRESULT {
+        // SAFETY: forwarded from the caller.
+        unsafe { p.SetDeviceFormat(id, endpoint, mix) }
+    }
+
+    /// # Safety
     /// `id` must point to a NUL-terminated UTF-16 endpoint id.
     pub unsafe fn set_endpoint_visibility(p: &IPolicyConfig, id: PCWSTR, visible: i32) -> HRESULT {
         // SAFETY: forwarded from the caller.
@@ -75,6 +85,8 @@ const INTERFACE_FRIENDLY_NAME: PROPERTYKEY = key(0x026e516e_b814_414b_83cd_856d6
 const CONTAINER_ID: PROPERTYKEY = key(0x8c7ed206_3f8a_4827_b3ab_ae9e1faefc6c, 2);
 const FORM_FACTOR: PROPERTYKEY = key(0x1da5d803_d492_4edd_8c23_e0c0ffee7f0e, 0);
 const JACK_SUBTYPE: PROPERTYKEY = key(0x1da5d803_d492_4edd_8c23_e0c0ffee7f0e, 8);
+/// PKEY_AudioEngine_DeviceFormat: the endpoint's "Default Format" (a WAVEFORMATEX blob).
+const DEVICE_FORMAT: PROPERTYKEY = key(0xf19f064d_082c_4e27_bc73_6882a1bb8e4c, 0);
 const KS_HDMI: GUID = GUID::from_u128(0xd1b9cc2a_f519_417f_91c9_55fa65481001);
 const KS_SPDIF: GUID = GUID::from_u128(0xdff21fe5_f70f_11d0_b917_00a0c9223196);
 
@@ -102,6 +114,7 @@ enum Prop {
     Text(String),
     Number(u32),
     Guid(GUID),
+    Blob(Vec<u8>),
 }
 
 fn read(store: &IPropertyStore, k: &PROPERTYKEY) -> Option<Prop> {
@@ -113,6 +126,10 @@ fn read(store: &IPropertyStore, k: &PROPERTYKEY) -> Option<Prop> {
             VT_LPWSTR => inner.Anonymous.pwszVal.to_string().ok().map(Prop::Text),
             VT_UI4 => Some(Prop::Number(inner.Anonymous.ulVal)),
             VT_CLSID if !inner.Anonymous.puuid.is_null() => Some(Prop::Guid(*inner.Anonymous.puuid)),
+            VT_BLOB if !inner.Anonymous.blob.pBlobData.is_null() => Some(Prop::Blob(
+                std::slice::from_raw_parts(inner.Anonymous.blob.pBlobData, inner.Anonymous.blob.cbSize as usize)
+                    .to_vec(),
+            )),
             _ => None,
         };
         let _ = PropVariantClear(&mut v);
@@ -152,13 +169,17 @@ fn endpoint_volume(device: &IMMDevice) -> Option<IAudioEndpointVolume> {
     unsafe { device.Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None) }.ok()
 }
 
-fn volume_of(endpoint_id: &str) -> Result<IAudioEndpointVolume> {
+fn device(endpoint_id: &str) -> Result<IMMDevice> {
     if endpoint_id.trim().is_empty() || endpoint_id.len() > 512 {
         return Err(Error::invalid("Invalid endpoint id."));
     }
     // SAFETY: the enumerator resolves the id; an unknown id is an error.
-    let device = unsafe { enumerator()?.GetDevice(&HSTRING::from(endpoint_id)) }
-        .map_err(|_| Error::not_found("The audio device was not found."))?;
+    unsafe { enumerator()?.GetDevice(&HSTRING::from(endpoint_id)) }
+        .map_err(|_| Error::not_found("The audio device was not found."))
+}
+
+fn volume_of(endpoint_id: &str) -> Result<IAudioEndpointVolume> {
+    let device = device(endpoint_id)?;
     endpoint_volume(&device).ok_or_else(|| Error::new(ErrorCode::NotSupported, "The device has no volume control."))
 }
 
@@ -296,5 +317,57 @@ impl AudioDevices for CoreAudio {
             return Err(Error::new(ErrorCode::NotFound, "The audio device disappeared after the change."));
         };
         Ok(matches!(endpoint.state, EndpointStatus::Active | EndpointStatus::Unplugged) == enabled)
+    }
+}
+
+impl AudioFormats for CoreAudio {
+    fn device_format(&self, endpoint_id: &str) -> Result<AudioFormat> {
+        let device = device(endpoint_id)?;
+        // SAFETY: valid device; read-only store.
+        let store = unsafe { device.OpenPropertyStore(STGM_READ) }.map_err(|e| platform("OpenPropertyStore", &e))?;
+        let Some(Prop::Blob(bytes)) = read(&store, &DEVICE_FORMAT) else {
+            return Err(Error::new(ErrorCode::NotSupported, "Windows reports no device format for this endpoint."));
+        };
+        AudioFormat::decode(&bytes)
+            .ok_or_else(|| Error::new(ErrorCode::NotSupported, "The device format is not PCM (e.g. pass-through)."))
+    }
+
+    fn supported(&self, endpoint_id: &str, current: &AudioFormat) -> Result<Vec<AudioFormat>> {
+        let device = device(endpoint_id)?;
+        // SAFETY: standard activation; the client is only queried, never initialised (no stream is opened).
+        let client: IAudioClient =
+            unsafe { device.Activate(CLSCTX_ALL, None) }.map_err(|e| platform("IAudioClient", &e))?;
+        Ok(candidates(current)
+            .into_iter()
+            .filter(|f| {
+                let bytes = f.encode();
+                // SAFETY: a complete WAVEFORMATEXTENSIBLE (WAVEFORMATEX is packed, any alignment is fine); exclusive
+                // mode takes no closest-match pointer. Anything but S_OK (unsupported, exclusive mode not allowed,
+                // device in use) means "not offered".
+                let hr = unsafe { client.IsFormatSupported(AUDCLNT_SHAREMODE_EXCLUSIVE, bytes.as_ptr().cast(), None) };
+                hr == S_OK
+            })
+            .collect())
+    }
+
+    fn set_device_format(&self, endpoint_id: &str, format: &AudioFormat) -> Result<()> {
+        let policy_config = Self::policy()?;
+        let id = HSTRING::from(endpoint_id);
+        // The Sound panel passes the device format and the engine's float mix format of the same layout.
+        let (mut endpoint, mut mix) = (format.encode(), format.mix().encode());
+        // SAFETY: valid interface, NUL-terminated id, two complete WAVEFORMATEXTENSIBLE buffers alive for the call.
+        let hr = unsafe {
+            policy::set_device_format(
+                &policy_config,
+                PCWSTR(id.as_ptr()),
+                endpoint.as_mut_ptr().cast(),
+                mix.as_mut_ptr().cast(),
+            )
+        };
+        if hr == E_ACCESSDENIED {
+            return Err(Error::new(ErrorCode::AccessDenied, "SetDeviceFormat (undocumented): access denied")
+                .with_native(hr.0));
+        }
+        hr.ok().map_err(|e| platform("SetDeviceFormat (undocumented)", &e))
     }
 }

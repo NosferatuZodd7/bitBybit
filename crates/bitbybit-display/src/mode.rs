@@ -4,7 +4,9 @@
 
 use bitbybit_core::{Error, Result};
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{Receiver, RecvTimeoutError};
+use std::time::{Duration, Instant};
 
 /// One display path's mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -34,6 +36,15 @@ pub fn validate(requested: DisplayMode, supported: &[DisplayMode]) -> Result<()>
             f64::from(requested.refresh_mhz) / 1000.0
         )))
     }
+}
+
+/// Removes duplicates (the driver lists a mode once per colour depth / scaling) and orders largest and fastest
+/// first, as shown to the user.
+pub fn best_first(mut modes: Vec<DisplayMode>) -> Vec<DisplayMode> {
+    modes.retain(|m| m.width > 0 && m.height > 0 && m.refresh_mhz > 0);
+    modes.sort_by_key(|m| std::cmp::Reverse((u64::from(m.width) * u64::from(m.height), m.width, m.refresh_mhz)));
+    modes.dedup();
+    modes
 }
 
 /// State of a pending change.
@@ -83,6 +94,44 @@ impl PendingChange {
     }
 }
 
+/// Runs the countdown of a pending change on the calling (worker) thread, so it keeps going whatever the UI does.
+/// `show` gets the whole seconds left each time they change. `true` = the user kept the change; a revert answer,
+/// a dropped sender (the dialog went away), `stop` (the app is closing) or the deadline all mean revert.
+pub fn wait_for_answer(
+    answers: &Receiver<bool>,
+    timeout: Duration,
+    stop: &AtomicBool,
+    mut show: impl FnMut(u64),
+) -> bool {
+    let mut change = PendingChange::AwaitingConfirmation { remaining: timeout };
+    let (mut last, mut shown) = (Instant::now(), None);
+    while let PendingChange::AwaitingConfirmation { remaining } = change {
+        let seconds = remaining.as_millis().div_ceil(1000) as u64;
+        if shown != Some(seconds) {
+            show(seconds);
+            shown = Some(seconds);
+        }
+        if stop.load(Ordering::SeqCst) {
+            change.revert();
+            break;
+        }
+        match answers.recv_timeout(Duration::from_millis(200).min(remaining)) {
+            Ok(true) => {
+                change.keep();
+            }
+            Ok(false) | Err(RecvTimeoutError::Disconnected) => {
+                change.revert();
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                let now = Instant::now();
+                change.tick(now - last);
+                last = now;
+            }
+        }
+    }
+    change == PendingChange::Kept
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,12 +147,37 @@ mod tests {
     }
 
     #[test]
+    fn modes_are_deduplicated_largest_and_fastest_first() {
+        let m144 = DisplayMode { refresh_mhz: 144_000, ..M2560 };
+        let zero = DisplayMode { refresh_mhz: 0, ..M1080 };
+        assert_eq!(best_first(vec![M1080, M2560, m144, M1080, zero, M2560]), [m144, M2560, M1080]);
+    }
+
+    #[test]
     fn unconfirmed_changes_revert_after_the_countdown() {
         let mut change = PendingChange::start();
         assert!(!change.tick(Duration::from_secs(10)));
         assert!(change.tick(Duration::from_secs(10)));
         assert_eq!(change, PendingChange::Reverted);
         assert!(!change.keep(), "too late to keep");
+    }
+
+    #[test]
+    fn the_worker_countdown_reverts_without_an_answer_and_keeps_on_request() {
+        let stop = AtomicBool::new(false);
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut seen = Vec::new();
+        assert!(!wait_for_answer(&rx, Duration::from_millis(1200), &stop, |s| seen.push(s)), "deadline reverts");
+        assert_eq!(seen, [2, 1]);
+        tx.send(true).unwrap();
+        assert!(wait_for_answer(&rx, CONFIRM_TIMEOUT, &stop, |_| {}));
+        tx.send(false).unwrap();
+        assert!(!wait_for_answer(&rx, CONFIRM_TIMEOUT, &stop, |_| {}));
+        drop(tx);
+        assert!(!wait_for_answer(&rx, CONFIRM_TIMEOUT, &stop, |_| {}), "dialog gone = revert");
+        let (_tx, rx) = std::sync::mpsc::channel();
+        stop.store(true, Ordering::SeqCst);
+        assert!(!wait_for_answer(&rx, CONFIRM_TIMEOUT, &stop, |_| {}), "app closing = revert");
     }
 
     #[test]

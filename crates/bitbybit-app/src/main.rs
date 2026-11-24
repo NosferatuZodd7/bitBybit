@@ -12,9 +12,11 @@ mod ui {
 pub(crate) use load as reload;
 use ui::{AppWindow, AudioRow, ChangeRow, DeviceRow, DisplayRow, FindingRow, InterfaceRow, Tr};
 
+mod audio_format;
 #[cfg(debug_assertions)]
 mod demo;
 mod devices_actions;
+mod displays_page;
 mod drivers_page;
 mod export_logs;
 mod ops;
@@ -75,6 +77,8 @@ fn main() -> Result<(), slint::PlatformError> {
     drivers_page::wire(&ui);
     sharing_page::wire(&ui);
     settings_page::wire(&ui);
+    displays_page::wire(&ui);
+    audio_format::wire(&ui);
     if std::env::args().any(|a| a == updater::AFTER_UPDATE_FLAG)
         && let Ok(exe) = std::env::current_exe()
     {
@@ -193,6 +197,8 @@ fn main() -> Result<(), slint::PlatformError> {
     let weak = ui.as_weak();
     ui.on_revert(move |id| revert(weak.clone(), id.to_string()));
     load(ui.as_weak());
+    // A display change left pending by a closed or crashed run is reverted first.
+    displays_page::recover_at_start(ui.as_weak());
     // Test hook for the CI screenshots: open on a given page; the case page also runs its (read-only) analysis.
     if let Some(page) = std::env::var("BITBYBIT_UI_PAGE").ok().and_then(|p| p.parse::<i32>().ok()) {
         ui.set_page(page);
@@ -218,7 +224,10 @@ fn main() -> Result<(), slint::PlatformError> {
             }
         });
     }
-    ui.run()
+    let result = ui.run();
+    // Never leave an unconfirmed display change behind.
+    displays_page::revert_on_exit();
+    result
 }
 
 /// Asks the broker off the UI thread and applies the result on it.
@@ -233,7 +242,9 @@ fn load(weak: slint::Weak<AppWindow>) {
     std::thread::spawn(move || {
         let result = broker::load();
         let audio = audio::endpoints();
+        let formats = audio_format::read(audio.as_ref().ok().map(Vec::as_slice));
         let displays = displays::collect();
+        let display_controls = displays_page::read();
         let changes = bitbybit_audio::report::ReportedChange::load(&bitbybit_core::paths::AppPaths::from_environment());
         let _ = slint::invoke_from_event_loop(move || {
             let Some(ui) = weak.upgrade() else { return };
@@ -244,7 +255,9 @@ fn load(weak: slint::Weak<AppWindow>) {
                 &changes,
                 catalog,
             );
+            audio_format::store(formats);
             apply_audio(&ui, audio, catalog);
+            displays_page::store(&ui, display_controls, catalog);
             apply_displays(&ui, displays, catalog);
             apply_changes(&ui, &changes, catalog);
             match result {
@@ -272,7 +285,10 @@ fn apply_audio(ui: &AppWindow, audio: Result<Vec<AudioEndpoint>, LocalizedText>,
             let (rows, subtitle) = view::audio_rows(&endpoints, catalog);
             let rows: Vec<AudioRow> = rows
                 .into_iter()
-                .map(|r| AudioRow {
+                .map(|r| (audio_format::picker(&r.id, catalog), r))
+                .map(|((formats, format_index), r)| AudioRow {
+                    formats,
+                    format_index,
                     id: r.id.into(),
                     name: r.name.into(),
                     flow: r.flow.into(),
@@ -367,7 +383,15 @@ fn apply_displays(ui: &AppWindow, displays: Result<Vec<MonitorSummary>, Localize
             let (rows, summary) = view::display_rows(&monitors, catalog);
             let rows: Vec<DisplayRow> = rows
                 .into_iter()
-                .map(|r| DisplayRow {
+                .zip(&monitors)
+                .map(|(r, m)| {
+                    let (id, modes, mode_index) = displays_page::picker(m.source_name.as_deref(), &r.name, catalog);
+                    (r, id, modes, mode_index)
+                })
+                .map(|(r, id, modes, mode_index)| DisplayRow {
+                    id: id.into(),
+                    modes,
+                    mode_index,
                     name: r.name.into(),
                     connection: r.connection.into(),
                     mode: r.mode.into(),
@@ -986,10 +1010,15 @@ mod audio {
     /// Outcome status of the revert (Reverted, DriftDetected, TargetGone, RevertFailed).
     pub fn revert(id: &str) -> Result<bitbybit_journal::ChangeStatus, LocalizedText> {
         use bitbybit_audio::changes::{DefaultEndpointRevert, EndpointEnabledRevert};
+        use bitbybit_display::change::{DisplayModeRevert, DisplayTopologyRevert};
+        use bitbybit_platform_windows::display_config::WindowsDisplays;
         let journal = JsonLinesJournal::new(AppPaths::from_environment().user_journal_file());
         let (a, b) = (DefaultEndpointRevert(&CoreAudio), EndpointEnabledRevert(&CoreAudio));
+        // Every user-journal kind: audio defaults/endpoints, device formats (AUD-07) and displays (DSP-03).
+        let c = bitbybit_audio::format::DeviceFormatRevert(&CoreAudio);
+        let (d, e) = (DisplayModeRevert(&WindowsDisplays), DisplayTopologyRevert(&WindowsDisplays));
         let failed = |why: String| text!("app.audio.changeFailed", "The audio device could not be changed: {0}", why);
-        let outcomes = bitbybit_recovery::RecoveryCoordinator::new(&journal, &[&a, &b])
+        let outcomes = bitbybit_recovery::RecoveryCoordinator::new(&journal, &[&a, &b, &c, &d, &e])
             .revert(|r| r.id.to_string() == id, false)
             .map_err(|e| failed(e.message))?;
         outcomes
