@@ -1,5 +1,5 @@
 //! Debug builds only: `BITBYBIT_UI_DEMO=1` fills the pages with FAKE sample rows (and `=dialog` also opens a
-//! high-risk confirmation; `=adapter` shows the sharing panel in adapter mode, `=drivers` opens the driver chooser, `=toast` shows a failed operation, `=netdiag` a finished ping) so the layout can be checked where no Windows broker exists. Never in release builds.
+//! high-risk confirmation; `=adapter` shows the sharing panel in adapter mode, `=drivers` opens the driver chooser, `=toast` shows a failed operation, `=netdiag` a finished ping, `=displaykeep` the "keep these display settings?" countdown) so the layout can be checked where no Windows broker exists. Never in release builds.
 
 use crate::ui::{
     AppWindow, AudioRow, ChangeRow, ChartData, DeviceRow, DisplayRow, DriverChoice, FindingRow, InterfaceRow, Kpi,
@@ -99,8 +99,21 @@ pub fn fill(ui: &AppWindow, mode: &str) {
         muted: false,
         can_prefer: true,
         can_force: true,
+        formats: strings(&["16 bits, 44100 Hz", "16 bits, 48000 Hz", "24 bits, 48000 Hz", "24 bits, 96000 Hz"]),
+        format_index: 1,
     }]));
+    ui.set_display_topologies(strings(&["Duplicar", "Expandir", "Apenas o ecrã do PC", "Apenas o segundo ecrã"]));
+    ui.set_display_topology(1);
+    ui.set_display_can_topology(true);
+    if mode == "displaykeep" {
+        ui.set_display_keep_detail("Alterar 'DELL U2723QE (demo)' de 3840 × 2160 · 60 Hz para 2560 × 1440 · 60 Hz".into());
+        ui.set_display_keep_seconds(12);
+        ui.set_display_keep_visible(true);
+    }
     ui.set_displays(model(vec![DisplayRow {
+        id: r"\\.\DISPLAY1".into(),
+        modes: strings(&["3840 × 2160 · 60 Hz", "3840 × 2160 · 30 Hz", "2560 × 1440 · 60 Hz", "1920 × 1080 · 60 Hz"]),
+        mode_index: 0,
         name: "DELL U2723QE (demo)".into(),
         connection: "DisplayPort · placa NVIDIA".into(),
         mode: "3840×2160 · 60 Hz".into(),

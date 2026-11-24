@@ -6,6 +6,7 @@
 import { Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Icon, Spinner, Button, IconButton, Toggle, Check, TextField, Select, SegItem, Segmented, Slider, MenuEntry, MenuButton } from "controls.slint";
+import { ChoiceApply, DisplayKeepDialog } from "displays.slint";
 import { Scroller, Secondary, Body, Divider, Panel, PanelTitle, KpiCard, AreaChart, ActivityItem, ColumnLabel, TableHeader, TableRow, Badge, StatusDot, StatusBanner, EmptyState, Field, SettingRow, NavItem, NavGroup } from "components.slint";
 import "assets/fonts/Poppins-Regular.ttf";
 import "assets/fonts/Poppins-Medium.ttf";
@@ -59,9 +60,16 @@ export struct AudioRow {
     muted: bool,
     can-prefer: bool,
     can-force: bool,
+    // Device formats the endpoint accepts (AUD-07); format-index is the one in use.
+    formats: [string],
+    format-index: int,
 }
 
 export struct DisplayRow {
+    // GDI source (\\.\DISPLAY1) and the modes it reports (DSP-03); mode-index is the one in use.
+    id: string,
+    modes: [string],
+    mode-index: int,
     name: string,
     connection: string,
     mode: string,
@@ -196,6 +204,7 @@ component AudioTile inherits Rectangle {
     callback set-mute(string, bool);
     callback prefer(string);
     callback force(string);
+    callback set-format(string, int);
     border-radius: Theme.radius-card;
     background: Theme.inset;
     height: layout.preferred-height;
@@ -248,6 +257,17 @@ component AudioTile inherits Rectangle {
                 text: Tr.t("app.audio.mute");
                 checked: root.info.muted;
                 toggled => { root.set-mute(root.info.id, self.checked); }
+            }
+        }
+        if root.info.formats.length > 1: VerticalLayout {
+            spacing: 4px;
+            Text { text: Tr.t("app.audio.format.title"); font-size: Theme.font-caption; color: Theme.text-muted; }
+            ChoiceApply {
+                model: root.info.formats;
+                current: root.info.format-index;
+                action: Tr.t("app.audio.format.apply");
+                label: Tr.t("app.audio.format.title");
+                apply(i) => { root.set-format(root.info.id, i); }
             }
         }
         if root.info.can-make-default: HorizontalLayout {
@@ -523,6 +543,18 @@ export component AppWindow inherits Window {
     callback forget-profile();
     callback force-output(string);
     in property <string> audio-profile;
+    // ── Display mode / topology changes (DSP-03) and audio device formats (AUD-07).
+    in property <[string]> display-topologies;
+    in property <int> display-topology: -1;
+    in property <bool> display-can-topology;
+    in property <string> display-message;
+    in property <bool> display-keep-visible;
+    in property <int> display-keep-seconds;
+    in property <string> display-keep-detail;
+    callback change-display-mode(string, int);
+    callback change-topology(int);
+    callback display-keep(bool);
+    callback set-audio-format(string, int);
     in-out property <int> page: 8;
     in property <[Kpi]> kpis;
     in property <[ChartData]> charts;
@@ -1391,6 +1423,7 @@ export component AppWindow inherits Window {
                                                 set-mute(id, m) => { root.set-mute(id, m); }
                                                 prefer(id) => { root.prefer-endpoint(id); }
                                                 force(id) => { root.force-output(id); }
+                                                set-format(id, i) => { root.set-audio-format(id, i); }
                                             }
                                         }
                                     }
@@ -1415,8 +1448,17 @@ export component AppWindow inherits Window {
                         PanelTitle {
                             title: Tr.t("app.displays.panel");
                             caption: root.displays-summary;
+                            if root.display-can-topology: ChoiceApply {
+                                width: 330px;
+                                model: root.display-topologies;
+                                current: root.display-topology;
+                                action: Tr.t("app.displays.apply");
+                                label: Tr.t("app.displays.topology");
+                                apply(i) => { root.change-topology(i); }
+                            }
                             Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); size: 1; clicked => { root.refresh(); } }
                         }
+                        if root.display-message != "": StatusBanner { kind: 0; message: root.display-message; }
                         TableHeader {
                             HorizontalLayout {
                                 padding-left: 14px;
@@ -1424,7 +1466,7 @@ export component AppWindow inherits Window {
                                 spacing: 12px;
                                 ColumnLabel { text: Tr.t("app.col.display"); horizontal-stretch: 1; }
                                 ColumnLabel { text: Tr.t("app.col.connection"); width: 240px; }
-                                ColumnLabel { text: Tr.t("app.col.mode"); width: 170px; }
+                                ColumnLabel { text: Tr.t("app.col.mode"); width: 300px; }
                                 ColumnLabel { text: Tr.t("app.col.edid"); width: 200px; }
                             }
                         }
@@ -1446,7 +1488,18 @@ export component AppWindow inherits Window {
                                             if display.warning != "": Text { text: display.warning; font-size: Theme.font-caption; color: Theme.red; wrap: word-wrap; }
                                         }
                                         Text { text: display.connection; width: 240px; font-size: Theme.font-small; color: Theme.text-secondary; vertical-alignment: center; wrap: word-wrap; }
-                                        VerticalLayout { width: 170px; alignment: center; Badge { text: display.mode; tone: 3; } }
+                                        VerticalLayout {
+                                            width: 300px;
+                                            alignment: center;
+                                            if display.modes.length <= 1: HorizontalLayout { alignment: start; Badge { text: display.mode; tone: 3; } }
+                                            if display.modes.length > 1: ChoiceApply {
+                                                model: display.modes;
+                                                current: display.mode-index;
+                                                action: Tr.t("app.displays.apply");
+                                                label: Tr.t("app.col.mode") + " " + display.name;
+                                                apply(i) => { root.change-display-mode(display.id, i); }
+                                            }
+                                        }
                                         Text { text: display.edid; width: 200px; font-size: Theme.font-small; color: Theme.text-secondary; vertical-alignment: center; wrap: word-wrap; }
                                     }
                                 }
@@ -1879,5 +1932,17 @@ export component AppWindow inherits Window {
                 }
             }
         }
+    }
+
+    // ── "Keep these display settings?" (DSP-03): the worker counts down and reverts by itself at zero.
+    if root.display-keep-visible: DisplayKeepDialog {
+        width: root.width;
+        height: root.height;
+        title: Tr.t("app.displays.keep.title");
+        detail: root.display-keep-detail;
+        countdown: Tr.t("app.displays.keep.reverting") + " " + root.display-keep-seconds + " s";
+        keep-text: Tr.t("app.displays.keep.keep");
+        revert-text: Tr.t("app.displays.keep.revert");
+        answer(keep) => { root.display-keep(keep); }
     }
 }

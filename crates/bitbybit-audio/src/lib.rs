@@ -3,6 +3,7 @@
 
 pub mod case;
 pub mod changes;
+pub mod format;
 pub mod hwid;
 pub mod profile;
 pub mod report;

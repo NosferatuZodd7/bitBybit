@@ -113,6 +113,7 @@ mod ui_keys {
             include_str!("../ui/components.slint"),
             include_str!("../ui/controls.slint"),
             include_str!("../ui/netdiag.slint"),
+            include_str!("../ui/displays.slint"),
         ] {
             for part in src.split("Tr.t(\"").skip(1) {
                 let key = part.split('"').next().unwrap_or_default();

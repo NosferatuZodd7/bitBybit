@@ -1,0 +1,82 @@
+// Ecrãs (DSP-03) and audio format (AUD-07) pieces. Texts come in as properties (the Tr global lives in app.slint).
+
+import { Theme } from "theme.slint";
+import { Icon, Button, Select } from "controls.slint";
+import { Panel } from "components.slint";
+
+// A choice list with an apply button: the list holds only what the device reports, the one in use is preselected,
+// and the button is enabled only for a different choice (the change itself is confirmed in a dialog first).
+export component ChoiceApply inherits HorizontalLayout {
+    in property <[string]> model;
+    // Index of what is in use now (-1 unknown).
+    in property <int> current;
+    in property <string> action;
+    in property <string> label;
+    callback apply(int);
+    spacing: 8px;
+    pick := Select {
+        model: root.model;
+        current-index: root.current;
+        accessible-label: root.label;
+    }
+    VerticalLayout {
+        alignment: center;
+        Button {
+            text: root.action;
+            size: 1;
+            kind: 1;
+            enabled: pick.current-index >= 0 && pick.current-index != root.current;
+            clicked => { root.apply(pick.current-index); }
+        }
+    }
+}
+
+// "Keep these display settings?" with the countdown driven by the worker (it reverts by itself at zero).
+export component DisplayKeepDialog inherits Rectangle {
+    in property <string> title;
+    in property <string> detail;
+    in property <string> countdown;
+    in property <string> keep-text;
+    in property <string> revert-text;
+    callback answer(bool);
+    background: Theme.scrim;
+    TouchArea { }
+    Panel {
+        width: min(root.width - 64px, 540px);
+        height: min(root.height - 64px, box.preferred-height);
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-width: 1.5px;
+        border-color: Theme.amber;
+        accessible-role: groupbox;
+        accessible-label: root.title + " " + root.countdown;
+        box := VerticalLayout {
+            padding: 24px;
+            spacing: 14px;
+            HorizontalLayout {
+                spacing: 14px;
+                Rectangle {
+                    width: 42px;
+                    height: 42px;
+                    border-radius: 10px;
+                    background: Theme.inset;
+                    Icon { width: 18px; height: 18px; source: @image-url("assets/icons/monitor.svg"); tint: Theme.amber; }
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 4px;
+                    Text { text: root.title; font-size: Theme.font-title + 1px; font-weight: 700; color: Theme.text; wrap: word-wrap; }
+                    Text { text: root.detail; font-size: Theme.font-body; color: Theme.text-secondary; wrap: word-wrap; }
+                }
+            }
+            Text { text: root.countdown; font-size: Theme.font-title; font-weight: 700; color: Theme.amber; }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                Button { text: root.revert-text; clicked => { root.answer(false); } }
+                Button { text: root.keep-text; kind: 1; clicked => { root.answer(true); } }
+            }
+        }
+    }
+}

@@ -17,6 +17,7 @@ bitbybit-core.workspace = true
 bitbybit-devices.workspace = true
 bitbybit-domain.workspace = true
 bitbybit-drivers.workspace = true
+bitbybit-display.workspace = true
 bitbybit-journal.workspace = true
 bitbybit-localization.workspace = true
 bitbybit-security.workspace = true
