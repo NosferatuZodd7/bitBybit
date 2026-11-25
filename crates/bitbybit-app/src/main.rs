@@ -17,11 +17,13 @@ mod audio_format;
 mod demo;
 mod devices_actions;
 mod displays_page;
+mod driver_test;
 mod drivers_page;
 mod export_logs;
 mod fix_plan;
 mod netdiag_page;
 mod ops;
+mod recovery_panel;
 mod settings_page;
 mod sharing_page;
 mod theme;
@@ -77,6 +79,8 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.on_dialog_answer(ops::answer);
     devices_actions::wire(&ui);
     drivers_page::wire(&ui);
+    // Driver test mode: "Testar", the banner, and the revert when the window closes (its close-request handler).
+    driver_test::wire(&ui);
     sharing_page::wire(&ui);
     netdiag_page::wire(&ui);
     settings_page::wire(&ui);
@@ -246,6 +250,7 @@ fn load(weak: slint::Weak<AppWindow>) {
             catalog.resolve(&text!("app.broker.connecting", "Connecting to the bitBybit service…")).into(),
         );
     }
+    driver_test::sync(weak.clone());
     std::thread::spawn(move || {
         let result = broker::load();
         let audio = audio::endpoints();
@@ -479,6 +484,7 @@ fn apply_changes(ui: &AppWindow, changes: &[bitbybit_audio::report::ReportedChan
         })
         .collect();
     ui.set_changes(ModelRc::from(Rc::new(VecModel::from(rows))));
+    recovery_panel::show(ui, changes, catalog);
 }
 
 /// Reverts one user-scope change through the drift-aware coordinator, then reloads everything.

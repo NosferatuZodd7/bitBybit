@@ -175,6 +175,30 @@ pub fn fill(ui: &AppWindow, mode: &str) {
             "21 alterações nos últimos 30 dias (demo)",
         ),
     ]));
+    // Driver test banner and interrupted operations (driver_test.rs, recovery_panel.rs).
+    ui.set_driver_test_text(
+        "Em teste: \"Placa Gráfica Básica da Microsoft\" (10.0.19041.3636) em \"Intel(R) HD Graphics (demo)\" desde as 10:41. Experimente o dispositivo; ao fechar o bitBybit volta ao controlador anterior (oem14.inf).".into(),
+    );
+    ui.set_recovery_items(model(vec![
+        crate::ui::RecoveryItem {
+            id: "ms:demo".into(),
+            title: "Add NAT bitBybit-share 192.168.137.0/24 (demo) (+5 passos da mesma operação)".into(),
+            when: "Hoje 09:12".into(),
+            state: "Revertida no arranque".into(),
+            detail: "".into(),
+            tone: 4,
+            can_revert: false,
+        },
+        crate::ui::RecoveryItem {
+            id: "m:demo".into(),
+            title: "Install driver oem42.inf on Realtek High Definition Audio (demo)".into(),
+            when: "Ontem 22:03".into(),
+            state: "A reversão falhou (requer atenção)".into(),
+            detail: "Apply failed: pnputil exited with code 5 (demo)".into(),
+            tone: 2,
+            can_revert: true,
+        },
+    ]));
     ui.set_changes(model(vec![
         ChangeRow {
             id: "c".into(),

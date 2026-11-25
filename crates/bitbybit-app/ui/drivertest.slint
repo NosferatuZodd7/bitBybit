@@ -1,0 +1,15 @@
+// Driver test mode: the banner at the top of the workspace while a driver is being tested (driver_test.rs).
+// The labels come from app.slint (the Tr catalog global lives there).
+
+import { Button } from "controls.slint";
+import { StatusBanner } from "components.slint";
+
+export component DriverTestBanner inherits StatusBanner {
+    in property <string> keep-label;
+    in property <string> revert-label;
+    callback keep();
+    callback revert();
+    kind: 3;
+    VerticalLayout { alignment: center; Button { text: root.keep-label; size: 1; clicked => { root.keep(); } } }
+    VerticalLayout { alignment: center; Button { text: root.revert-label; kind: 1; size: 1; icon: @image-url("assets/icons/undo-2.svg"); clicked => { root.revert(); } } }
+}

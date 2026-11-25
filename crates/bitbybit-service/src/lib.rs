@@ -241,6 +241,7 @@ pub fn build_dispatcher(
 pub fn recover_at_start(journal: &dyn Journal, handlers: &[&dyn RevertHandler]) -> Result<Vec<RevertOutcome>> {
     let kinds: Vec<String> = handlers.iter().map(|h| h.target_kind().to_owned()).collect();
     RecoveryCoordinator::new(journal, handlers)
+        .at_start()
         .revert(|r| r.revert_on_recovery && kinds.contains(&r.target_kind), false)
 }
 
@@ -531,7 +532,10 @@ mod tests {
         journal.append(unknown).unwrap();
         let outcomes = recover_at_start(&journal, &[&Handler]).unwrap();
         assert_eq!(outcomes.len(), 1);
-        assert_eq!(journal.get(known_id).unwrap().unwrap().status, ChangeStatus::Reverted);
+        let known = journal.get(known_id).unwrap().unwrap();
+        assert_eq!(known.status, ChangeStatus::Reverted);
+        // The app's recovery panel recognizes start-up outcomes by this marker.
+        assert!(known.status_detail.unwrap().starts_with(bitbybit_recovery::AT_START_DETAIL_PREFIX));
         assert_eq!(journal.get(unknown_id).unwrap().unwrap().status, ChangeStatus::Applied);
     }
 
