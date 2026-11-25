@@ -51,7 +51,12 @@ pub fn store(entries: Vec<Entry>) {
 }
 
 pub fn label(f: &AudioFormat, catalog: &TextCatalog) -> String {
-    catalog.resolve(&text!("app.audio.format.label", "{0} bit, {1} Hz", f.valid_bits.to_string(), f.sample_rate.to_string()))
+    catalog.resolve(&text!(
+        "app.audio.format.label",
+        "{0} bit, {1} Hz",
+        f.valid_bits.to_string(),
+        f.sample_rate.to_string()
+    ))
 }
 
 /// (labels, index of the format in use) for one endpoint tile; empty when nothing can be changed.
@@ -155,13 +160,25 @@ mod tests {
     #[test]
     fn the_plan_shows_both_formats_and_the_undocumented_warning() {
         let catalog = TextCatalog::default_catalog();
-        let from = AudioFormat { channels: 2, sample_rate: 48_000, container_bits: 16, valid_bits: 16, float: false, channel_mask: 3 };
+        let from = AudioFormat {
+            channels: 2,
+            sample_rate: 48_000,
+            container_bits: 16,
+            valid_bits: 16,
+            float: false,
+            channel_mask: 3,
+        };
         let to = AudioFormat { sample_rate: 96_000, container_bits: 32, valid_bits: 24, ..from };
         let p = plan("Altifalantes", &from, &to, catalog);
         let summary = catalog.resolve(&p.summary);
         assert!(summary.contains("16 bits, 48000 Hz") && summary.contains("24 bits, 96000 Hz"), "{summary}");
         assert!(catalog.resolve(&p.warnings[0]).contains("IPolicyConfig"));
-        for key in ["app.audio.format.stepCheck", "app.audio.format.stepSet", "app.audio.format.done", "app.audio.format.elevation"] {
+        for key in [
+            "app.audio.format.stepCheck",
+            "app.audio.format.stepSet",
+            "app.audio.format.done",
+            "app.audio.format.elevation",
+        ] {
             assert!(catalog.template(key).is_some(), "{key}");
         }
     }

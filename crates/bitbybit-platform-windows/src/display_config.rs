@@ -11,9 +11,9 @@ use bitbybit_display::mode::{DisplayMode, best_first};
 use windows::Win32::Devices::Display::{
     DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_PATH_INFO, DISPLAYCONFIG_TOPOLOGY_CLONE, DISPLAYCONFIG_TOPOLOGY_EXTEND,
     DISPLAYCONFIG_TOPOLOGY_EXTERNAL, DISPLAYCONFIG_TOPOLOGY_INTERNAL, QDC_ALL_PATHS, QDC_DATABASE_CURRENT,
-    QDC_ONLY_ACTIVE_PATHS, SDC_ALLOW_CHANGES, SDC_APPLY, SDC_SAVE_TO_DATABASE, SDC_TOPOLOGY_CLONE,
-    SDC_TOPOLOGY_EXTEND, SDC_TOPOLOGY_EXTERNAL, SDC_TOPOLOGY_INTERNAL, SDC_USE_DATABASE_CURRENT,
-    SDC_USE_SUPPLIED_DISPLAY_CONFIG, SDC_VALIDATE, SET_DISPLAY_CONFIG_FLAGS, SetDisplayConfig,
+    QDC_ONLY_ACTIVE_PATHS, SDC_ALLOW_CHANGES, SDC_APPLY, SDC_SAVE_TO_DATABASE, SDC_TOPOLOGY_CLONE, SDC_TOPOLOGY_EXTEND,
+    SDC_TOPOLOGY_EXTERNAL, SDC_TOPOLOGY_INTERNAL, SDC_USE_DATABASE_CURRENT, SDC_USE_SUPPLIED_DISPLAY_CONFIG,
+    SDC_VALIDATE, SET_DISPLAY_CONFIG_FLAGS, SetDisplayConfig,
 };
 use windows::Win32::Graphics::Gdi::{
     CDS_TEST, CDS_TYPE, CDS_UPDATEREGISTRY, ChangeDisplaySettingsExW, DEVMODEW, DISP_CHANGE_SUCCESSFUL,
@@ -71,8 +71,9 @@ fn set_config(
     match unsafe { SetDisplayConfig(paths, modes, flags) } {
         0 => Ok(()),
         // ERROR_INVALID_PARAMETER / ERROR_NOT_SUPPORTED / ERROR_BAD_CONFIGURATION: refused, nothing changed.
-        e @ (87 | 50 | 1610) => Err(Error::new(ErrorCode::NotSupported, format!("SetDisplayConfig refused ({e})"))
-            .with_native(e)),
+        e @ (87 | 50 | 1610) => {
+            Err(Error::new(ErrorCode::NotSupported, format!("SetDisplayConfig refused ({e})")).with_native(e))
+        }
         e => Err(Error::platform("SetDisplayConfig failed", e)),
     }
 }
@@ -92,7 +93,9 @@ impl DisplayControl for WindowsDisplays {
             let supported = (0..MAX_MODES)
                 .map_while(|i| devmode(&device, ENUM_DISPLAY_SETTINGS_MODE(i)))
                 // SAFETY: plain integer member of a union the API filled.
-                .filter(|dm| dm.dmBitsPerPel == now.dmBitsPerPel && unsafe { dm.Anonymous2.dmDisplayFlags } & INTERLACED == 0)
+                .filter(|dm| {
+                    dm.dmBitsPerPel == now.dmBitsPerPel && unsafe { dm.Anonymous2.dmDisplayFlags } & INTERLACED == 0
+                })
                 .filter(|dm| dm.dmDisplayFrequency > 1) // 0 and 1 mean "hardware default"
                 .map(|dm| mode_of(&dm))
                 .collect();
@@ -146,8 +149,10 @@ impl DisplayControl for WindowsDisplays {
         let result = unsafe { ChangeDisplaySettingsExW(&device, Some(&dm), None, flags, None) };
         match (result, how) {
             (DISP_CHANGE_SUCCESSFUL, _) => Ok(()),
-            (r, Apply::Test) => Err(Error::new(ErrorCode::NotSupported, format!("The driver refused the mode ({})", r.0))
-                .with_native(r.0)),
+            (r, Apply::Test) => {
+                Err(Error::new(ErrorCode::NotSupported, format!("The driver refused the mode ({})", r.0))
+                    .with_native(r.0))
+            }
             (r, _) => Err(Error::platform("ChangeDisplaySettingsExW failed", r.0)),
         }
     }

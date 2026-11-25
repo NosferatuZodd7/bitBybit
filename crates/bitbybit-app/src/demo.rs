@@ -106,7 +106,9 @@ pub fn fill(ui: &AppWindow, mode: &str) {
     ui.set_display_topology(1);
     ui.set_display_can_topology(true);
     if mode == "displaykeep" {
-        ui.set_display_keep_detail("Alterar 'DELL U2723QE (demo)' de 3840 × 2160 · 60 Hz para 2560 × 1440 · 60 Hz".into());
+        ui.set_display_keep_detail(
+            "Alterar 'DELL U2723QE (demo)' de 3840 × 2160 · 60 Hz para 2560 × 1440 · 60 Hz".into(),
+        );
         ui.set_display_keep_seconds(12);
         ui.set_display_keep_visible(true);
     }
@@ -130,6 +132,7 @@ pub fn fill(ui: &AppWindow, mode: &str) {
         actions: "Recomendado: repor o controlador anterior.".into(),
         buttons: strings(&["Repor o controlador anterior"]),
     }]));
+    ui.set_fix_label("Resolver automaticamente (2) (demo)".into());
     ui.set_broker_state(1);
     let kpi = |title: &str, value: &str, note: &str, page: i32| Kpi {
         title: title.into(),

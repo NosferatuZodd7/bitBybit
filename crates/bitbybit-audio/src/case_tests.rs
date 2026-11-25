@@ -578,11 +578,13 @@ fn dvi_link_explains_the_unplugged_display_audio_and_proposes_a_cable_test() {
         .build(),
         None,
     );
-    let dvi = find(&report, "audioCase.monitor.dviMode");
-    assert_eq!(dvi.severity, FindingSeverity::Warning);
+    // dvi_monitor() is a link-limited monitor (DVI, EDID without CEA/audio, native mode above ~165 MHz): the link is
+    // the conclusion, not a driver change.
+    let dvi = find(&report, "audioCase.monitor.dviLinkLimited");
+    assert_eq!(dvi.severity, FindingSeverity::Problem);
     assert!(evidence_has(dvi, Some(EvidenceKind::Fact), "DVI link"));
     assert!(evidence_has(dvi, Some(EvidenceKind::Inference), "165 MHz"));
-    assert!(evidence_has(dvi, Some(EvidenceKind::Hypothesis), "display-audio driver"));
+    assert!(evidence_has(dvi, Some(EvidenceKind::Hypothesis), "passive DisplayPort"));
     assert!(!evidence_has(dvi, None, "Intel(R) Display Audio - HDMI 1"), "stale, not evidence");
     assert_eq!(dvi.actions.len(), 1);
     assert_eq!(dvi.actions[0].risk, RiskLevel::None);
@@ -618,9 +620,8 @@ fn only_not_present_display_endpoints_without_a_live_one_stay_a_problem() {
     assert!(!has(&report, "audioCase.endpoint.stale"));
 }
 
-#[test]
-fn missing_display_outputs_on_a_dvi_link_are_one_warning_with_the_cable_guidance() {
-    let manufacturer = DeviceSummary {
+fn manufacturer_intel_audio() -> DeviceSummary {
+    DeviceSummary {
         name: Some("Intel(R) Display Audio".into()),
         driver: Some(DriverSummary {
             version: Some("6.16.0.3154".into()),
@@ -629,29 +630,56 @@ fn missing_display_outputs_on_a_dvi_link_are_one_warning_with_the_cable_guidance
             ..DriverSummary::default()
         }),
         ..intel_audio()
-    };
+    }
+}
+
+fn not_present_display_outputs() -> Vec<AudioEndpointSummary> {
+    vec![
+        display_endpoint(
+            "{0.0.0.00000000}.{a}",
+            "Digital Audio (HDMI) (High Definition Audio Device)",
+            "High Definition Audio Device",
+            EndpointState::NOT_PRESENT,
+        ),
+        display_endpoint(
+            "{0.0.0.00000000}.{b}",
+            "Intel(R) Display Audio - HDMI 1 (Intel(R) Display Audio)",
+            "Intel(R) Display Audio",
+            EndpointState::NOT_PRESENT,
+        ),
+    ]
+}
+
+/// A DVI link whose EDID could not be read: nothing shows the link limit, so the driver swap stays the first try.
+fn dvi_monitor_unknown_edid() -> MonitorSummary {
+    MonitorSummary {
+        edid_announces_audio: None,
+        edid_length: None,
+        edid_has_cea_extension: None,
+        edid_has_hdmi_vsdb: None,
+        edid_native_width: None,
+        edid_native_height: None,
+        edid_native_pixel_clock_mhz: None,
+        ..dvi_monitor()
+    }
+}
+
+#[test]
+fn missing_display_outputs_on_a_dvi_link_are_one_warning_with_the_cable_guidance() {
     let report = analyze(
         &Scenario {
-            devices: vec![manufacturer],
-            endpoints: vec![
-                display_endpoint(
-                    "{0.0.0.00000000}.{a}",
-                    "Digital Audio (HDMI) (High Definition Audio Device)",
-                    "High Definition Audio Device",
-                    EndpointState::NOT_PRESENT,
-                ),
-                display_endpoint(
-                    "{0.0.0.00000000}.{b}",
-                    "Intel(R) Display Audio - HDMI 1 (Intel(R) Display Audio)",
-                    "Intel(R) Display Audio",
-                    EndpointState::NOT_PRESENT,
-                ),
-            ],
+            devices: vec![manufacturer_intel_audio()],
+            monitors: Some(vec![dvi_monitor_unknown_edid()]),
+            endpoints: not_present_display_outputs(),
             ..Scenario::default()
         }
         .build(),
         None,
     );
+    let dvi = find(&report, "audioCase.monitor.dviMode");
+    assert_eq!(dvi.severity, FindingSeverity::Warning);
+    assert!(evidence_has(dvi, Some(EvidenceKind::Hypothesis), "display-audio driver"));
+    assert!(!has(&report, "audioCase.monitor.dviLinkLimited"));
     let f = find(&report, "audioCase.endpoint.noneOverDvi");
     assert_eq!(f.severity, FindingSeverity::Warning);
     assert_eq!(f.evidence.iter().filter(|e| e.kind == EvidenceKind::Observation).count(), 2);
@@ -664,6 +692,157 @@ fn missing_display_outputs_on_a_dvi_link_are_one_warning_with_the_cable_guidance
     assert_eq!(f.actions[0].parameters["instanceId"], INTEL_INSTANCE);
     assert!(!has(&report, "audioCase.endpoint.notPresent"));
     assert!(!report.findings.iter().any(|f| f.severity >= FindingSeverity::Problem));
+}
+
+// ---- Link-limited monitor (DVI link, 128-byte EDID without CEA-861, native mode above ~165 MHz) -------------------
+// Synthetic fixture shaped on a reported case: a 2560×1080 monitor (181.25 MHz) driven at 1920×1080 over a link
+// Windows reports as DVI, the display-audio outputs not present, and (in the second test) the generic
+// display-audio driver already tried twice and reverted, as recorded by Kernel-PnP.
+
+fn wide_link_limited_monitor() -> MonitorSummary {
+    MonitorSummary { edid_native_pixel_clock_mhz: Some(181.25), ..dvi_monitor() }
+}
+
+/// Kernel-PnP history of the display-audio device: manufacturer → generic → manufacturer → generic → manufacturer.
+fn swap_tried_twice() -> Vec<PnpEventSummary> {
+    vec![
+        pnp(1, 400, "oem14.inf"),
+        pnp(10, 400, "hdaudio.inf"),
+        pnp(20, 400, "oem14.inf"),
+        pnp(30, 400, "hdaudio.inf"),
+        pnp(31, 410, "hdaudio.inf"),
+        pnp(40, 400, "oem14.inf"),
+    ]
+}
+
+fn sorted_ids(report: &DiagnosticReport) -> Vec<&str> {
+    let mut f: Vec<_> = report.findings.iter().collect();
+    f.sort_by_key(|f| std::cmp::Reverse(f.severity)); // as the app and the text report order them
+    f.into_iter().map(|f| f.finding_id.as_str()).collect()
+}
+
+fn assert_keys_in_catalog(report: &DiagnosticReport) {
+    let catalog = TextCatalog::default_catalog();
+    for f in &report.findings {
+        for key in [&f.title.key, &f.detail.key] {
+            assert!(catalog.template(key).is_some(), "{key}");
+        }
+        for a in &f.actions {
+            assert!(catalog.template(&a.title.key).is_some() && catalog.template(&a.impact.key).is_some());
+        }
+    }
+}
+
+/// The automatic fix may run these (the app's executable routes).
+fn auto_plan(report: &DiagnosticReport) -> Vec<bitbybit_domain::fix::FixStep> {
+    let executable = std::collections::HashSet::from([
+        "device.restart",
+        "device.installDriver",
+        "device.installPolicy.denyHardwareId",
+        "driverStore.deletePackage",
+        "audio.restartAudioServices",
+        "audio.setDefaultEndpoint",
+        "audio.enableEndpoint",
+    ]);
+    bitbybit_domain::fix::plan(&report.findings, &executable)
+}
+
+#[test]
+fn a_link_limited_dvi_monitor_is_the_main_conclusion_ahead_of_the_driver_swap() {
+    let report = analyze(
+        &Scenario {
+            devices: vec![realtek(Some(DriverSummary::default()), 0), manufacturer_intel_audio()],
+            monitors: Some(vec![wide_link_limited_monitor()]),
+            endpoints: not_present_display_outputs(),
+            ..Scenario::default()
+        }
+        .build(),
+        None,
+    );
+    assert_keys_in_catalog(&report);
+    assert_eq!(sorted_ids(&report)[0], "audioCase.monitor.dviLinkLimited", "{:?}", sorted_ids(&report));
+    let link = find(&report, "audioCase.monitor.dviLinkLimited");
+    assert_eq!(link.severity, FindingSeverity::Problem);
+    assert_eq!(link.detail.key, "quickdiag.monitor.linkLimited.detail");
+    assert_eq!(link.detail.args, ["WIDE MONITOR", "2560×1080", "181.25", "1920×1080"]);
+    // What Windows reports stays fact; the cause behind it stays inference/hypothesis.
+    assert!(evidence_has(link, Some(EvidenceKind::Fact), "DVI link"));
+    assert!(evidence_has(link, Some(EvidenceKind::Fact), "does not announce audio"));
+    assert!(evidence_has(link, Some(EvidenceKind::Fact), "no CEA-861 extension"));
+    assert!(evidence_has(link, Some(EvidenceKind::Fact), "Preferred (native) mode"));
+    assert!(evidence_has(link, Some(EvidenceKind::Inference), "165 MHz"));
+    assert!(evidence_has(link, Some(EvidenceKind::Hypothesis), "passive DisplayPort"));
+    assert!(
+        !link.evidence.iter().any(|e| e.kind != EvidenceKind::Hypothesis && e.description.contains("sits between"))
+    );
+    assert_eq!(link.actions.iter().map(|a| a.action_id.as_str()).collect::<Vec<_>>(), ["guidance.displayCable"]);
+    // The missing outputs point to the link; the driver swap is still there, but only as a lower-priority option on
+    // the (informational) GPU audio finding, so the automatic fix does not pick it.
+    let outputs = find(&report, "audioCase.endpoint.noneOverDvi");
+    assert_eq!(outputs.detail.key, "quickdiag.endpoint.noneOverDvi.detailLink");
+    assert!(outputs.actions.is_empty());
+    let gpu = find(&report, "audioCase.gpuAudio.present");
+    assert_eq!((gpu.severity, gpu.actions[0].action_id.as_str()), (FindingSeverity::Info, "device.installDriver"));
+    assert!(!auto_plan(&report).iter().any(|s| s.action.action_id == "device.installDriver"));
+}
+
+#[test]
+fn a_driver_swap_already_tried_and_reverted_is_stated_and_not_proposed_again() {
+    let report = analyze(
+        &Scenario {
+            devices: vec![realtek(Some(DriverSummary::default()), 0), manufacturer_intel_audio()],
+            monitors: Some(vec![wide_link_limited_monitor()]),
+            endpoints: not_present_display_outputs(),
+            events: swap_tried_twice(),
+            ..Scenario::default()
+        }
+        .build(),
+        None,
+    );
+    assert_keys_in_catalog(&report);
+    assert_eq!(sorted_ids(&report)[0], "audioCase.monitor.dviLinkLimited");
+    let link = find(&report, "audioCase.monitor.dviLinkLimited");
+    assert_eq!(link.detail.key, "quickdiag.monitor.linkLimited.detailDriverTried");
+    assert!(evidence_has(
+        link,
+        Some(EvidenceKind::Fact),
+        "hdaudio.inf was installed on 'Intel(R) Display Audio' 2 time(s)"
+    ));
+    assert!(evidence_has(link, Some(EvidenceKind::Observation), "already tried"));
+    assert!(evidence_has(find(&report, "audioCase.gpuAudio.present"), Some(EvidenceKind::Fact), "2 time(s)"));
+    for f in &report.findings {
+        assert!(
+            !f.actions.iter().any(|a| a.action_id == "device.installDriver"),
+            "{} proposes the swap again",
+            f.finding_id
+        );
+    }
+    assert!(!auto_plan(&report).iter().any(|s| s.action.action_id == "device.installDriver"));
+    let text =
+        to_text(&redact_snapshot(&Scenario::default().build(), true), &report, TextCatalog::default_catalog(), &[]);
+    assert!(!text.contains("Experimente primeiro"), "{text}");
+}
+
+#[test]
+fn an_unproven_dvi_link_with_the_swap_already_tried_points_to_the_cable() {
+    let report = analyze(
+        &Scenario {
+            devices: vec![manufacturer_intel_audio()],
+            monitors: Some(vec![dvi_monitor_unknown_edid()]),
+            endpoints: not_present_display_outputs(),
+            events: swap_tried_twice(),
+            ..Scenario::default()
+        }
+        .build(),
+        None,
+    );
+    assert_keys_in_catalog(&report);
+    let dvi = find(&report, "audioCase.monitor.dviMode");
+    assert_eq!(dvi.detail.key, "quickdiag.monitor.dvi.detailDriverTried");
+    assert!(!evidence_has(dvi, Some(EvidenceKind::Hypothesis), "display-audio driver then decides"));
+    let outputs = find(&report, "audioCase.endpoint.noneOverDvi");
+    assert_eq!(outputs.detail.key, "quickdiag.endpoint.noneOverDvi.detailDriverTried");
+    assert_eq!(outputs.actions.iter().map(|a| a.action_id.as_str()).collect::<Vec<_>>(), ["guidance.displayLink"]);
 }
 
 #[test]

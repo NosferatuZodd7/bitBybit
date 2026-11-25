@@ -7,6 +7,7 @@ import { Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Icon, Spinner, Button, IconButton, Toggle, Check, TextField, Select, SegItem, Segmented, Slider, MenuEntry, MenuButton } from "controls.slint";
 import { ChoiceApply, DisplayKeepDialog } from "displays.slint";
+import { FixButton } from "fix.slint";
 import { Scroller, Secondary, Body, Divider, Panel, PanelTitle, KpiCard, AreaChart, ActivityItem, ColumnLabel, TableHeader, TableRow, Badge, StatusDot, StatusBanner, EmptyState, Field, SettingRow, NavItem, NavGroup } from "components.slint";
 import "assets/fonts/Poppins-Regular.ttf";
 import "assets/fonts/Poppins-Medium.ttf";
@@ -474,6 +475,10 @@ export component AppWindow inherits Window {
     in property <bool> diagnosis-running;
     callback diagnose();
     callback run-finding-action(int, int);
+    // Guided fix ("Resolver automaticamente", Caso page): label empty = no plan; see src/fix_plan.rs.
+    in property <string> fix-label;
+    in property <bool> fix-running;
+    callback run-fix();
     in property <[ChangeRow]> changes;
     in property <string> changes-message;
     callback revert(string);
@@ -1125,6 +1130,13 @@ export component AppWindow inherits Window {
                         PanelTitle {
                             title: Tr.t("app.case.panel");
                             caption: root.diagnosis-summary;
+                            if root.fix-label != "": FixButton {
+                                text: root.fix-label;
+                                tip: Tr.t("app.fix.tip");
+                                loading: root.fix-running;
+                                enabled: !root.fix-running && !root.diagnosis-running;
+                                clicked => { root.run-fix(); }
+                            }
                             Button { icon: @image-url("assets/icons/activity.svg"); text: Tr.t("app.diagnosis.run"); kind: 1; loading: root.diagnosis-running; enabled: !root.diagnosis-running; clicked => { root.diagnose(); } }
                         }
                         if root.diagnosis-running: StatusBanner { kind: 4; message: Tr.t("app.diagnosis.running"); }

@@ -178,7 +178,10 @@ fn message(weak: &slint::Weak<AppWindow>, t: LocalizedText) {
 }
 
 /// Runs `work` on a worker unless another display change is running; the exit hook can wait for it.
-fn spawn(weak: slint::Weak<AppWindow>, work: impl FnOnce(&slint::Weak<AppWindow>) -> Option<LocalizedText> + Send + 'static) {
+fn spawn(
+    weak: slint::Weak<AppWindow>,
+    work: impl FnOnce(&slint::Weak<AppWindow>) -> Option<LocalizedText> + Send + 'static,
+) {
     if BUSY.swap(true, Ordering::SeqCst) {
         return message(&weak, text!("app.displays.busy", "Another display change is still in progress."));
     }

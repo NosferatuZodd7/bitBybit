@@ -158,7 +158,10 @@ impl<'a> JournaledDisplayChanges<'a> {
             ChangeCategory::Display,
             TOPOLOGY_KIND,
             "topology",
-            format!("Display topology set to {requested:?} (was {})", current.map_or("unknown".into(), |t| format!("{t:?}"))),
+            format!(
+                "Display topology set to {requested:?} (was {})",
+                current.map_or("unknown".into(), |t| format!("{t:?}"))
+            ),
             now,
         )
         .with_states(
@@ -250,10 +253,9 @@ impl RevertHandler for DisplayModeRevert<'_> {
     }
 
     fn compare(&self, record: &ChangeRecord) -> Result<LiveState> {
-        let (Some(applied), Some(previous)) = (
-            read::<ModeState>(record.applied_state.as_deref()),
-            read::<ModeState>(record.previous_state.as_deref()),
-        ) else {
+        let (Some(applied), Some(previous)) =
+            (read::<ModeState>(record.applied_state.as_deref()), read::<ModeState>(record.previous_state.as_deref()))
+        else {
             return Ok(LiveState::Unknown);
         };
         let Ok(displays) = self.0.displays() else { return Ok(LiveState::Unknown) };

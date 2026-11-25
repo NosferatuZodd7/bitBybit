@@ -1,0 +1,64 @@
+// "Resolver automaticamente (N)" on the Caso page: the shared Button with a wrapped tooltip (the explanation is
+// longer than the one-line tooltips of IconButton). Texts come from app.slint (catalog keys).
+import { Theme } from "theme.slint";
+import { Button } from "controls.slint";
+
+export component FixButton {
+    in property <string> text;
+    in property <string> tip;
+    in property <bool> enabled: true;
+    in property <bool> loading;
+    callback clicked;
+    accessible-role: none;
+    changed hovering => {
+        if (!self.hovering) {
+            popup.close();
+        }
+    }
+    property <bool> hovering: hover.has-hover;
+    // The outer TouchArea only tracks hover (it has no click handler); the Button inside gets the clicks.
+    hover := TouchArea {
+        HorizontalLayout {
+            Button {
+                icon: @image-url("assets/icons/sparkles.svg");
+                text: root.text;
+                enabled: root.enabled;
+                loading: root.loading;
+                accessible-description: root.tip;
+                clicked => {
+                    popup.close();
+                    root.clicked();
+                }
+            }
+        }
+    }
+    Timer {
+        interval: 550ms;
+        running: hover.has-hover && root.tip != "";
+        triggered => {
+            self.running = false;
+            popup.show();
+        }
+    }
+    popup := PopupWindow {
+        close-policy: no-auto-close;
+        x: root.width - self.width;
+        y: root.height + 6px;
+        width: 340px;
+        height: tip-text.preferred-height + 16px;
+        Rectangle {
+            border-radius: 6px;
+            background: Theme.app-bg;
+            border-width: 1px;
+            border-color: Theme.divider;
+            tip-text := Text {
+                x: 8px;
+                width: parent.width - 16px;
+                text: root.tip;
+                wrap: word-wrap;
+                font-size: Theme.font-small;
+                color: Theme.text;
+            }
+        }
+    }
+}
