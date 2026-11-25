@@ -352,6 +352,33 @@ pub fn fill(ui: &AppWindow, mode: &str) {
             "192.168.1.1: 4 enviados, 3 recebidos, 25 % perdidos · mín. 2 ms / méd. 3 ms / máx. 4 ms (demo)".into(),
         );
     }
+    // Operation queue (UI-13): one entry per state, through the real queue API.
+    if mode == "queue" {
+        use bitbybit_core::{Error, ErrorCode, RiskLevel, text};
+        use bitbybit_domain::operations::OperationState;
+        let weak = slint::ComponentHandle::as_weak(ui);
+        let entry = |op: &str, state: OperationState, error: Option<Error>| {
+            let id = crate::ops::queue_push(&weak, op, crate::ops::operation_title(op), RiskLevel::Low);
+            crate::ops::queue_update(&weak, id, |r| {
+                r.state = state;
+                r.impact = Some(text!("demo", "Plano confirmado (demo)"));
+                r.error = error;
+                if state == OperationState::Succeeded {
+                    r.change_ids.push(uuid::Uuid::new_v4());
+                }
+            });
+        };
+        entry("journal.revert", OperationState::Succeeded, None);
+        entry(
+            "drivers.install",
+            OperationState::Failed,
+            Some(Error::new(ErrorCode::PlatformError, "O Windows recusou o controlador (demo).")),
+        );
+        entry("audio.restartServices", OperationState::Cancelled, None);
+        entry("devices.action", OperationState::AwaitingConfirmation, None);
+        entry("drivers.windowsUpdateSearch", OperationState::Running, None);
+        ui.invoke_show_queue();
+    }
     if dialog {
         ui.set_dialog_summary("Desinstalar o dispositivo Monitor DisplayPort (demo)".into());
         ui.set_dialog_risk("Alto".into());

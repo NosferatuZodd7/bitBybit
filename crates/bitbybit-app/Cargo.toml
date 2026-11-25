@@ -42,6 +42,7 @@ embed-resource.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+i-slint-backend-testing.workspace = true
 bitbybit-evidence.workspace = true
 time.workspace = true
 

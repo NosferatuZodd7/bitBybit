@@ -1,0 +1,86 @@
+// The operation queue (matrix UI-13): the header button with the count of operations still in flight and the rows
+// of the queue panel. Texts arrive already localized from src/ops.rs (`queue_rows`). The broker reports no
+// percentages, so a running operation shows an indeterminate spinner and its state, never a progress figure.
+
+import { Theme } from "theme.slint";
+import { Icon, Spinner, IconButton } from "controls.slint";
+import { Badge } from "components.slint";
+
+// One operation. state: 0 queued, 1 awaiting confirmation, 2 running, 3 succeeded, 4 failed, 5 cancelled.
+export struct QueueRow { title: string, state: int, state-text: string, when: string, detail: string }
+
+// The header button: a list icon with the number of operations not finished yet (cyan: activity, not an alarm).
+export component QueueButton {
+    in property <string> tooltip;
+    in property <int> count;
+    callback clicked;
+    width: 34px;
+    height: 34px;
+    IconButton {
+        icon: @image-url("assets/icons/list-checks.svg");
+        tooltip: root.count > 0 ? root.tooltip + " (" + root.count + ")" : root.tooltip;
+        clicked => { root.clicked(); }
+    }
+    if root.count > 0: Rectangle {
+        x: parent.width - 14px;
+        y: 3px;
+        width: max(15px, count.preferred-width + 8px);
+        height: 15px;
+        border-radius: 7.5px;
+        background: Theme.cyan;
+        accessible-role: none;
+        count := Text { text: root.count; font-size: 9px; font-weight: 700; color: Theme.app-bg; }
+    }
+}
+
+// A row of the queue panel: state icon (spinner while it runs), name, state badge, start time and the result or error.
+export component QueueItem inherits Rectangle {
+    in property <QueueRow> info;
+    in property <bool> last;
+    property <int> tone: root.info.state == 4 ? 2 : root.info.state == 3 ? 4 : root.info.state == 1 ? 1 : root.info.state == 5 ? 0 : 3;
+    property <bool> busy: root.info.state == 0 || root.info.state == 2;
+    height: row.preferred-height;
+    accessible-role: text;
+    accessible-label: root.info.title + ", " + root.info.state-text + ", " + root.info.when + (root.info.detail != "" ? ", " + root.info.detail : "");
+    if !root.last: Rectangle { y: parent.height - 1px; height: 1px; background: Theme.divider; }
+    row := HorizontalLayout {
+        padding-bottom: root.last ? 0px : 12px;
+        spacing: 12px;
+        VerticalLayout {
+            alignment: start;
+            Rectangle {
+                width: 36px;
+                height: 36px;
+                border-radius: 10px;
+                background: Theme.inset;
+                if root.busy: Spinner { tint: Theme.cyan; size: 16px; }
+                if !root.busy: Icon {
+                    width: 16px;
+                    height: 16px;
+                    source: root.info.state == 3 ? @image-url("assets/icons/circle-check.svg")
+                        : root.info.state == 4 ? @image-url("assets/icons/circle-x.svg")
+                        : root.info.state == 1 ? @image-url("assets/icons/triangle-alert.svg")
+                        : @image-url("assets/icons/x.svg");
+                    tint: root.tone == 2 ? Theme.red : root.tone == 4 ? Theme.green : root.tone == 1 ? Theme.amber : Theme.text-muted;
+                }
+            }
+        }
+        VerticalLayout {
+            spacing: 3px;
+            horizontal-stretch: 1;
+            HorizontalLayout {
+                spacing: 8px;
+                Text { text: root.info.title; font-size: Theme.font-body; font-weight: 500; color: Theme.text; overflow: elide; horizontal-stretch: 1; vertical-alignment: center; }
+                Badge { text: root.info.state-text; tone: root.tone; }
+            }
+            Text { text: root.info.when; font-size: Theme.font-caption; color: Theme.text-muted; }
+            if root.info.detail != "": Text {
+                text: root.info.detail;
+                font-size: Theme.font-small;
+                // The error in full-contrast text (red small text on a panel is below 4.5:1); the badge says "failed".
+                color: root.info.state == 4 ? Theme.text : Theme.text-secondary;
+                wrap: word-wrap;
+            }
+        }
+    }
+}

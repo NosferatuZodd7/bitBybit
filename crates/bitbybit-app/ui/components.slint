@@ -7,9 +7,20 @@ import { Icon, Spinner, Button } from "controls.slint";
 import { ScrollView } from "std-widgets.slint";
 
 // Vertical scrolling at the visible width: content never widens the page, wrapped text wraps.
+// The Fluent scroll bar is drawn over the content, so while it is shown the content leaves its width free.
+// `bar` is set from change handlers, not bound: the content height depends on the width (a binding would loop).
 export component Scroller inherits ScrollView {
+    property <bool> bar;
+    function sync() {
+        root.bar = root.content-height > root.visible-height + 1px;
+    }
+    init => { root.sync(); }
+    changed content-height => { root.sync(); }
+    changed visible-height => { root.sync(); }
     VerticalLayout {
-        width: root.visible-width;
+        x: 0;
+        // The Fluent ScrollBar's width (std-widgets fluent/scrollview.slint).
+        width: root.visible-width - (root.bar ? 14px : 0px);
         alignment: start;
         @children
     }

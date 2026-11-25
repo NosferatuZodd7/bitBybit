@@ -32,6 +32,8 @@ bitbybit-service = { path = "crates/bitbybit-service" }
 bitbybit-cli = { path = "crates/bitbybit-cli" }
 slint = "1.18.1"
 slint-build = "1.18.1"
+# Headless UI tests (element search by accessible label); must stay at the exact slint version.
+i-slint-backend-testing = "=1.18.1"
 embed-resource = "3.0.12"
 
 

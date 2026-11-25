@@ -229,9 +229,45 @@ fn execute(step: &FixStep, catalog: &TextCatalog) -> Outcome {
     }
 }
 
-/// Integration point for the operations queue: every step state change of a running plan comes through here (worker
-/// thread). For now it shows the progress in the status toast.
+thread_local! {
+    /// Queue entry of each step of the plan running on this worker thread.
+    static QUEUED: std::cell::RefCell<std::collections::HashMap<usize, uuid::Uuid>> = Default::default();
+}
+
+/// Every step state change of a running plan comes through here (worker thread): it goes to the operations queue,
+/// and the running step also to the status toast.
 fn step_changed(weak: &slint::Weak<AppWindow>, index: usize, total: usize, step: &FixStep, state: &StepState) {
+    use bitbybit_domain::operations::OperationState;
+    let id = QUEUED.with(|q| {
+        *q.borrow_mut().entry(index).or_insert_with(|| {
+            crate::ops::queue_push(weak, &step.action.action_id, step.action.title.clone(), step.action.risk)
+        })
+    });
+    let (queue_state, note, error) = match state {
+        StepState::Running => (OperationState::Running, None, None),
+        StepState::Skipped => (
+            OperationState::Cancelled,
+            Some(text!("app.fix.stepSkipped", "Skipped (no longer needed): {0}", step.action.title.clone())),
+            None,
+        ),
+        StepState::Finished(Outcome::Done) => (OperationState::Succeeded, None, None),
+        StepState::Finished(Outcome::NotRun { .. } | Outcome::Refused) => (OperationState::Cancelled, None, None),
+        StepState::Finished(Outcome::Failed(message)) => (
+            OperationState::Failed,
+            None,
+            Some(bitbybit_core::Error::new(bitbybit_core::ErrorCode::PlatformError, message.clone())),
+        ),
+    };
+    crate::ops::queue_update(weak, id, |r| {
+        r.state = queue_state;
+        if note.is_some() {
+            r.impact = note;
+        }
+        r.error = error;
+    });
+    if queue_state.is_finished() {
+        QUEUED.with(|q| q.borrow_mut().remove(&index));
+    }
     if *state != StepState::Running {
         return;
     }

@@ -27,6 +27,9 @@ mod recovery_panel;
 mod settings_page;
 mod sharing_page;
 mod theme;
+// Headless rendering of every page (UI-18); uses the debug-only demo rows.
+#[cfg(all(test, debug_assertions))]
+mod ui_tests;
 mod updater;
 mod view;
 
