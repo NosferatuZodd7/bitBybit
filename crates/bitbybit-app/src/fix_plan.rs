@@ -107,6 +107,27 @@ pub fn accepts(plan: &OperationPlan, operation: &str, step: &FixStep) -> bool {
         && plan.risk <= step.action.risk.max(RiskLevel::Low)
         && plan.reversible
         && !plan.requires_reboot
+        && (!plan.may_interrupt_audio || step.action.may_interrupt_audio)
+        && (!plan.may_interrupt_connectivity || step.action.may_interrupt_connectivity)
+        && !plan.may_interrupt_display
+}
+
+/// The step as the latest diagnosis proposes it is still within what the user confirmed: an earlier step can change
+/// the situation (e.g. move the default output onto the device the next step would block), raising the risk.
+fn still_within(step: &FixStep, current: &[DiagnosticFinding]) -> bool {
+    let key = step.action.key();
+    current
+        .iter()
+        .filter(|f| f.finding_id == step.finding.finding_id)
+        .flat_map(|f| &f.actions)
+        .find(|a| a.key() == key)
+        .is_some_and(|a| {
+            a.risk <= step.action.risk
+                && a.reversible
+                && !a.requires_reboot
+                && (!a.may_interrupt_audio || step.action.may_interrupt_audio)
+                && (!a.may_interrupt_connectivity || step.action.may_interrupt_connectivity)
+        })
 }
 
 /// How one step ended.
@@ -159,6 +180,10 @@ pub fn run_steps(
                 tally.lines.push(text!("app.fix.stepSkipped", "Skipped (no longer needed): {0}", title));
                 on_state(i, step, &StepState::Skipped);
                 continue;
+            }
+            Ok(current) if !still_within(step, &current) => {
+                log::warn!("Guided fix step {} is riskier than confirmed now; plan stopped", step.key());
+                Outcome::Refused
             }
             Ok(_) => {
                 log::info!("Guided fix step {}/{}: {}", i + 1, steps.len(), step.key());
@@ -434,6 +459,24 @@ mod tests {
         let mut low = step.clone();
         low.action.risk = RiskLevel::Low;
         assert!(!accepts(&ok(), "devices.action", &low), "riskier than the confirmed action");
+        // More interruption than the confirmed action announced.
+        assert!(!accepts(&OperationPlan { may_interrupt_display: true, ..ok() }, "devices.action", &step));
+        assert!(!accepts(&OperationPlan { may_interrupt_connectivity: true, ..ok() }, "devices.action", &step));
+        assert!(!accepts(&OperationPlan { may_interrupt_audio: true, ..ok() }, "devices.action", &step));
+        let mut audio = step.clone();
+        audio.action.may_interrupt_audio = true;
+        assert!(accepts(&OperationPlan { may_interrupt_audio: true, ..ok() }, "devices.action", &audio));
+    }
+
+    #[test]
+    fn a_step_that_became_riskier_after_an_earlier_one_stops_the_plan() {
+        // After step 1 the diagnosis proposes step 2 (Low when confirmed) as High: it is not run.
+        let mut riskier = findings();
+        riskier[1].actions[0].risk = RiskLevel::High;
+        let (tally, states, executed) = run(vec![findings(), riskier], vec![Outcome::Done]);
+        assert_eq!((tally.done, tally.failed, executed), (1, 1, 1));
+        assert_eq!(states.last(), Some(&(1, StepState::Finished(Outcome::Refused))));
+        assert_eq!(tally.lines[1].key, "app.fix.stepRefused");
     }
 
     #[test]

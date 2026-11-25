@@ -498,9 +498,12 @@ fn block_that_did_not_remove_the_old_driver_proposes_uninstalling_the_device() {
     let f = find(&report, "audioCase.realtek.blockedButInstalled");
     assert_eq!(f.severity, FindingSeverity::Warning);
     assert_eq!(f.actions.len(), 1);
-    assert_eq!(f.actions[0].action_id, "device.installPolicy.denyHardwareId");
-    assert_eq!(f.actions[0].parameters["hardwareId"], RT_HWID);
+    // The block already holds: what is left is uninstalling the device (not another deny call, which changes nothing).
+    assert_eq!(f.actions[0].action_id, "device.uninstall");
+    assert!(f.actions[0].parameters.contains_key("instanceId"));
+    assert!(f.actions[0].requires_reboot, "may need a restart: explicit confirmation, never automatic");
     assert!(f.actions[0].requires_explicit_confirmation());
+    assert!(auto_plan(&report).iter().all(|s| s.action.action_id != "device.uninstall"));
 }
 
 #[test]
@@ -808,7 +811,7 @@ fn a_driver_swap_already_tried_and_reverted_is_stated_and_not_proposed_again() {
         Some(EvidenceKind::Fact),
         "hdaudio.inf was installed on 'Intel(R) Display Audio' 2 time(s)"
     ));
-    assert!(evidence_has(link, Some(EvidenceKind::Observation), "already tried"));
+    assert!(evidence_has(link, Some(EvidenceKind::Inference), "appears to have been tried"));
     assert!(evidence_has(find(&report, "audioCase.gpuAudio.present"), Some(EvidenceKind::Fact), "2 time(s)"));
     for f in &report.findings {
         assert!(

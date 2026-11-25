@@ -258,7 +258,7 @@ fn add_realtek_blocked_finding(
         evidence.push(EvidenceItem::inference(SRC, "The policy only prevents new installations; the driver that was already installed keeps working until the device is uninstalled.", Confidence::High));
         let mut action = params(
             ProposedAction::new(
-                "device.installPolicy.denyHardwareId",
+                "device.uninstall",
                 text!(
                     "quickdiag.action.uninstallRealtek.title",
                     "Uninstall the Realtek device (the block is already active)"
@@ -271,6 +271,7 @@ fn add_realtek_blocked_finding(
             ),
             &[("hardwareId", listed), ("instanceId", &codec.instance_id)],
         );
+        action.requires_reboot = true; // "may need a restart": explicit confirmation, never in the automatic plan
         guard_default_output(&mut action, &mut evidence, snapshot, codec);
         findings.push(finding(
             "audioCase.realtek.blockedButInstalled",
@@ -1470,11 +1471,12 @@ fn swap_tried_evidence(snapshot: &Snapshot, device: &DeviceSummary) -> Vec<Evide
                 swaps.join("; ")
             ),
         ),
-        EvidenceItem::observation(
+        EvidenceItem::inference(
             SRC,
             format!(
-                "The generic display-audio driver swap was already tried on this device and reverted; the manufacturer's driver ({current}) is in use again."
+                "The generic display-audio driver swap appears to have been tried on this device and undone (by hand or by a later driver install); the manufacturer's driver ({current}) is in use again."
             ),
+            Confidence::Medium,
         ),
     ]
 }

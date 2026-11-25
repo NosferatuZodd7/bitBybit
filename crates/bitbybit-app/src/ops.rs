@@ -21,7 +21,12 @@ use std::time::Duration;
 use uuid::Uuid;
 
 /// The answer channel of the dialog on screen (at most one at a time).
-static PENDING: Mutex<Option<mpsc::Sender<bool>>> = Mutex::new(None);
+static PENDING: Mutex<Option<(u64, mpsc::Sender<bool>)>> = Mutex::new(None);
+static ASKS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn pending() -> MutexGuard<'static, Option<(u64, mpsc::Sender<bool>)>> {
+    PENDING.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 /// This session's operations, newest first (bounded by `OperationQueue::CAPACITY`).
 static QUEUE: LazyLock<Mutex<OperationQueue>> = LazyLock::new(Mutex::default);
@@ -157,7 +162,7 @@ fn strings(items: Vec<String>) -> ModelRc<SharedString> {
 
 /// Called by the dialog buttons.
 pub fn answer(ok: bool) {
-    if let Some(tx) = PENDING.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take() {
+    if let Some((_, tx)) = pending().take() {
         let _ = tx.send(ok);
     }
 }
@@ -171,7 +176,17 @@ pub fn status(ui: &AppWindow, state: i32, message: &str) {
 pub fn ask(weak: &slint::Weak<AppWindow>, plan: &bitbybit_ipc::plan::OperationPlan) -> bool {
     let catalog = TextCatalog::default_catalog();
     let (tx, rx) = mpsc::channel();
-    *PENDING.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(tx);
+    let ask = ASKS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    {
+        // One confirmation at a time: a second request while one is on screen is declined (nothing changes), so an
+        // answer can never reach a plan other than the one shown.
+        let mut slot = pending();
+        if slot.is_some() {
+            log::warn!("A confirmation is already open; declining another one");
+            return false;
+        }
+        *slot = Some((ask, tx));
+    }
     let v = view::plan_view(plan, catalog);
     let w = weak.clone();
     let _ = slint::invoke_from_event_loop(move || {
@@ -185,13 +200,27 @@ pub fn ask(weak: &slint::Weak<AppWindow>, plan: &bitbybit_ipc::plan::OperationPl
         ui.set_dialog_visible(true);
     });
     let ok = rx.recv_timeout(Duration::from_secs(600)).unwrap_or(false);
+    {
+        // Unanswered (timeout): free the slot, but only if it is still this request's.
+        let mut slot = pending();
+        if slot.as_ref().is_some_and(|(id, _)| *id == ask) {
+            slot.take();
+        }
+    }
+    hide_dialog(weak);
+    ok
+}
+
+/// Hides the confirmation dialog unless another confirmation is waiting for its answer.
+fn hide_dialog(weak: &slint::Weak<AppWindow>) {
     let w = weak.clone();
     let _ = slint::invoke_from_event_loop(move || {
-        if let Some(ui) = w.upgrade() {
+        if let Some(ui) = w.upgrade()
+            && pending().is_none()
+        {
             ui.set_dialog_visible(false);
         }
     });
-    ok
 }
 
 /// Runs `operation`; `done` receives the result on the UI thread.
@@ -200,6 +229,25 @@ pub fn run(
     operation: &'static str,
     params: serde_json::Value,
     done: impl FnOnce(&AppWindow, serde_json::Value) + Send + 'static,
+) {
+    run_then(weak, operation, params, move |ui, value| {
+        if let Some(value) = value {
+            done(ui, value);
+        }
+    });
+}
+
+/// True while an operation of this session has not finished (closing the window then waits).
+pub fn busy() -> bool {
+    queue().pending() > 0
+}
+
+/// Like [`run`], but `done` is called whatever the outcome (`None` when it failed or was cancelled).
+pub fn run_then(
+    weak: slint::Weak<AppWindow>,
+    operation: &'static str,
+    params: serde_json::Value,
+    done: impl FnOnce(&AppWindow, Option<serde_json::Value>) + Send + 'static,
 ) {
     let catalog = TextCatalog::default_catalog();
     if let Some(ui) = weak.upgrade() {
@@ -236,7 +284,9 @@ pub fn run(
         });
         let _ = slint::invoke_from_event_loop(move || {
             let Some(ui) = weak.upgrade() else { return };
-            ui.set_dialog_visible(false);
+            if pending().is_none() {
+                ui.set_dialog_visible(false);
+            }
             match result {
                 Ok(value) => {
                     status(
@@ -244,7 +294,7 @@ pub fn run(
                         2,
                         &catalog.resolve(&text!("app.op.done", "Done. The change is in the bitBybit change journal.")),
                     );
-                    done(&ui, value);
+                    done(&ui, Some(value));
                 }
                 Err(e) => {
                     let elevate = e.user_text.as_ref().is_some_and(|t| t.key == "ipc.error.elevationRequired");
@@ -258,6 +308,7 @@ pub fn run(
                     };
                     ui.set_op_elevate(elevate);
                     status(&ui, 3, &catalog.resolve(&message));
+                    done(&ui, None);
                 }
             }
         });
@@ -268,6 +319,18 @@ pub fn run(
 mod tests {
     //! Unit tests on in-memory queue records (no broker, no window).
     use super::*;
+
+    #[test]
+    fn a_second_confirmation_while_one_is_open_is_declined_and_leaves_the_first_alone() {
+        let (tx, rx) = mpsc::channel();
+        *pending() = Some((u64::MAX, tx));
+        let plan = bitbybit_ipc::plan::OperationPlan::new(text!("s", "s"), Vec::new(), RiskLevel::Low);
+        assert!(!ask(&slint::Weak::default(), &plan), "declined, nothing confirmed");
+        assert!(pending().as_ref().is_some_and(|(id, _)| *id == u64::MAX), "the open one keeps its slot");
+        answer(true);
+        assert_eq!(rx.try_recv(), Ok(true), "the answer reaches the plan that was shown");
+        assert!(pending().is_none());
+    }
 
     #[test]
     fn queue_rows_show_state_time_error_and_revert_note() {

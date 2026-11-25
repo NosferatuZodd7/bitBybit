@@ -177,12 +177,27 @@ pub fn set_format(
     journal.append(record)?;
     let outcome =
         dev.set_device_format(endpoint_id, requested).and_then(|()| Ok(dev.device_format(endpoint_id)? == *requested));
-    match &outcome {
-        Err(e) => {
-            journal.update_status(id, ChangeStatus::RevertFailed, Some(format!("Apply failed: {}", e.message)))?
-        }
-        Ok(false) => journal.update_status(id, ChangeStatus::RevertFailed, Some("Applied but not verified.".into()))?,
-        Ok(true) => {}
+    let problem = match &outcome {
+        Ok(true) => return outcome,
+        Ok(false) => "Applied but not verified".to_owned(),
+        Err(e) => format!("Apply failed: {}", e.message),
+    };
+    // Not the requested format: put the previous one back (unless it is still there) and record what holds now.
+    let restored = dev.device_format(endpoint_id).is_ok_and(|f| f == current)
+        || (dev.set_device_format(endpoint_id, &current).is_ok()
+            && dev.device_format(endpoint_id).is_ok_and(|f| f == current));
+    if restored {
+        journal.update_status(
+            id,
+            ChangeStatus::Reverted,
+            Some(format!("{problem}; the previous format is in place.")),
+        )?;
+    } else {
+        journal.update_status(
+            id,
+            ChangeStatus::RevertFailed,
+            Some(format!("{problem}; the previous format could not be restored.")),
+        )?;
     }
     outcome
 }
@@ -350,7 +365,7 @@ mod tests {
     }
 
     #[test]
-    fn access_denied_keeps_the_record_active_with_the_error() {
+    fn access_denied_changes_nothing_and_the_record_says_why() {
         let (_d, journal, fake) = setup();
         fake.s.lock().unwrap().2 = true;
         assert_eq!(
@@ -358,8 +373,11 @@ mod tests {
             ErrorCode::AccessDenied
         );
         let r = journal.all().unwrap().remove(0);
-        assert_eq!(r.status, ChangeStatus::RevertFailed);
-        assert!(r.status_detail.unwrap().starts_with("Apply failed"));
+        // The device kept its format: not a failed revert that needs attention.
+        assert_eq!(r.status, ChangeStatus::Reverted);
+        let detail = r.status_detail.unwrap();
+        assert!(detail.starts_with("Apply failed") && detail.ends_with("the previous format is in place."));
+        assert_eq!(fake.s.lock().unwrap().0, Some(F16_48));
     }
 
     #[test]

@@ -46,6 +46,12 @@ fn main() -> Result<(), slint::PlatformError> {
     // Same redacting, size-capped rolling log as the service; failures here must not stop the app.
     let _ = bitbybit_security::logging::FileLogger::new(paths.user_logs(), "app", log::LevelFilter::Info).install();
     log::info!("bitBybit app {} starting", version());
+    // A second instance would revert the first one's pending display trial or driver test at its start or exit.
+    #[cfg(windows)]
+    let Some(_instance) = bitbybit_platform_windows::ui::single_instance(std::time::Duration::from_secs(10)) else {
+        log::warn!("Another bitBybit window is already open in this session; exiting");
+        return Ok(());
+    };
     let catalog = TextCatalog::default_catalog();
     let ui = AppWindow::new()?;
     ui.set_logs_text(

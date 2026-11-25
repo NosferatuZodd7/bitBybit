@@ -313,7 +313,7 @@ enum Request {
 /// The confirmation shown before anything changes: current vs requested and the automatic revert.
 fn plan(request: &Request, catalog: &TextCatalog) -> bitbybit_ipc::plan::OperationPlan {
     let (summary, apply) = match request {
-        Request::Mode { name, from, to, .. } => (
+        Request::Mode { name, from, to, untested, .. } => (
             text!(
                 "app.displays.change.summary",
                 "Change '{0}' from {1} to {2}",
@@ -321,11 +321,19 @@ fn plan(request: &Request, catalog: &TextCatalog) -> bitbybit_ipc::plan::Operati
                 mode_text(*from, catalog),
                 mode_text(*to, catalog)
             ),
-            text!(
-                "app.displays.change.stepApply",
-                "Check {0} with the graphics driver (it is one of the modes this display reports), then apply it for this session only",
-                mode_text(*to, catalog)
-            ),
+            if *untested {
+                text!(
+                    "app.displays.change.stepApplyAnnounced",
+                    "Check {0} with the graphics driver (the monitor announces it, the driver does not list it), then apply it for this session only",
+                    mode_text(*to, catalog)
+                )
+            } else {
+                text!(
+                    "app.displays.change.stepApply",
+                    "Check {0} with the graphics driver (it is one of the modes this display reports), then apply it for this session only",
+                    mode_text(*to, catalog)
+                )
+            },
         ),
         Request::Topology { from, to } => (
             text!(
@@ -458,7 +466,9 @@ fn run(weak: &slint::Weak<AppWindow>, request: &Request) -> Option<LocalizedText
     if keep {
         log::info!("Display change {id} kept");
         let kept = changes.keep(id);
-        queue(OperationState::Succeeded, kept.as_ref().err().map(|e| e.message.clone()), Some(id));
+        // Not saved by Windows: in effect for this session only, which is not what "keep" promised.
+        let state = if kept.is_ok() { OperationState::Succeeded } else { OperationState::Failed };
+        queue(state, kept.as_ref().err().map(|e| e.message.clone()), Some(id));
         return Some(match kept {
             Ok(()) => text!(
                 "app.displays.kept",

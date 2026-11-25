@@ -776,5 +776,10 @@
   "app.displays.tag.recommended": "Recomendado",
   "app.displays.tag.driverOnly": "Só no controlador",
   "app.displays.tag.monitorOnly": "Só no monitor",
-  "app.displays.tag.refused": "Recusado pelo controlador"
+  "app.displays.tag.refused": "Recusado pelo controlador",
+  "app.driverTest.starting": "Já está a começar um teste de controlador.",
+  "app.driverTest.notFound": "O controlador escolhido já não está entre os compatíveis.",
+  "app.close.busy": "Ainda há uma operação em curso: feche o bitBybit quando terminar.",
+  "app.audio.format.notVerified": "O Windows não indicou o novo formato; o anterior foi reposto, se foi possível.",
+  "app.displays.change.stepApplyAnnounced": "Verificar {0} com o controlador gráfico (o monitor anuncia-o, o controlador não o lista) e aplicar apenas para esta sessão"
 }

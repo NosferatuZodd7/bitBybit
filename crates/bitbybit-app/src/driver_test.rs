@@ -18,8 +18,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 /// A test started by this run of the app (otherwise a saved session is a leftover from an earlier run).
 static STARTED_HERE: AtomicBool = AtomicBool::new(false);
-/// The exit revert is running; a second close request closes anyway.
+/// The exit revert is running; further close requests wait for it.
 static CLOSING: AtomicBool = AtomicBool::new(false);
+/// A "Testar" flow is between its first click and the end of its install: no second test meanwhile.
+static STARTING: AtomicBool = AtomicBool::new(false);
 
 fn path() -> PathBuf {
     AppPaths::from_environment().driver_test_file()
@@ -145,28 +147,40 @@ fn start(weak: slint::Weak<AppWindow>, instance_id: String, inf: String) {
         );
         return ops::status(&ui, 3, &catalog.resolve(&t));
     }
+    if STARTING.swap(true, Ordering::SeqCst) {
+        let t = text!("app.driverTest.starting", "A driver test is already being started.");
+        return ops::status(&ui, 3, &catalog.resolve(&t));
+    }
     let device_name = ui.get_driver_device_name().to_string();
     std::thread::spawn(move || {
+        let fail = |weak: &slint::Weak<AppWindow>, t: LocalizedText| {
+            STARTING.store(false, Ordering::SeqCst);
+            let message = catalog.resolve(&t);
+            let w = weak.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(ui) = w.upgrade() {
+                    ops::status(&ui, 3, &message);
+                }
+            });
+        };
         let params = serde_json::json!({ "instanceId": instance_id });
         let list = crate::broker::invoke("drivers.compatible", &params, &|_, _| false)
             .and_then(|v| Ok(serde_json::from_value::<Candidates>(v)?.drivers));
         let drivers = match list {
             Ok(d) => d,
             Err(e) => {
-                let message = catalog.resolve(&text!(
-                    "app.driverTest.readFailed",
-                    "The compatible drivers could not be read: {0}",
-                    e.message
-                ));
-                let _ = slint::invoke_from_event_loop(move || {
-                    if let Some(ui) = weak.upgrade() {
-                        ops::status(&ui, 3, &message);
-                    }
-                });
-                return;
+                return fail(
+                    &weak,
+                    text!("app.driverTest.readFailed", "The compatible drivers could not be read: {0}", e.message),
+                );
             }
         };
-        let Some(candidate) = drivers.iter().find(|c| c.inf_name.eq_ignore_ascii_case(&inf)).cloned() else { return };
+        let Some(candidate) = drivers.iter().find(|c| c.inf_name.eq_ignore_ascii_case(&inf)).cloned() else {
+            return fail(
+                &weak,
+                text!("app.driverTest.notFound", "The chosen driver is no longer among the compatible ones."),
+            );
+        };
         let previous = drivers.iter().find(|c| c.is_current).map(|c| c.inf_name.clone());
         let question = OperationPlan::new(
             text!(
@@ -182,14 +196,29 @@ fn start(weak: slint::Weak<AppWindow>, instance_id: String, inf: String) {
             RiskLevel::Medium,
         );
         if !ops::ask(&weak, &question) {
+            STARTING.store(false, Ordering::SeqCst);
             return;
         }
         let _ = slint::invoke_from_event_loop(move || {
             let params = serde_json::json!({ "instanceId": instance_id, "infName": candidate.inf_name });
-            ops::run(weak, "drivers.install", params, move |ui, value| {
-                let outcome = serde_json::from_value::<bitbybit_drivers::changes::DriverOutcome>(value);
+            ops::run_then(weak, "drivers.install", params, move |ui, value| {
+                STARTING.store(false, Ordering::SeqCst);
+                // Failed or cancelled: run_then already said so; nothing was installed as a test.
+                let Some(value) = value else { return };
+                let outcome = match serde_json::from_value::<bitbybit_drivers::changes::DriverOutcome>(value) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        let t = text!(
+                            "app.driverTest.saveFailed",
+                            "The driver was installed but the test could not be saved ({0}); it stays as a normal change.",
+                            e.to_string()
+                        );
+                        ops::status(ui, 3, &catalog.resolve(&t));
+                        return crate::reload(ui.as_weak());
+                    }
+                };
                 // No change id: the driver was already in use, nothing was installed, there is nothing to test.
-                if let Some(change_id) = outcome.ok().and_then(|o| o.change_id) {
+                if let Some(change_id) = outcome.change_id {
                     let session = DriverTestSession {
                         change_id,
                         instance_id,
@@ -266,12 +295,24 @@ fn revert_at_exit(
 /// Closing the window with a test active: revert first (the window stays while it runs), then close. If it could
 /// not be reverted, ask whether to close anyway (the session then stays for the next start).
 fn close_requested(weak: &slint::Weak<AppWindow>) -> slint::CloseRequestResponse {
-    let Some(session) = DriverTestSession::load(&path()) else { return slint::CloseRequestResponse::HideWindow };
-    if CLOSING.swap(true, Ordering::SeqCst) {
-        // Second close while the revert runs: close; the session file stays, so the next start offers it.
+    let catalog = TextCatalog::default_catalog();
+    // An operation still running (in-process broker, automatic fix) would be cut off half-way by the process exit.
+    if ops::busy() || weak.upgrade().is_some_and(|ui| ui.get_fix_running()) {
+        if let Some(ui) = weak.upgrade() {
+            let t = text!("app.close.busy", "An operation is still running: close bitBybit when it has finished.");
+            ops::status(&ui, 3, &catalog.resolve(&t));
+        }
+        return slint::CloseRequestResponse::KeepWindowShown;
+    }
+    // Only a test this run started is reverted without asking; a leftover keeps its banner for the next start.
+    if !STARTED_HERE.load(Ordering::SeqCst) {
         return slint::CloseRequestResponse::HideWindow;
     }
-    let catalog = TextCatalog::default_catalog();
+    let Some(session) = DriverTestSession::load(&path()) else { return slint::CloseRequestResponse::HideWindow };
+    if CLOSING.swap(true, Ordering::SeqCst) {
+        // The revert is running (bounded by the broker's timeout): wait for it instead of exiting half-way.
+        return slint::CloseRequestResponse::KeepWindowShown;
+    }
     if let Some(ui) = weak.upgrade() {
         ops::status(&ui, 1, &catalog.resolve(&text!("app.driverTest.closing", "Ending the driver test…")));
     }

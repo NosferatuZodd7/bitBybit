@@ -1,6 +1,7 @@
 //! Journaled display mode / topology changes (DSP-03). These belong to the user's desktop session, so they go to
 //! the user's journal. Discipline: read the current state, validate the request against what the display reports,
-//! save the whole configuration, journal it, apply as a TRIAL (not persisted), verify, then wait for the user. A
+//! save the whole configuration, journal it, apply as a TRIAL (a mode is not persisted; Windows does persist a topology,
+//! so its revert re-applies the previous topology when the saved arrays no longer restore it), verify, then wait. A
 //! journaled change stays "pending" (`revert_on_recovery`) until the user keeps it; a pending change found at
 //! start-up or exit is reverted. Any failure after the journal entry restores the saved configuration at once.
 
@@ -336,7 +337,17 @@ impl RevertHandler for DisplayTopologyRevert<'_> {
         let previous = read::<TopologyState>(record.previous_state.as_deref())
             .ok_or_else(|| Error::invalid("The journal record has no readable previous state."))?;
         match (previous.saved.as_ref().filter(|_| record.revert_on_recovery), previous.topology) {
-            (Some(saved), _) => self.0.restore(saved)?,
+            (Some(saved), topology) => {
+                self.0.restore(saved)?;
+                // Windows keeps a topology it applied; after a restart the saved arrays may no longer match the
+                // adapters and the restore falls back to that kept topology: set the previous one explicitly.
+                if let Some(t) = topology
+                    && self.0.topology()?.0 != Some(t)
+                {
+                    self.0.apply_topology(t, Apply::Test)?;
+                    self.0.apply_topology(t, Apply::Keep)?;
+                }
+            }
             (None, Some(t)) => {
                 self.0.apply_topology(t, Apply::Test)?;
                 self.0.apply_topology(t, Apply::Keep)?;
@@ -380,6 +391,8 @@ mod tests {
         connected: usize,
         refuse_test: bool,
         ignore_apply: bool,
+        /// After a restart the saved arrays no longer restore the topology Windows kept.
+        stale_restore: bool,
         restores: u32,
         applies: u32,
         journal: std::path::PathBuf,
@@ -459,7 +472,9 @@ mod tests {
             s.restores += 1;
             let n = |i: usize| u32::from_le_bytes(saved.modes[i * 4..i * 4 + 4].try_into().unwrap());
             s.mode = Some(DisplayMode { width: n(0), height: n(1), refresh_mhz: n(2) });
-            s.topology = saved.paths[0].checked_sub(1).map(|i| Topology::ALL[usize::from(i)]);
+            if !s.stale_restore {
+                s.topology = saved.paths[0].checked_sub(1).map(|i| Topology::ALL[usize::from(i)]);
+            }
             Ok(())
         }
     }
@@ -617,5 +632,15 @@ mod tests {
         f.changes().keep(id).unwrap();
         f.displays.state().topology = Some(Topology::External);
         assert_eq!(f.revert(id), ChangeStatus::DriftDetected);
+    }
+
+    #[test]
+    fn a_pending_topology_left_by_a_crash_is_set_back_even_when_the_saved_arrays_no_longer_apply() {
+        let f = fixture();
+        let id = f.changes().change_topology(Topology::Clone, NOW).unwrap();
+        f.displays.state().stale_restore = true; // restart in between: Windows kept "Clone"
+        assert_eq!(f.revert(id), ChangeStatus::Reverted);
+        assert_eq!(f.displays.state().topology, Some(Topology::Extend));
+        assert_eq!(f.record(id).status, ChangeStatus::Reverted);
     }
 }

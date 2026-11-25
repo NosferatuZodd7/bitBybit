@@ -103,6 +103,13 @@ fn plan(name: &str, from: &AudioFormat, to: &AudioFormat, catalog: &TextCatalog)
     plan
 }
 
+fn not_verified() -> LocalizedText {
+    text!(
+        "app.audio.format.notVerified",
+        "Windows did not report the new format; the previous one was put back if it could be."
+    )
+}
+
 pub fn wire(ui: &AppWindow) {
     let weak = ui.as_weak();
     ui.on_set_audio_format(move |id, index| {
@@ -133,13 +140,13 @@ pub fn wire(ui: &AppWindow) {
             let result = bitbybit_audio::format::set_format(port, &journal, &id, &name, &to, now);
             match &result {
                 Ok(true) => queue(OperationState::Succeeded, None),
-                Ok(false) => queue(OperationState::Failed, Some("Windows did not report the new format".into())),
+                Ok(false) => queue(OperationState::Failed, Some(catalog.resolve(&not_verified()))),
                 Err(e) => queue(OperationState::Failed, Some(e.message.clone())),
             }
             let failed = |why: String| text!("app.audio.changeFailed", "The audio device could not be changed: {0}", why);
             let (message, elevate): (LocalizedText, bool) = match result {
                 Ok(true) => (text!("app.audio.format.done", "Format changed, verified and recorded in the change journal."), false),
-                Ok(false) => (failed("Windows did not report the new format".into()), false),
+                Ok(false) => (failed(catalog.resolve(&not_verified())), false),
                 Err(e) if e.code == ErrorCode::AccessDenied => (
                     text!(
                         "app.audio.format.elevation",

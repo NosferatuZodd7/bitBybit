@@ -205,6 +205,11 @@ fn query(name: &[u16], ty: windows::Win32::NetworkManagement::Dns::DNS_TYPE) -> 
     // SAFETY: `name` is NUL-terminated UTF-16; `list` is an out-pointer freed below.
     let code = unsafe { DnsQuery_W(PCWSTR(name.as_ptr()), ty, DNS_QUERY_STANDARD, None, &mut list, None) };
     if code != NO_ERROR {
+        // Some error codes still come with a record list (e.g. a name with no record of this type): free it.
+        if !list.is_null() {
+            // SAFETY: a list DnsQuery_W returned, freed once.
+            unsafe { DnsFree(Some(list.cast_const().cast()), DnsFreeRecordList) };
+        }
         return Err(code.0);
     }
     let mut out = Vec::new();

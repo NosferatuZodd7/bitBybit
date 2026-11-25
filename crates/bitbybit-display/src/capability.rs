@@ -424,10 +424,14 @@ pub fn diagnose(
     let mut explained = false;
     if caps.length <= 128 && !caps.has_cea_extension {
         add(
-            Observation,
+            Fact,
+            text!("display.limit.edidShort", "Windows read only the 128-byte base EDID, with no CEA-861 extension."),
+        );
+        add(
+            Inference,
             text!(
-                "display.limit.edidShort",
-                "Windows read only the 128-byte base EDID, with no CEA-861 extension: the monitor is treated as a DVI device (no audio, no HDMI modes)."
+                "display.limit.edidShortMeaning",
+                "Without that extension the monitor announces no audio and no HDMI modes, and the graphics driver tends to treat it as a DVI device."
             ),
         );
     }
@@ -578,8 +582,10 @@ mod tests {
         let hyp = texts(&l, EvidenceKind::Hypothesis);
         assert!(hyp.iter().any(|t| t.contains("ligação simples") && t.contains("181,25")), "{hyp:?}");
         assert!(hyp.iter().any(|t| t.contains("ligação dupla")), "{hyp:?}");
-        assert!(texts(&l, EvidenceKind::Inference).is_empty(), "the link is not certain: no inference");
-        assert!(texts(&l, EvidenceKind::Observation).iter().any(|t| t.contains("128")));
+        let inferences = texts(&l, EvidenceKind::Inference);
+        assert!(!inferences.iter().any(|t| t.contains("ligação")), "the link is not certain: no inference about it");
+        assert!(facts.iter().any(|t| t.contains("128")), "the EDID size read is a fact: {facts:?}");
+        assert!(inferences.iter().any(|t| t.contains("DVI")), "what a short EDID implies is an inference");
         assert!(!hyp.iter().any(|t| t.contains("controlador gráfico ou da placa")), "explained by the link");
         assert!(l.guidance.len() >= 3);
     }

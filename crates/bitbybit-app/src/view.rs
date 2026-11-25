@@ -1146,6 +1146,9 @@ pub fn action_route(a: &bitbybit_domain::diagnostics::ProposedAction) -> ActionR
         ("device.restart", Some(id), ..) => {
             ActionRoute::Broker("devices.action", json!({ "instanceId": id, "action": "Restart" }))
         }
+        ("device.uninstall", Some(id), ..) => {
+            ActionRoute::Broker("devices.action", json!({ "instanceId": id, "action": "Uninstall" }))
+        }
         ("device.installDriver", Some(id), _, Some(inf), _) => {
             ActionRoute::Broker("drivers.install", json!({ "instanceId": id, "infName": inf }))
         }
