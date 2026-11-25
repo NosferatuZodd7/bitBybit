@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dependencies]
 bitbybit-core.workspace = true
+bitbybit-evidence.workspace = true
 bitbybit-journal.workspace = true
 bitbybit-recovery.workspace = true
 serde.workspace = true
@@ -16,6 +17,7 @@ time.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+bitbybit-localization.workspace = true
 tempfile.workspace = true
 
 [lints]

@@ -4,20 +4,21 @@
 //! goes back to the saved mode); topologies use `SetDisplayConfig(SDC_TOPOLOGY_* | SDC_VALIDATE / SDC_APPLY)`.
 //! The CCD path/mode arrays are saved before a change and restored exactly. The caller reads every change back.
 
-use crate::display::{query, source_name};
+use crate::display::{query, read_edid, source_name, target_name};
 use bitbybit_core::{Error, ErrorCode, Result};
+use bitbybit_display::ccd::instance_id_from_device_path;
 use bitbybit_display::change::{Apply, DisplayControl, DisplayState, SavedConfig, Topology};
 use bitbybit_display::mode::{DisplayMode, best_first};
 use windows::Win32::Devices::Display::{
     DISPLAYCONFIG_MODE_INFO, DISPLAYCONFIG_PATH_INFO, DISPLAYCONFIG_TOPOLOGY_CLONE, DISPLAYCONFIG_TOPOLOGY_EXTEND,
     DISPLAYCONFIG_TOPOLOGY_EXTERNAL, DISPLAYCONFIG_TOPOLOGY_INTERNAL, QDC_ALL_PATHS, QDC_DATABASE_CURRENT,
-    QDC_ONLY_ACTIVE_PATHS, SDC_ALLOW_CHANGES, SDC_APPLY, SDC_SAVE_TO_DATABASE, SDC_TOPOLOGY_CLONE,
-    SDC_TOPOLOGY_EXTEND, SDC_TOPOLOGY_EXTERNAL, SDC_TOPOLOGY_INTERNAL, SDC_USE_DATABASE_CURRENT,
-    SDC_USE_SUPPLIED_DISPLAY_CONFIG, SDC_VALIDATE, SET_DISPLAY_CONFIG_FLAGS, SetDisplayConfig,
+    QDC_ONLY_ACTIVE_PATHS, SDC_ALLOW_CHANGES, SDC_APPLY, SDC_SAVE_TO_DATABASE, SDC_TOPOLOGY_CLONE, SDC_TOPOLOGY_EXTEND,
+    SDC_TOPOLOGY_EXTERNAL, SDC_TOPOLOGY_INTERNAL, SDC_USE_DATABASE_CURRENT, SDC_USE_SUPPLIED_DISPLAY_CONFIG,
+    SDC_VALIDATE, SET_DISPLAY_CONFIG_FLAGS, SetDisplayConfig,
 };
 use windows::Win32::Graphics::Gdi::{
     CDS_TEST, CDS_TYPE, CDS_UPDATEREGISTRY, ChangeDisplaySettingsExW, DEVMODEW, DISP_CHANGE_SUCCESSFUL,
-    DM_DISPLAYFREQUENCY, DM_PELSHEIGHT, DM_PELSWIDTH, ENUM_CURRENT_SETTINGS, ENUM_DISPLAY_SETTINGS_FLAGS,
+    DM_DISPLAYFREQUENCY, DM_PELSHEIGHT, DM_PELSWIDTH, EDS_RAWMODE, ENUM_CURRENT_SETTINGS, ENUM_DISPLAY_SETTINGS_FLAGS,
     ENUM_DISPLAY_SETTINGS_MODE, EnumDisplaySettingsExW,
 };
 use windows::core::HSTRING;
@@ -31,10 +32,34 @@ const MAX_MODES: u32 = 4096;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct WindowsDisplays;
 
-fn devmode(device: &HSTRING, index: ENUM_DISPLAY_SETTINGS_MODE) -> Option<DEVMODEW> {
+fn devmode_with(
+    device: &HSTRING,
+    index: ENUM_DISPLAY_SETTINGS_MODE,
+    flags: ENUM_DISPLAY_SETTINGS_FLAGS,
+) -> Option<DEVMODEW> {
     let mut dm = DEVMODEW { dmSize: size_of::<DEVMODEW>() as u16, ..Default::default() };
     // SAFETY: `dm` is a correctly sized DEVMODEW; the device name is NUL-terminated.
-    unsafe { EnumDisplaySettingsExW(device, index, &mut dm, ENUM_DISPLAY_SETTINGS_FLAGS(0)) }.as_bool().then_some(dm)
+    unsafe { EnumDisplaySettingsExW(device, index, &mut dm, flags) }.as_bool().then_some(dm)
+}
+
+fn devmode(device: &HSTRING, index: ENUM_DISPLAY_SETTINGS_MODE) -> Option<DEVMODEW> {
+    devmode_with(device, index, ENUM_DISPLAY_SETTINGS_FLAGS(0))
+}
+
+/// Progressive modes at the current colour depth; `flags` 0 = filtered for the monitor, EDS_RAWMODE = all the
+/// driver knows (read-only enumeration either way).
+fn modes(device: &HSTRING, now: &DEVMODEW, flags: ENUM_DISPLAY_SETTINGS_FLAGS) -> Vec<DisplayMode> {
+    best_first(
+        (0..MAX_MODES)
+            .map_while(|i| devmode_with(device, ENUM_DISPLAY_SETTINGS_MODE(i), flags))
+            // SAFETY: plain integer member of a union the API filled.
+            .filter(|dm| {
+                dm.dmBitsPerPel == now.dmBitsPerPel && unsafe { dm.Anonymous2.dmDisplayFlags } & INTERLACED == 0
+            })
+            .filter(|dm| dm.dmDisplayFrequency > 1) // 0 and 1 mean "hardware default"
+            .map(|dm| mode_of(&dm))
+            .collect(),
+    )
 }
 
 fn mode_of(dm: &DEVMODEW) -> DisplayMode {
@@ -71,8 +96,9 @@ fn set_config(
     match unsafe { SetDisplayConfig(paths, modes, flags) } {
         0 => Ok(()),
         // ERROR_INVALID_PARAMETER / ERROR_NOT_SUPPORTED / ERROR_BAD_CONFIGURATION: refused, nothing changed.
-        e @ (87 | 50 | 1610) => Err(Error::new(ErrorCode::NotSupported, format!("SetDisplayConfig refused ({e})"))
-            .with_native(e)),
+        e @ (87 | 50 | 1610) => {
+            Err(Error::new(ErrorCode::NotSupported, format!("SetDisplayConfig refused ({e})")).with_native(e))
+        }
         e => Err(Error::platform("SetDisplayConfig failed", e)),
     }
 }
@@ -89,14 +115,19 @@ impl DisplayControl for WindowsDisplays {
             }
             let device = HSTRING::from(id.as_str());
             let Ok(now) = current(&device) else { continue };
-            let supported = (0..MAX_MODES)
-                .map_while(|i| devmode(&device, ENUM_DISPLAY_SETTINGS_MODE(i)))
-                // SAFETY: plain integer member of a union the API filled.
-                .filter(|dm| dm.dmBitsPerPel == now.dmBitsPerPel && unsafe { dm.Anonymous2.dmDisplayFlags } & INTERLACED == 0)
-                .filter(|dm| dm.dmDisplayFrequency > 1) // 0 and 1 mean "hardware default"
-                .map(|dm| mode_of(&dm))
-                .collect();
-            out.push(DisplayState { id, current: mode_of(&now), supported: best_first(supported) });
+            let target = path.targetInfo;
+            let edid = target_name(target.adapterId, target.id)
+                .and_then(|(_, device_path)| instance_id_from_device_path(&device_path))
+                .and_then(|instance| read_edid(&instance))
+                .unwrap_or_default();
+            out.push(DisplayState {
+                id,
+                current: mode_of(&now),
+                supported: modes(&device, &now, ENUM_DISPLAY_SETTINGS_FLAGS(0)),
+                edid,
+                output_technology: Some(target.outputTechnology.0),
+                raw: modes(&device, &now, EDS_RAWMODE),
+            });
         }
         Ok(out)
     }
@@ -146,8 +177,10 @@ impl DisplayControl for WindowsDisplays {
         let result = unsafe { ChangeDisplaySettingsExW(&device, Some(&dm), None, flags, None) };
         match (result, how) {
             (DISP_CHANGE_SUCCESSFUL, _) => Ok(()),
-            (r, Apply::Test) => Err(Error::new(ErrorCode::NotSupported, format!("The driver refused the mode ({})", r.0))
-                .with_native(r.0)),
+            (r, Apply::Test) => {
+                Err(Error::new(ErrorCode::NotSupported, format!("The driver refused the mode ({})", r.0))
+                    .with_native(r.0))
+            }
             (r, _) => Err(Error::platform("ChangeDisplaySettingsExW failed", r.0)),
         }
     }

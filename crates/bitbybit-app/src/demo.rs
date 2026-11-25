@@ -105,19 +105,39 @@ pub fn fill(ui: &AppWindow, mode: &str) {
     ui.set_display_topologies(strings(&["Duplicar", "Expandir", "Apenas o ecrã do PC", "Apenas o segundo ecrã"]));
     ui.set_display_topology(1);
     ui.set_display_can_topology(true);
+    ui.set_displays_failed(false);
+    ui.set_displays_summary("1 ecrã ativo · dados de demonstração".into());
     if mode == "displaykeep" {
-        ui.set_display_keep_detail("Alterar 'DELL U2723QE (demo)' de 3840 × 2160 · 60 Hz para 2560 × 1440 · 60 Hz".into());
+        ui.set_display_keep_detail(
+            "Alterar 'LG ULTRAWIDE (demo)' de 1920 × 1080 · 60 Hz para 1920 × 1080 · 75 Hz".into(),
+        );
         ui.set_display_keep_seconds(12);
         ui.set_display_keep_visible(true);
     }
-    ui.set_displays(model(vec![DisplayRow {
+    // The reported case, FAKE data through the real comparison and diagnosis: a 2560×1080 monitor on a DVI link
+    // whose driver offers at most 1920×1080, with a 128-byte EDID (no CEA-861 extension).
+    let catalog = bitbybit_localization::TextCatalog::default_catalog();
+    let dm = |width, height, hz: u32| bitbybit_display::mode::DisplayMode { width, height, refresh_mhz: hz * 1000 };
+    let state = bitbybit_display::change::DisplayState {
         id: r"\\.\DISPLAY1".into(),
-        modes: strings(&["3840 × 2160 · 60 Hz", "3840 × 2160 · 30 Hz", "2560 × 1440 · 60 Hz", "1920 × 1080 · 60 Hz"]),
-        mode_index: 0,
-        name: "DELL U2723QE (demo)".into(),
-        connection: "DisplayPort · placa NVIDIA".into(),
-        mode: "3840×2160 · 60 Hz".into(),
-        edid: "EDID válido · 2022".into(),
+        current: dm(1920, 1080, 60),
+        supported: vec![dm(1920, 1080, 60), dm(1680, 1050, 60), dm(1280, 1024, 60), dm(1024, 768, 60)],
+        edid: ultrawide_edid(),
+        output_technology: Some(4),
+        raw: Vec::new(),
+    };
+    // The fake driver validates 1920×1080 at 75 Hz but refuses 2560×1080 (as on the reported PC).
+    let d = crate::displays_page::demo_details(state, |m| m.width == 1920, "LG ULTRAWIDE (demo)", catalog);
+    ui.set_displays(model(vec![DisplayRow {
+        id: d.id.into(),
+        caps: d.caps.into(),
+        groups: d.groups,
+        limits: d.limits,
+        guidance: d.guidance,
+        name: "LG ULTRAWIDE (demo)".into(),
+        connection: "DVI · \\\\.\\DISPLAY1".into(),
+        mode: "1920 × 1080 · 60 Hz".into(),
+        edid: "EDID GSM: não anuncia áudio".into(),
         warning: String::new().into(),
     }]));
     ui.set_findings(model(vec![FindingRow {
@@ -310,4 +330,30 @@ pub fn fill(ui: &AppWindow, mode: &str) {
         ui.set_dialog_warnings(strings(&["Esta ação não pode ser revertida automaticamente."]));
         ui.set_dialog_visible(true);
     }
+}
+
+/// A FAKE 128-byte EDID 1.3 like the reported monitor: preferred 2560×1080 CVT-RB (181.25 MHz), 1920×1080 at 60
+/// and 75 Hz and 1280×1024@75 as standard timings, 1024×768@60 established, range limits 56–75 Hz / 190 MHz.
+fn ultrawide_edid() -> Vec<u8> {
+    let mut e = vec![0u8; 128];
+    e[..8].copy_from_slice(&[0, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0]);
+    e[8..12].copy_from_slice(&[0x1E, 0x6D, 0x3E, 0x5A]); // "GSM", product 0x5A3E
+    e[18] = 1;
+    e[19] = 3;
+    e[20] = 0x80;
+    e[36] = 1 << 3; // 1024×768@60
+    let standard = [(1920u32, 0xC0u8), (1920, 0xC0 | 15), (1280, 0x80 | 15)];
+    for (i, slot) in (38..54).step_by(2).enumerate() {
+        let (b1, b2) = standard.get(i).map_or((1, 1), |&(w, aspect_hz)| ((w / 8 - 31) as u8, aspect_hz));
+        e[slot] = b1;
+        e[slot + 1] = b2;
+    }
+    e[54..72]
+        .copy_from_slice(&[0xCD, 0x46, 0x00, 0xA0, 0xA0, 0x38, 0x1F, 0x40, 0x30, 0x20, 0x35, 0, 0, 0, 0, 0, 0, 0x1E]);
+    e[72..90].copy_from_slice(&[0, 0, 0, 0xFD, 0, 56, 75, 30, 90, 19, 0, 0x0A, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20]);
+    e[90..95].copy_from_slice(&[0, 0, 0, 0xFC, 0]);
+    e[95..108].copy_from_slice(b"LG ULTRAWIDE\n");
+    let sum = e[..127].iter().fold(0u8, |s, b| s.wrapping_add(*b));
+    e[127] = 0u8.wrapping_sub(sum);
+    e
 }

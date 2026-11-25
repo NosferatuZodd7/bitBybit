@@ -3,10 +3,16 @@
 //! in the user journal, applied as a trial and kept only when the user answers "Manter" within `CONFIRM_TIMEOUT`.
 //! The countdown runs on the worker thread: no answer, a closed dialog, a closed app (`revert_on_exit`) or a crash
 //! (`recover_at_start` on the next run) all restore the saved configuration.
+//!
+//! The modes come from the driver's list and the monitor's EDID (`bitbybit_display::capability`): a mode only the
+//! monitor announces is offered as "Testar" only when the driver accepts it in a validation call (CDS_TEST), and
+//! goes through the same trial. When the native mode is missing, the page explains why from the data only.
 
-use crate::ui::AppWindow;
+use crate::ui::{AppWindow, LimitLine, ModeGroup, ModeRate};
 use bitbybit_core::{LocalizedText, RiskLevel, text};
-use bitbybit_display::change::{self, DisplayControl, DisplayState, JournaledDisplayChanges, Topology};
+use bitbybit_display::capability::{self, Availability, Limitation, ModeOption};
+use bitbybit_display::change::{self, Apply, DisplayControl, DisplayState, JournaledDisplayChanges, Topology};
+use bitbybit_display::edid::EdidCapabilities;
 use bitbybit_display::mode::{CONFIRM_TIMEOUT, DisplayMode, wait_for_answer};
 use bitbybit_journal::{ChangeStatus, JsonLinesJournal};
 use bitbybit_localization::TextCatalog;
@@ -19,9 +25,46 @@ use std::time::Duration;
 
 /// What the page needs to offer changes (read off the UI thread).
 pub struct Controls {
-    displays: Vec<DisplayState>,
+    displays: Vec<Display>,
     topology: Option<Topology>,
     connected: usize,
+}
+
+/// One display: the driver's view, the EDID's, the merged options and the limitation explanation.
+struct Display {
+    state: DisplayState,
+    caps: Option<EdidCapabilities>,
+    options: Vec<ModeOption>,
+    limitation: Option<Limitation>,
+}
+
+impl Display {
+    fn from(c: &dyn DisplayControl, state: DisplayState) -> Self {
+        let id = state.id.clone();
+        // Only the driver's own validation decides whether an announced-only mode may be tried (read-only test).
+        Self::with(state, |m| c.apply_mode(&id, m, Apply::Test).is_ok())
+    }
+
+    fn with(state: DisplayState, driver_accepts: impl Fn(DisplayMode) -> bool) -> Self {
+        let caps = bitbybit_display::edid::capabilities(&state.edid);
+        let options = capability::compare(state.current, &state.supported, caps.as_ref(), driver_accepts);
+        let limitation = capability::diagnose(&options, caps.as_ref(), state.output_technology, &state.raw);
+        Self { state, caps, options, limitation }
+    }
+}
+
+/// Debug builds: the row details of a FAKE display through the real comparison and diagnosis (demo screenshots).
+#[cfg(debug_assertions)]
+pub fn demo_details(
+    state: DisplayState,
+    driver_accepts: impl Fn(DisplayMode) -> bool,
+    name: &str,
+    catalog: &TextCatalog,
+) -> Details {
+    let id = state.id.clone();
+    let controls = Controls { displays: vec![Display::with(state, driver_accepts)], topology: None, connected: 2 };
+    CONTROLS.with(|c| *c.borrow_mut() = (Some(controls), Vec::new()));
+    details(Some(&id), name, catalog)
 }
 
 /// Last read, with the (id, name) of the displays shown on screen.
@@ -59,6 +102,7 @@ fn journal() -> JsonLinesJournal {
 pub fn read() -> Option<Controls> {
     let c = control()?;
     let displays = c.displays().map_err(|e| log::warn!("Display modes not readable: {e}")).ok()?;
+    let displays = displays.into_iter().map(|d| Display::from(c, d)).collect();
     let (topology, connected) = c.topology().unwrap_or_else(|e| {
         log::warn!("Display topology not readable: {e}");
         (None, 0)
@@ -99,23 +143,170 @@ pub fn store(ui: &AppWindow, controls: Option<Controls>, catalog: &TextCatalog) 
     CONTROLS.with(|c| *c.borrow_mut() = (controls, Vec::new()));
 }
 
-/// (id, mode labels, index of the mode in use) for one row; empty when the display offers no change.
-pub fn picker(source: Option<&str>, name: &str, catalog: &TextCatalog) -> (String, ModelRc<SharedString>, i32) {
+/// What one row of the page shows besides the read-only columns.
+pub struct Details {
+    pub id: String,
+    pub caps: String,
+    pub groups: ModelRc<ModeGroup>,
+    pub limits: ModelRc<LimitLine>,
+    pub guidance: ModelRc<SharedString>,
+}
+
+const RATES_PER_ROW: usize = 4;
+
+fn model<T: Clone + 'static>(v: Vec<T>) -> ModelRc<T> {
+    ModelRc::from(Rc::new(VecModel::from(v)))
+}
+
+/// "Nativo 2560 × 1080 · 60 Hz (181,25 MHz) · até 75 Hz · EDID de 128 bytes, sem extensão CEA-861 · ligação DVI".
+fn caps_text(d: &Display, catalog: &TextCatalog) -> String {
+    let mut parts = Vec::new();
+    if let Some(c) = &d.caps {
+        if let Some(n) = d.options.iter().filter(|o| o.native).max_by_key(|o| o.mode.refresh_mhz) {
+            let clock = n.clock.mhz_text();
+            parts.push(catalog.resolve(&if n.clock.exact() {
+                text!("app.displays.caps.native", "Native {0} ({1} MHz)", mode_text(n.mode, catalog), clock)
+            } else {
+                text!(
+                    "app.displays.caps.nativeEstimate",
+                    "Native {0} (about {1} MHz, estimate)",
+                    mode_text(n.mode, catalog),
+                    clock
+                )
+            }));
+        }
+        if let Some(r) = c.range {
+            parts.push(catalog.resolve(&text!(
+                "app.displays.caps.range",
+                "{0}–{1} Hz",
+                r.min_vertical_hz.to_string(),
+                r.max_vertical_hz.to_string()
+            )));
+        }
+        parts.push(catalog.resolve(&if c.has_cea_extension {
+            text!("app.displays.caps.edidCea", "EDID of {0} bytes with CEA-861 extension", c.length.to_string())
+        } else {
+            text!("app.displays.caps.edidBase", "EDID of {0} bytes, no CEA-861 extension", c.length.to_string())
+        }));
+        if let Some(i) = c.interface {
+            parts.push(catalog.resolve(&text!("app.displays.caps.interface", "declares {0}", i.to_owned())));
+        }
+        if let Some(b) = c.bits_per_color {
+            parts.push(catalog.resolve(&text!("app.displays.caps.depth", "{0} bits per colour", b.to_string())));
+        }
+        if let Some(t) = c.hdmi_max_tmds_mhz {
+            parts.push(catalog.resolve(&text!("app.displays.caps.tmds", "HDMI up to {0} MHz", t.to_string())));
+        }
+    }
+    if let Some(t) = d.state.output_technology {
+        parts.push(catalog.resolve(&text!(
+            "app.displays.caps.link",
+            "connection {0}",
+            bitbybit_display::ccd::output_technology_name(t)
+        )));
+    }
+    parts.join(" · ")
+}
+
+fn rate(index: usize, o: &ModeOption, catalog: &TextCatalog) -> ModeRate {
+    let hz = (f64::from(o.mode.refresh_mhz) / 1000.0).to_string().replace('.', ",");
+    let label = if o.availability == Availability::AnnouncedTestable {
+        catalog.resolve(&text!("app.displays.modes.test", "Test {0} Hz", hz))
+    } else {
+        format!("{hz} Hz")
+    };
+    let tag = match (o.current, o.recommended, o.availability) {
+        (true, true, _) => Some((text!("app.displays.tag.currentRecommended", "Current · Recommended"), 4)),
+        (true, false, _) => Some((text!("app.displays.tag.current", "Current"), 3)),
+        (false, true, _) => Some((text!("app.displays.tag.recommended", "Recommended"), 4)),
+        (_, _, Availability::OfferedNotAnnounced) => Some((text!("app.displays.tag.driverOnly", "Driver only"), 0)),
+        (_, _, Availability::AnnouncedTestable) => Some((text!("app.displays.tag.monitorOnly", "Monitor only"), 1)),
+        (_, _, Availability::AnnouncedRefused) => Some((text!("app.displays.tag.refused", "Refused by the driver"), 2)),
+        (_, _, Availability::Offered) => None,
+    };
+    let (tag, tone) = tag.map_or((SharedString::new(), 0), |(t, tone)| (catalog.resolve(&t).into(), tone));
+    ModeRate { label: label.into(), tag, tone, index: index as i32, can_apply: o.selectable() && !o.current }
+}
+
+/// The row details for the display behind `source` (the GDI name the CCD reader reports).
+pub fn details(source: Option<&str>, name: &str, catalog: &TextCatalog) -> Details {
     CONTROLS.with(|c| {
         let mut c = c.borrow_mut();
-        let Some(d) = c.0.as_ref().and_then(|x| x.displays.iter().find(|d| Some(d.id.as_str()) == source)).cloned()
-        else {
-            return (String::new(), strings(vec![]), -1);
+        let empty = || Details {
+            id: String::new(),
+            caps: String::new(),
+            groups: model(vec![]),
+            limits: model(vec![]),
+            guidance: strings(vec![]),
         };
-        c.1.push((d.id.clone(), name.to_owned()));
-        let index = d.supported.iter().position(|m| *m == d.current).map_or(-1, |i| i as i32);
-        (d.id, strings(d.supported.iter().map(|m| mode_text(*m, catalog)).collect()), index)
+        let Some(d) = c.0.as_ref().and_then(|x| x.displays.iter().find(|d| Some(d.state.id.as_str()) == source)) else {
+            return empty();
+        };
+        let mut groups: Vec<(DisplayMode, bool, Vec<ModeRate>)> = Vec::new();
+        for (i, o) in d.options.iter().enumerate() {
+            match groups.last_mut() {
+                Some(g) if (g.0.width, g.0.height) == (o.mode.width, o.mode.height) => g.2.push(rate(i, o, catalog)),
+                _ => groups.push((o.mode, o.native, vec![rate(i, o, catalog)])),
+            }
+        }
+        // At most RATES_PER_ROW buttons per row (Slint rows do not wrap): later ones continue on unlabelled rows.
+        let groups = groups
+            .into_iter()
+            .flat_map(|(m, native, rates)| {
+                rates
+                    .chunks(RATES_PER_ROW)
+                    .enumerate()
+                    .map(|(i, chunk)| ModeGroup {
+                        resolution: if i == 0 {
+                            format!("{} × {}", m.width, m.height).into()
+                        } else {
+                            SharedString::new()
+                        },
+                        native,
+                        rates: model(chunk.to_vec()),
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        let resolve = |t: LocalizedText| catalog.resolve(&t);
+        let (limits, guidance) = d.limitation.as_ref().map_or((vec![], vec![]), |l| {
+            (
+                l.evidence
+                    .iter()
+                    .map(|e| LimitLine {
+                        kind: bitbybit_audio::report::kind_label(e.kind, &resolve).into(),
+                        text: catalog.resolve(&e.text).into(),
+                        level: e.kind as i32,
+                    })
+                    .collect(),
+                l.guidance.iter().map(|g| catalog.resolve(g)).collect(),
+            )
+        });
+        let out = Details {
+            id: d.state.id.clone(),
+            caps: caps_text(d, catalog),
+            groups: model(groups),
+            limits: model(limits),
+            guidance: strings(guidance),
+        };
+        c.1.push((out.id.clone(), name.to_owned()));
+        out
     })
 }
 
 enum Request {
-    Mode { id: String, name: String, from: DisplayMode, to: DisplayMode },
-    Topology { from: Option<Topology>, to: Topology },
+    /// `untested`: announced by the monitor only, accepted by the driver's validation.
+    Mode {
+        id: String,
+        name: String,
+        from: DisplayMode,
+        to: DisplayMode,
+        untested: bool,
+    },
+    Topology {
+        from: Option<Topology>,
+        to: Topology,
+    },
 }
 
 /// The confirmation shown before anything changes: current vs requested and the automatic revert.
@@ -164,6 +355,12 @@ fn plan(request: &Request, catalog: &TextCatalog) -> bitbybit_ipc::plan::Operati
     let mut plan = bitbybit_ipc::plan::OperationPlan::new(summary, steps, RiskLevel::Medium);
     plan.may_interrupt_display = true;
     plan.reversible = true;
+    if matches!(request, Request::Mode { untested: true, .. }) {
+        plan.warnings.push(text!(
+            "app.displays.change.untested",
+            "The monitor announces this mode but the graphics driver does not offer it; the driver accepted it in a test. The screen may stay black: without an answer bitBybit goes back automatically."
+        ));
+    }
     plan
 }
 
@@ -178,7 +375,10 @@ fn message(weak: &slint::Weak<AppWindow>, t: LocalizedText) {
 }
 
 /// Runs `work` on a worker unless another display change is running; the exit hook can wait for it.
-fn spawn(weak: slint::Weak<AppWindow>, work: impl FnOnce(&slint::Weak<AppWindow>) -> Option<LocalizedText> + Send + 'static) {
+fn spawn(
+    weak: slint::Weak<AppWindow>,
+    work: impl FnOnce(&slint::Weak<AppWindow>) -> Option<LocalizedText> + Send + 'static,
+) {
     if BUSY.swap(true, Ordering::SeqCst) {
         return message(&weak, text!("app.displays.busy", "Another display change is still in progress."));
     }
@@ -319,10 +519,12 @@ pub fn wire(ui: &AppWindow) {
         move |id, index| {
             let request = CONTROLS.with(|c| {
                 let c = c.borrow();
-                let d = c.0.as_ref()?.displays.iter().find(|d| d.id == id.as_str())?;
-                let to = *d.supported.get(usize::try_from(index).ok()?)?;
-                let name = c.1.iter().find(|(i, _)| *i == d.id).map_or_else(|| d.id.clone(), |(_, n)| n.clone());
-                Some(Request::Mode { id: d.id.clone(), name, from: d.current, to })
+                let d = c.0.as_ref()?.displays.iter().find(|d| d.state.id == id.as_str())?;
+                let o = d.options.get(usize::try_from(index).ok()?).filter(|o| o.selectable() && !o.current)?;
+                let id = d.state.id.clone();
+                let name = c.1.iter().find(|(i, _)| *i == id).map_or_else(|| id.clone(), |(_, n)| n.clone());
+                let untested = o.availability == Availability::AnnouncedTestable;
+                Some(Request::Mode { id, name, from: d.state.current, to: o.mode, untested })
             });
             if let Some(request) = request {
                 spawn(weak.clone(), move |w| run(w, &request));
@@ -355,11 +557,13 @@ mod tests {
         let catalog = TextCatalog::default_catalog();
         let from = DisplayMode { width: 2560, height: 1440, refresh_mhz: 144_000 };
         let to = DisplayMode { width: 1920, height: 1080, refresh_mhz: 59_940 };
-        let p = plan(&Request::Mode { id: r"\\.\DISPLAY1".into(), name: "DELL".into(), from, to }, catalog);
+        let p =
+            plan(&Request::Mode { id: r"\\.\DISPLAY1".into(), name: "DELL".into(), from, to, untested: true }, catalog);
         let summary = catalog.resolve(&p.summary);
         assert!(summary.contains("2560 × 1440 · 144 Hz") && summary.contains("1920 × 1080 · 59,94 Hz"), "{summary}");
         assert!(p.may_interrupt_display && p.risk == RiskLevel::Medium);
         assert!(catalog.resolve(&p.steps[2]).contains("15"));
+        assert!(catalog.resolve(&p.warnings[0]).contains("teste"), "an announced-only mode says so");
         for key in [
             "app.displays.topology.summary",
             "app.displays.topology.stepApply",
@@ -374,6 +578,23 @@ mod tests {
             "app.displays.recovered",
             "app.displays.revertProblem",
             "app.displays.busy",
+            "app.displays.change.untested",
+            "app.displays.caps.native",
+            "app.displays.caps.nativeEstimate",
+            "app.displays.caps.range",
+            "app.displays.caps.edidCea",
+            "app.displays.caps.edidBase",
+            "app.displays.caps.interface",
+            "app.displays.caps.depth",
+            "app.displays.caps.tmds",
+            "app.displays.caps.link",
+            "app.displays.modes.test",
+            "app.displays.tag.current",
+            "app.displays.tag.currentRecommended",
+            "app.displays.tag.recommended",
+            "app.displays.tag.driverOnly",
+            "app.displays.tag.monitorOnly",
+            "app.displays.tag.refused",
             "app.displays.topology.clone",
             "app.displays.topology.extend",
             "app.displays.topology.internal",

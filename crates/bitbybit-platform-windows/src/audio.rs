@@ -11,8 +11,8 @@ use bitbybit_core::{Error, ErrorCode, Result};
 use windows::Win32::Foundation::{E_ACCESSDENIED, PROPERTYKEY, S_OK};
 use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::{
-    AUDCLNT_SHAREMODE_EXCLUSIVE, DEVICE_STATE, IAudioClient, DEVICE_STATEMASK_ALL, EDataFlow, ERole, IMMDevice, IMMDeviceEnumerator, MMDeviceEnumerator, eCapture,
-    eCommunications, eConsole, eMultimedia, eRender,
+    AUDCLNT_SHAREMODE_EXCLUSIVE, DEVICE_STATE, DEVICE_STATEMASK_ALL, EDataFlow, ERole, IAudioClient, IMMDevice,
+    IMMDeviceEnumerator, MMDeviceEnumerator, eCapture, eCommunications, eConsole, eMultimedia, eRender,
 };
 use windows::Win32::System::Com::StructuredStorage::{PROPVARIANT, PropVariantClear};
 use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, CoTaskMemFree, STGM_READ};
@@ -365,8 +365,9 @@ impl AudioFormats for CoreAudio {
             )
         };
         if hr == E_ACCESSDENIED {
-            return Err(Error::new(ErrorCode::AccessDenied, "SetDeviceFormat (undocumented): access denied")
-                .with_native(hr.0));
+            return Err(
+                Error::new(ErrorCode::AccessDenied, "SetDeviceFormat (undocumented): access denied").with_native(hr.0)
+            );
         }
         hr.ok().map_err(|e| platform("SetDeviceFormat (undocumented)", &e))
     }

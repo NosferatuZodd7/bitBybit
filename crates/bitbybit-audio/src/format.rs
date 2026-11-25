@@ -175,9 +175,12 @@ pub fn set_format(
     record.revert_on_uninstall = false;
     let id = record.id;
     journal.append(record)?;
-    let outcome = dev.set_device_format(endpoint_id, requested).and_then(|()| Ok(dev.device_format(endpoint_id)? == *requested));
+    let outcome =
+        dev.set_device_format(endpoint_id, requested).and_then(|()| Ok(dev.device_format(endpoint_id)? == *requested));
     match &outcome {
-        Err(e) => journal.update_status(id, ChangeStatus::RevertFailed, Some(format!("Apply failed: {}", e.message)))?,
+        Err(e) => {
+            journal.update_status(id, ChangeStatus::RevertFailed, Some(format!("Apply failed: {}", e.message)))?
+        }
         Ok(false) => journal.update_status(id, ChangeStatus::RevertFailed, Some("Applied but not verified.".into()))?,
         Ok(true) => {}
     }
@@ -230,8 +233,14 @@ mod tests {
     const NOW: OffsetDateTime = datetime!(2026-11-24 10:00 UTC);
     const ID: &str = "{0.0.0.00000000}.{realtek-speakers}";
     const STEREO: u32 = 0x3;
-    const F16_48: AudioFormat =
-        AudioFormat { channels: 2, sample_rate: 48_000, container_bits: 16, valid_bits: 16, float: false, channel_mask: STEREO };
+    const F16_48: AudioFormat = AudioFormat {
+        channels: 2,
+        sample_rate: 48_000,
+        container_bits: 16,
+        valid_bits: 16,
+        float: false,
+        channel_mask: STEREO,
+    };
     const F24_96: AudioFormat = AudioFormat { sample_rate: 96_000, container_bits: 32, valid_bits: 24, ..F16_48 };
     const F24_192: AudioFormat = AudioFormat { sample_rate: 192_000, ..F24_96 };
 
@@ -330,7 +339,10 @@ mod tests {
     fn unsupported_or_unchanged_formats_journal_nothing() {
         let (_d, journal, fake) = setup();
         assert!(set_format(&fake, &journal, ID, "Speakers", &F16_48, NOW).unwrap());
-        assert_eq!(set_format(&fake, &journal, ID, "Speakers", &F24_192, NOW).unwrap_err().code, ErrorCode::NotSupported);
+        assert_eq!(
+            set_format(&fake, &journal, ID, "Speakers", &F24_192, NOW).unwrap_err().code,
+            ErrorCode::NotSupported
+        );
         fake.s.lock().unwrap().0 = None;
         assert_eq!(set_format(&fake, &journal, ID, "Speakers", &F24_96, NOW).unwrap_err().code, ErrorCode::NotFound);
         assert!(journal.all().unwrap().is_empty());
@@ -341,7 +353,10 @@ mod tests {
     fn access_denied_keeps_the_record_active_with_the_error() {
         let (_d, journal, fake) = setup();
         fake.s.lock().unwrap().2 = true;
-        assert_eq!(set_format(&fake, &journal, ID, "Speakers", &F24_96, NOW).unwrap_err().code, ErrorCode::AccessDenied);
+        assert_eq!(
+            set_format(&fake, &journal, ID, "Speakers", &F24_96, NOW).unwrap_err().code,
+            ErrorCode::AccessDenied
+        );
         let r = journal.all().unwrap().remove(0);
         assert_eq!(r.status, ChangeStatus::RevertFailed);
         assert!(r.status_detail.unwrap().starts_with("Apply failed"));

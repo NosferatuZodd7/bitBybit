@@ -28,7 +28,7 @@ fn header(
 }
 
 /// (friendly name, device path) of a target.
-fn target_name(adapter: LUID, id: u32) -> Option<(String, String)> {
+pub(crate) fn target_name(adapter: LUID, id: u32) -> Option<(String, String)> {
     let mut request = DISPLAYCONFIG_TARGET_DEVICE_NAME {
         header: header(
             DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME,
@@ -58,7 +58,7 @@ pub(crate) fn source_name(adapter: LUID, id: u32) -> Option<String> {
 }
 
 /// `Enum\<instance>\Device Parameters\EDID`.
-fn read_edid(instance_id: &str) -> Option<Vec<u8>> {
+pub(crate) fn read_edid(instance_id: &str) -> Option<Vec<u8>> {
     crate::reg::binary(&format!(r"SYSTEM\CurrentControlSet\Enum\{instance_id}\Device Parameters"), "EDID")
 }
 
