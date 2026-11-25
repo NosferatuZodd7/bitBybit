@@ -7,9 +7,14 @@ Rewrite bitBybit in Rust + Slint (master prompt of 2026-11-11). C# under `src/` 
 stays until `docs/RUST_MIGRATION_MATRIX.md` is complete (Phase N).
 
 ## Current phase
-All phases A–N done. Frontend replaced (2026-11-17) by a flat dark navy admin dashboard that follows the user's
-visual reference (`docs/design/DESIGN.md`): fixed sidebar, header with search/notifications/settings, coloured
-summary cards from real broker data, change chart and recent activity; Liquid Glass (`glass.rs`) and Inter removed. Next: the release (#47).
+All phases A–N done. Frontend replaced (2026-11-17) by a flat dark navy admin dashboard (`docs/design/DESIGN.md`).
+2026-11-25: the missing features were implemented by five parallel agents and integrated on
+`claude/new-session-jdvf1u`: automatic fix plan (CASE-06), driver test mode (DRV-08), display mode/topology trials and
+monitor capabilities with limitation diagnosis (DSP-03), network diagnostics (NET-17), audio device formats (AUD-07),
+interrupted operations panel (UI-12/SVC-04), operation queue (UI-13), headless UI tests (UI-18), window 1280×720
+(min 1100×660). Linux: 386 tests pass. Windows paths of these features are compiled only except NET-17's loopback
+ping/trace (run 58). Build note for parallel worktrees: a shared `CARGO_BUILD_BUILD_DIR` lets cargo reuse a workspace
+crate compiled from another worktree — validate integration in a private target dir.
 
 ## Done
 * Phase A: `docs/RUST_REWRITE_AUDIT.md`, `docs/RUST_MIGRATION_MATRIX.md` (99 rows, ids stable).

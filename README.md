@@ -44,26 +44,36 @@ especiais e pede para reiniciar como administrador quando uma alteração o exig
 | Área | Estado |
 |---|---|
 | Resumo, diagnóstico Realtek/DisplayPort com evidências e ações propostas, relatórios (texto/JSON, dados sensíveis ocultados) | Feito |
+| **Resolver automaticamente**: o plano completo numa só confirmação, só ações de risco baixo ou médio, reversíveis e sem reiniciar; o PC é analisado de novo antes de cada passo e o plano para se o Windows recusar a autorização | Feito |
 | Dispositivos: reiniciar, ativar, desativar, desinstalar, escolher/reverter controlador, sempre com as regras de proteção | Feito |
+| **Testar um controlador**: instala-o à experiência com "Manter" / "Reverter agora"; fechar o bitBybit reverte-o, e um teste deixado por um encerramento inesperado é oferecido no arranque seguinte | Feito |
 | Controladores: atualizações do Windows Update, limpeza com impacto, Driver Store, cópias de segurança, bloqueio de instalação | Feito |
-| Áudio: predefinido, volume, sem som, reiniciar serviços de áudio, perfil "DisplayPort preferido" | Feito |
-| Ecrãs (ligações, modo, EDID) | Feito (só leitura) |
+| Áudio: predefinido, volume, sem som, **formato e taxa de amostragem** (só os que o dispositivo aceita), reiniciar serviços de áudio, perfil "DisplayPort preferido" | Feito |
+| Ecrãs: **resolução, frequência e utilização dos ecrãs** com teste em tempo real (15 s para "Manter", senão volta ao anterior; também ao fechar e no arranque seguinte); capacidades reais do monitor pelo EDID comparadas com o que o controlador oferece; modos anunciados pelo monitor só são testáveis se o controlador os validar; explicação do que limita o monitor (ligação, cabo/adaptador, EDID, largura de banda, controlador) separando factos de hipóteses | Feito |
 | Rede: partilha de Internet (NAT, DHCP, DNS, firewall, Hotspot Móvel) e **proteção contra fugas da VPN** por filtros WFP que bloqueiam se a VPN cair | Feito |
-| Diário de alterações com reversão (recusa reverter o que foi alterado por outra via) | Feito |
+| Rede → **Diagnóstico**: Ping, Traceroute, DNS (resolve um nome e mostra os servidores DNS configurados) e Gateway (verifica se o router de cada ligação responde, com MAC e tempo); só testa o destino que escrever ou os gateways deste PC | Feito |
+| Diário de alterações com reversão (recusa reverter o que foi alterado por outra via); **operações interrompidas** e o que a recuperação fez no arranque; **fila de operações** no topo da janela | Feito |
 | Atualização automática assinada (ECDSA P-256) a partir do GitHub; instalador MSI com o serviço | Feito |
 
-**Honestidade sobre os testes:** a lógica tem testes automáticos (mais de 290) e as leituras do Windows, o serviço, o
-relatório e as regras de firewall já correram num Windows real no GitHub. As ações que **alteram o sistema** estão
-compiladas e testadas com dados simulados, mas **ainda não foram validadas em hardware real**; o registo está em
-`docs/TESTING.md`.
+**Honestidade sobre os testes:** a lógica tem 386 testes automáticos, incluindo testes que desenham todas as páginas em
+cinco tamanhos de janela. As leituras do Windows, o serviço, o relatório, as regras de firewall e o ping/traceroute já
+correram num Windows real no GitHub. As ações que **alteram o sistema** (controladores, ecrãs, formatos de áudio,
+partilha, resolução automática) estão compiladas e testadas com dados simulados, mas **ainda não foram validadas em
+hardware real**; o registo está em `docs/TESTING.md`.
 
 ## O que falta ou ficou limitado nesta versão
 
 * Nos PCs sem o NAT do Windows (sem Hyper-V) a partilha usa o ICS do Windows: rede fixa 192.168.137.0/24, sem
   proteção contra fugas nem regras por dispositivo.
-* Mudar o modo/topologia dos ecrãs, formatos de áudio, modo de teste de controladores, "resolver tudo" com uma só
-  confirmação, ícone na bandeja (o perfil de áudio só atua com a aplicação aberta).
-* Assinatura de código do executável (evita o aviso do SmartScreen) e validação em hardware real de cada ação.
+* Resoluções personalizadas: o Windows não tem uma forma geral e segura de criar modos novos (só as ferramentas de
+  cada fabricante ou a substituição do EDID no registo, que pode deixar o ecrã sem imagem). O bitBybit só deixa
+  testar modos que o próprio monitor anuncia **e** que o controlador gráfico valida.
+* O formato de áudio usa uma interface do Windows não documentada; ainda não se sabe se funciona sem direitos de
+  administrador (se não, a aplicação oferece reiniciar como administrador).
+* Ícone na bandeja (o perfil de áudio só atua com a aplicação aberta).
+* Assinatura de código Authenticode do executável e do instalador (evita o aviso do SmartScreen): precisa de um
+  certificado externo — ver `docs/UPDATES.md`. As atualizações continuam assinadas e verificadas.
+* Validação em hardware real de cada ação que altera o sistema.
 
 ## Regras que não mudam
 

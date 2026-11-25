@@ -46,5 +46,8 @@ body 13, title 15, page 22, card value 26. Icons: Lucide (ISC, `third-party/luci
 * Tables (Dispositivos, Controladores, Ecrãs, Alterações) use a header strip and divided rows; every row keeps its
   actions. Dialogs are centred panels over a scrim; high risk gets a red edge and a destructive confirm button.
 
-Window minimum 1100×660; checked at 1920×1080, 1600×900 and 1366×768 with the debug demo data
-(`BITBYBIT_UI_DEMO`, debug builds only).
+Window 1280×720 at start, minimum 1100×660. `bitbybit-app::ui_tests` renders every page at 1100×660, 1280×720,
+1366×768, 1600×900 and 1920×1080 with the debug demo data (`BITBYBIT_UI_DEMO`, debug builds only) and fails on
+overflow, clipped sidebar entries, content under the scroll bar or a missing page title. Scrolled pages keep a
+scroll-bar gutter (`Scroller`). Feature components live in their own files: `queue.slint`, `netdiag.slint`,
+`displays.slint`, `drivertest.slint`, `recovery.slint`, `fix.slint`; `tr.slint` holds the catalog lookup.

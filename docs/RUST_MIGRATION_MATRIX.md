@@ -39,7 +39,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | DRV-05 | Package backup + backups list | `DriverPackageExporter`, `Core/Drivers/PnpUtilArguments.cs` | `bitbybit-drivers::pnputil`, `platform-windows::drivers` | Built | ported args tests | export before every destructive step |
 | DRV-06 | Delete package (never /force) + restore | `DeviceOperations.DeletePackageAsync` | `bitbybit-service::ops::drivers` | Built | opt-in | backup first; revert adds it back |
 | DRV-07 | Device-install deny policy + revert | `Core/Drivers/DeviceInstallPolicy.cs`, `DeviceInstallPolicyStore.cs` | `bitbybit-drivers::policy`, `platform-windows::policy` | Built | ported 7 planner tests | only device-specific ids; owned entries only |
-| DRV-08 | Driver test mode | `Core/Drivers/DriverTestSession.cs`, `MainViewModel.DriverTest.cs` | `bitbybit-drivers::test_mode`, app | Limited | ported 5 tests | revert on close and at next start |
+| DRV-08 | Driver test mode | `Core/Drivers/DriverTestSession.cs`, `MainViewModel.DriverTest.cs` | `bitbybit-drivers::test_mode`, `bitbybit-app::driver_test`, `ui/drivertest.slint` | Built | session/exit/next-start decisions with fakes (6) | "Testar" in the driver chooser installs through `drivers.install`; banner Keep / Revert now; closing the window reverts through `journal.revert` (only the exact plan for that change is auto-confirmed); a leftover test is offered at the next start; drift refuses |
 | DRV-09 | Windows Update driver search | `WindowsUpdateDriverSearch.cs` | `platform-windows::wua` | Built | Windows read-only | no third-party sources |
 | DRV-10 | Windows Update driver install | `WindowsUpdateDriverInstaller.cs` | `platform-windows::wua`, service op | Built | opt-in | restore point, backup, journal |
 | DRV-11 | Driver history | `Core/QuickDiag/SetupApiQuickParser.cs`, collector | `bitbybit-drivers::setupapi`, `platform-windows::history` | Built | ported 6 tests | origins classified from log lines |
@@ -55,16 +55,16 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | AUD-04 | Volume and mute per device | `WindowsAudioEndpoints` (not in UI) | `platform-windows::audio`, UI | Built | fake + Windows | exposed in UI |
 | AUD-05 | DisplayPort profile + reconciler | `Core/Profiles`, `AudioProfileHost.cs` | `bitbybit-audio::profile`, service watchdog | Built | ported 11 tests | bounded applies, respects manual changes |
 | AUD-06 | Audio services status / controlled restart | `QuickCollector.CollectServices` | `platform-windows::services` | Built | Windows read-only | bounded retries |
-| AUD-07 | Device formats and sample rates | new | `bitbybit-audio::format`, `platform-windows::audio` | Limited | parser tests | read; change journaled |
+| AUD-07 | Device formats and sample rates | new | `bitbybit-audio::format`, `platform-windows::audio`, `bitbybit-app::audio_format` | Built | WAVEFORMATEXTENSIBLE byte tests, candidates, plan, journal + drift revert (fakes) | read (PKEY_AudioEngine_DeviceFormat), supported list (IsFormatSupported exclusive), change via the undocumented IPolicyConfig::SetDeviceFormat, read back, journaled, revertible |
 | CASE-01 | Snapshot collection | `QuickCollector.cs` | `platform-windows::collect` | CI | CI runner | every area independent |
-| CASE-02 | Realtek/DisplayPort analyzer | `RealtekDisplayPortQuickAnalyzer.cs` | `bitbybit-audio::case` | Logic | ported 9 + 11 scenario tests | identical findings for the fixtures |
+| CASE-02 | Realtek/DisplayPort analyzer | `RealtekDisplayPortQuickAnalyzer.cs` | `bitbybit-audio::case` | Logic | ported 9 + 11 scenario tests + link-limited DVI, swap-already-tried and default-output scenarios | a DVI link with an EDID without audio and a native mode above the link is the main conclusion; a display-audio driver swap already tried and reverted is stated, not proposed; blocking the codec that plays the default output is High risk |
 | CASE-03 | Before/after comparison | same | same | Logic | fixtures | same |
 | CASE-04 | Reports (text pt-PT, JSON, redacted) | `QuickReportWriter.cs` | `bitbybit-audio::report` | CI | redaction | no serials/tokens/user names |
 | CASE-05 | Run proposed actions | `MainViewModel.RunActionAsync` | app + service ops | Built | integration | confirmation + journal |
-| CASE-06 | Guided fix | `Core/Diagnostics/FixPlanner.cs`, `MainViewModel.Fix.cs` | `bitbybit-domain::fix`, app | Limited | ported 7 tests | never runs without confirmation |
+| CASE-06 | Guided fix ("Resolver automaticamente") | `Core/Diagnostics/FixPlanner.cs`, `MainViewModel.Fix.cs` | `bitbybit-domain::fix`, `bitbybit-app::fix_plan`, `ui/fix.slint` | Built | ported 7 tests + plan dialog, broker-plan acceptance, step loop (fakes, 8) | one confirmation for the whole plan; each step re-diagnosed, run through the manual path, its broker plan accepted only within the criteria; stops on refused elevation or failure; steps in the operation queue |
 | DSP-01 | Monitors, EDID, topology (read) | `DisplayQuick.cs`, `EdidQuickParser.cs` | `bitbybit-display::edid`, `platform-windows::display` | CI | ported 7 tests | audio capability from CEA-861 |
 | DSP-02 | GPU list | `QuickCollector.CollectGpus` | `platform-windows::display` | Built | CI | adapters with driver |
-| DSP-03 | Mode / topology change with validation and auto-revert | new | `bitbybit-display::change`, `platform-windows::display` | Limited | state machine tests | unconfirmed change reverts |
+| DSP-03 | Mode / topology change with validation and auto-revert; monitor capabilities vs driver modes | new | `bitbybit-display::{change, capability, edid, mode}`, `platform-windows::display_config`, `bitbybit-app::displays_page`, `ui/displays.slint` | Built | change/trial/revert (11), EDID modes (3), capability comparison and limitation diagnosis (7), countdown (2) — fakes and byte fixtures | journaled trial (CDS_TEST then no registry write), 15 s Keep/Revert countdown, revert on timeout, exit and next start; EDID-announced modes offered only if the driver validates them; link/EDID/bandwidth limits explained as typed hypotheses |
 
 ## Network (mostly new)
 
@@ -86,7 +86,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | NET-14 | Firewall rules (group bitBybit only) | new | `bitbybit-network::firewall`, `platform-windows::net::firewall` | CI | model + opt-in | never disables the firewall |
 | NET-15 | Clients (leases + neighbours + hotspot) | new | `bitbybit-network::clients`, `client_policy`, service `sharing.status`/`sharing.client` | Built | unit tests; compiled only | per-device rules: Internet, this PC/home network (WFP), gaming ports PSN/Xbox (WinNAT static mappings), fixed IP (DHCP reservation); no data counters; Nintendo refused (port range) |
 | NET-16 | Bridge / repeater detection | new | `bitbybit-network::capability` | Logic | unit | detection only |
-| NET-17 | Diagnostics tools (ping, trace, DNS, gateway) | `INetworkDiagnostics.cs` (types) | `bitbybit-network::diag`, `platform-windows::net::diag` | Limited | validation tests | bounded, cancellable |
+| NET-17 | Diagnostics tools (ping, trace, DNS, gateway) | `INetworkDiagnostics.cs` (types) | `bitbybit-network::diag`, `platform-windows::net::diag`, `bitbybit-app::netdiag_page`, `ui/netdiag.slint` | CI | validation, summaries, trace stop conditions (4) + orchestration with a fake platform (5); loopback ping/trace/best route ran on the Windows runner (run 58) | Rede page panel; one test at a time, cancellable; only user targets or the local gateways; DNS and gateway checks compiled only |
 | NET-18 | Sharing session orchestration | new | `bitbybit-network::session` | Built | fakes: rollback, stop, recovery | every step journaled, reverse-order stop |
 
 ## IPC, service, updates, distribution
@@ -105,7 +105,7 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | SVC-01 | Windows service (LocalSystem) `bitBybitService` | placeholder | `bitbybit-service` | Built | CI install/start | runs, stops cleanly |
 | SVC-02 | Named-pipe server, ACL, client identity | new | `platform-windows::pipe` | CI | CI round trip | remote clients rejected |
 | SVC-03 | Privileged operations behind the allowlist | `ElevatedCommand.cs` verbs | `bitbybit-service::ops` | Built | dispatcher tests | every verb re-validated |
-| SVC-04 | Recovery at start, interrupted operations | new | `bitbybit-service::recovery` | Logic | fakes | leftovers reverted or flagged |
+| SVC-04 | Recovery at start, interrupted operations | new | `bitbybit-service::recover_at_start`, `bitbybit-recovery` (start-up marker) | Built | fakes (marker asserted) | leftovers reverted or flagged; outcomes marked in the journal and shown in the app |
 | SVC-05 | VPN leak watchdog | new | `bitbybit-service::watch::vpn` | Built | state machine | blocks on VPN loss |
 | SVC-06 | Audio profile watchdog | `AudioProfileHost.cs` | `bitbybit-service::watch::audio` | Built | reconciler tests | bounded |
 | SVC-07 | Elevated helper replacement (portable broker host) | `ElevatedCommand.cs` | `bitbybit-service` library hosted by the app | Built | CI | same allowlist, UAC consent |
@@ -133,16 +133,22 @@ Completion % = rows in `Done`/`Limited` ÷ all rows (see the end of the file).
 | UI-09 | Network pages (adapters, hotspot, sharing, NAT, VPN, leak, DHCP, DNS, firewall, clients, topology) | network page (read-only) | `ui/app.slint` page 0 (Rede), `bitbybit-app::sharing_page` | Built | render | real data only |
 | UI-10 | Updates page (drivers from Windows Update + app update) | updates page, settings | `ui/app.slint` page 7 (Atualizações panel) + update dialog | Built | render | select some/all |
 | UI-11 | Journal page (changes, revert) | changes page | `ui/app.slint` page 3 (Alterações) | Built | render | revert button only when active |
-| UI-12 | Recovery page | new | `ui/pages/recovery.slint` | Built | render | interrupted operations |
-| UI-13 | Operation queue | new | `ui/pages/queue.slint`, `bitbybit-domain::operations` | Limited | queue tests | state, progress, risk, result |
+| UI-12 | Interrupted operations / recovery panel | new | `ui/recovery.slint` on page 3, `bitbybit-app::recovery_panel` | Built | derivation from journal records (fakes, 4) | reverted/gone/drifted at start, failed reverts with reason, pending; only the drift-aware Revert |
+| UI-13 | Operation queue | new | `ui/queue.slint` (header button + popup), `bitbybit-app::ops` queue, `bitbybit-domain::operations` | Built | queue tests + headless render | every broker operation run by the app and every automatic-fix step: state, risk, plan summary, error, revertible; no invented progress |
 | UI-14 | Dashboard | new | `ui/app.slint` page 8 (Resumo), `bitbybit-app::view::{dashboard_kpis, change_series}` | Built | render | real sources only |
 | UI-15 | Settings and About | `SettingsWindow.xaml` | `ui/app.slint` pages 9 and 4, `bitbybit-app::settings_page` | Built | key test | update channel, automatic check |
 | UI-16 | History and system pages, app log | history/system/log pages | not a page: driver history is in the `diagnose` report (CLI); logs exported from Sobre | Limited | — | |
 | UI-17 | Background mode (tray) for the audio profile | `App.xaml.cs` | service watchdog (SVC-06) | Limited | — | replaced by the service |
-| UI-18 | Headless smoke test with contrast check | `UiSmoke.cs` | `bitbybit-app::smoke` | Todo | CI + Linux | every page rendered |
+| UI-18 | Headless UI tests with contrast check | `UiSmoke.cs` | `bitbybit-app::ui_tests` (software renderer, `i-slint-backend-testing` dev-dependency) | Done | 10 pages × 5 sizes (1100×660 … 1920×1080): not blank, title and key panel present, nothing past the margin or out of its panel, sidebar fits, scroll gutter free; palette contrast | runs in the Linux CI job |
 | CLI-01 | `diagnose` report | `CliEntryPoint.cs` | `bitbybit-cli` | CI | arg tests, CI run | text + JSON |
 | CLI-02 | Extended CLI (network, devices, journal, service, capabilities) | new | `bitbybit-cli` | Built | arg tests | read-only by default |
 
 ## Completion
 
-Rows: 106. Done/Limited: 9. **8 %**.
+Rows: 106. Done/Limited: 13 (**12 %**). Built: 63 · CI: 10 · Logic: 20 (state of 2026-11-25).
+
+The percentage counts only rows that also ran on Windows and are wired into the product. Every feature of the
+2026-11-24 mission is now implemented and wired into the UI (CASE-06, DRV-08, DSP-03, NET-17, AUD-07, UI-12, UI-13,
+UI-18, SVC-04); the ones still at *Built* compiled for Windows and are unit-tested with fakes, but their Windows paths
+have not run on the CI runner or on real hardware — see [TESTING.md](TESTING.md). Earlier versions of this table
+marked several of them *Limited* although no code used them; that was corrected.
