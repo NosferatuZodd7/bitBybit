@@ -52,6 +52,22 @@ pub fn queue_update(weak: &slint::Weak<AppWindow>, id: Uuid, change: impl FnOnce
     changed
 }
 
+/// Moves a queued operation run by the app itself (display, audio format) to `state`, with the failure text and the
+/// journal change it created, if any.
+pub fn queue_set(
+    weak: &slint::Weak<AppWindow>,
+    id: Uuid,
+    state: OperationState,
+    error: Option<String>,
+    change: Option<Uuid>,
+) {
+    queue_update(weak, id, |r| {
+        r.state = state;
+        r.error = error.map(|m| bitbybit_core::Error::new(bitbybit_core::ErrorCode::PlatformError, m));
+        r.change_ids.extend(change);
+    });
+}
+
 fn refresh_queue(weak: &slint::Weak<AppWindow>) {
     let weak = weak.clone();
     let _ = slint::invoke_from_event_loop(move || {

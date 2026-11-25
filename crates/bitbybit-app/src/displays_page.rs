@@ -14,6 +14,7 @@ use bitbybit_display::capability::{self, Availability, Limitation, ModeOption};
 use bitbybit_display::change::{self, Apply, DisplayControl, DisplayState, JournaledDisplayChanges, Topology};
 use bitbybit_display::edid::EdidCapabilities;
 use bitbybit_display::mode::{CONFIRM_TIMEOUT, DisplayMode, wait_for_answer};
+use bitbybit_domain::operations::OperationState;
 use bitbybit_journal::{ChangeStatus, JsonLinesJournal};
 use bitbybit_localization::TextCatalog;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
@@ -410,9 +411,15 @@ fn run(weak: &slint::Weak<AppWindow>, request: &Request) -> Option<LocalizedText
     };
     let plan = plan(request, catalog);
     let summary = catalog.resolve(&plan.summary);
+    let kind = if matches!(request, Request::Mode { .. }) { change::MODE_KIND } else { change::TOPOLOGY_KIND };
+    let queued = crate::ops::queue_push(weak, kind, plan.summary.clone(), plan.risk);
+    let queue = |state, error: Option<String>, change| crate::ops::queue_set(weak, queued, state, error, change);
+    queue(OperationState::AwaitingConfirmation, None, None);
     if !crate::ops::ask(weak, &plan) || EXITING.load(Ordering::SeqCst) {
+        queue(OperationState::Cancelled, None, None);
         return Some(text!("app.op.cancelled", "Cancelled. Nothing was changed."));
     }
+    queue(OperationState::Running, None, None);
     let journal = journal();
     let changes = JournaledDisplayChanges::new(ctl, &journal);
     let now = time::OffsetDateTime::now_utc();
@@ -424,6 +431,7 @@ fn run(weak: &slint::Weak<AppWindow>, request: &Request) -> Option<LocalizedText
         Ok(id) => id,
         Err(e) => {
             log::warn!("Display change not applied: {e}");
+            queue(OperationState::Failed, Some(e.message.clone()), None);
             return Some(text!("app.displays.change.failed", "The display setting was not changed: {0}", e.message));
         }
     };
@@ -449,7 +457,9 @@ fn run(weak: &slint::Weak<AppWindow>, request: &Request) -> Option<LocalizedText
     });
     if keep {
         log::info!("Display change {id} kept");
-        return Some(match changes.keep(id) {
+        let kept = changes.keep(id);
+        queue(OperationState::Succeeded, kept.as_ref().err().map(|e| e.message.clone()), Some(id));
+        return Some(match kept {
             Ok(()) => text!(
                 "app.displays.kept",
                 "Kept. The change is in \"Alterações do bitBybit\", where you can revert it."
@@ -465,6 +475,11 @@ fn run(weak: &slint::Weak<AppWindow>, request: &Request) -> Option<LocalizedText
         .map(|o| o.first().map_or(ChangeStatus::RevertFailed, |o| o.new_status))
         .unwrap_or(ChangeStatus::RevertFailed);
     log::info!("Display change {id} not kept: {status:?}");
+    if status == ChangeStatus::Reverted {
+        queue(OperationState::Cancelled, None, None);
+    } else {
+        queue(OperationState::Failed, Some(catalog.resolve(&status_problem(status))), Some(id));
+    }
     Some(if status == ChangeStatus::Reverted {
         text!("app.displays.reverted", "Not kept: the previous display configuration was restored.")
     } else {

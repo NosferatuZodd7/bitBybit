@@ -117,14 +117,25 @@ pub fn wire(ui: &AppWindow) {
         std::thread::spawn(move || {
             let catalog = TextCatalog::default_catalog();
             let Some(port) = port() else { return };
-            if !crate::ops::ask(&weak, &plan(&name, &from, &to, catalog)) {
-                return;
+            let plan = plan(&name, &from, &to, catalog);
+            use bitbybit_domain::operations::OperationState;
+            let queued = crate::ops::queue_push(&weak, "audio.deviceFormat", plan.summary.clone(), plan.risk);
+            let queue = |state, error: Option<String>| crate::ops::queue_set(&weak, queued, state, error, None);
+            queue(OperationState::AwaitingConfirmation, None);
+            if !crate::ops::ask(&weak, &plan) {
+                return queue(OperationState::Cancelled, None);
             }
+            queue(OperationState::Running, None);
             let journal = bitbybit_journal::JsonLinesJournal::new(
                 bitbybit_core::paths::AppPaths::from_environment().user_journal_file(),
             );
             let now = time::OffsetDateTime::now_utc();
             let result = bitbybit_audio::format::set_format(port, &journal, &id, &name, &to, now);
+            match &result {
+                Ok(true) => queue(OperationState::Succeeded, None),
+                Ok(false) => queue(OperationState::Failed, Some("Windows did not report the new format".into())),
+                Err(e) => queue(OperationState::Failed, Some(e.message.clone())),
+            }
             let failed = |why: String| text!("app.audio.changeFailed", "The audio device could not be changed: {0}", why);
             let (message, elevate): (LocalizedText, bool) = match result {
                 Ok(true) => (text!("app.audio.format.done", "Format changed, verified and recorded in the change journal."), false),
