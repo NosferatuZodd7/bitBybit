@@ -55,7 +55,7 @@ especiais e pede para reiniciar como administrador quando uma alteração o exig
 | Diário de alterações com reversão (recusa reverter o que foi alterado por outra via); **operações interrompidas** e o que a recuperação fez no arranque; **fila de operações** no topo da janela | Feito |
 | Atualização automática assinada (ECDSA P-256) a partir do GitHub; instalador MSI com o serviço | Feito |
 
-**Honestidade sobre os testes:** a lógica tem 386 testes automáticos, incluindo testes que desenham todas as páginas em
+**Honestidade sobre os testes:** a lógica tem 389 testes automáticos, incluindo testes que desenham todas as páginas em
 cinco tamanhos de janela. As leituras do Windows, o serviço, o relatório, as regras de firewall e o ping/traceroute já
 correram num Windows real no GitHub. As ações que **alteram o sistema** (controladores, ecrãs, formatos de áudio,
 partilha, resolução automática) estão compiladas e testadas com dados simulados, mas **ainda não foram validadas em

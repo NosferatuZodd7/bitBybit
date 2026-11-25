@@ -12,9 +12,10 @@ All phases A–N done. Frontend replaced (2026-11-17) by a flat dark navy admin 
 `claude/new-session-jdvf1u`: automatic fix plan (CASE-06), driver test mode (DRV-08), display mode/topology trials and
 monitor capabilities with limitation diagnosis (DSP-03), network diagnostics (NET-17), audio device formats (AUD-07),
 interrupted operations panel (UI-12/SVC-04), operation queue (UI-13), headless UI tests (UI-18), window 1280×720
-(min 1100×660). Linux: 386 tests pass. Windows paths of these features are compiled only except NET-17's loopback
+(min 1100×660). Linux: 389 tests pass. Windows paths of these features are compiled only except NET-17's loopback
 ping/trace (run 58). Build note for parallel worktrees: a shared `CARGO_BUILD_BUILD_DIR` lets cargo reuse a workspace
-crate compiled from another worktree — validate integration in a private target dir.
+crate compiled from another worktree — validate integration in a private target dir. An audit of the integration
+(security, lifecycle, contracts) found 1 high and 6 medium issues, all fixed in 8ae0ba9 (see its message).
 
 ## Done
 * Phase A: `docs/RUST_REWRITE_AUDIT.md`, `docs/RUST_MIGRATION_MATRIX.md` (99 rows, ids stable).
