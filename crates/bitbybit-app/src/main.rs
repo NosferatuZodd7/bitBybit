@@ -330,6 +330,9 @@ fn apply_audio(ui: &AppWindow, audio: Result<Vec<AudioEndpoint>, LocalizedText>,
 /// Collects and analyses off the UI thread (read-only), then shows the findings.
 fn diagnose(weak: slint::Weak<AppWindow>) {
     let catalog = TextCatalog::default_catalog();
+    if weak.upgrade().is_some_and(|ui| ui.get_fix_running()) {
+        return; // the automatic fix re-diagnoses after every step and refreshes the findings itself
+    }
     if let Some(ui) = weak.upgrade() {
         ui.set_diagnosis_running(true);
         ui.set_diagnosis_summary(
@@ -506,6 +509,10 @@ thread_local! {
 
 /// Runs a proposed action: broker operations with their plan; per-user audio changes in the app.
 fn run_finding_action(weak: slint::Weak<AppWindow>, finding: usize, action: usize) {
+    // The automatic fix runs its own steps: no manual action alongside it.
+    if weak.upgrade().is_some_and(|ui| ui.get_fix_running()) {
+        return;
+    }
     let Some(route) = FINDING_ROUTES.with(|f| f.borrow().get(finding).and_then(|a| a.get(action).cloned())) else {
         return;
     };

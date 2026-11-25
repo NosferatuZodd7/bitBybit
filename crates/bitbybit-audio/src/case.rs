@@ -147,21 +147,26 @@ fn analyze_realtek_codec(findings: &mut Vec<DiagnosticFinding>, snapshot: &Snaps
             "The BIOS option that was changed may only disable the internal speaker/amplifier, or another component, not the HD Audio codec that Windows enumerates.",
             Confidence::Medium,
         ));
+        let mut action = params(
+            ProposedAction::new(
+                "device.installPolicy.denyHardwareId",
+                text!("quickdiag.action.blockRealtek.title", "Block driver installation for this exact Realtek device"),
+                text!(
+                    "quickdiag.action.blockRealtek.impact",
+                    "Prevents Windows from installing drivers for the exact Realtek hardware ID only (not NVIDIA/AMD/Intel display audio). The internal speaker and Realtek jacks will stop working. The current driver package is backed up first. Reversible in the bitBybit changes tab."
+                ),
+                RiskLevel::Medium,
+            ),
+            &[("hardwareId", &most_specific_id(codec)), ("instanceId", &codec.instance_id)],
+        );
+        guard_default_output(&mut action, &mut evidence, snapshot, codec);
         findings.push(finding(
             "audioCase.realtek.codecStillEnumerated",
             FindingSeverity::Warning,
             text!("quickdiag.realtek.present.title", "Windows still sees the Realtek audio codec"),
             text!("quickdiag.realtek.present.detail", "Windows enumerates {0} Realtek HD Audio device(s). While the device is enumerated, Windows (Plug and Play / Windows Update) can keep installing a driver for it. If onboard audio was disabled in the BIOS, that option is not hiding this codec from the operating system.", present_codecs.len()),
             evidence,
-            vec![params(
-                ProposedAction::new(
-                    "device.installPolicy.denyHardwareId",
-                    text!("quickdiag.action.blockRealtek.title", "Block driver installation for this exact Realtek device"),
-                    text!("quickdiag.action.blockRealtek.impact", "Prevents Windows from installing drivers for the exact Realtek hardware ID only (not NVIDIA/AMD/Intel display audio). The internal speaker and Realtek jacks will stop working. The current driver package is backed up first. Reversible in the bitBybit changes tab."),
-                    RiskLevel::Medium,
-                ),
-                &[("hardwareId", &most_specific_id(codec)), ("instanceId", &codec.instance_id)],
-            )],
+            vec![action],
         ));
     } else if !codecs.is_empty() {
         findings.push(finding(
@@ -186,6 +191,35 @@ fn analyze_realtek_codec(findings: &mut Vec<DiagnosticFinding>, snapshot: &Snaps
                 "No device with a HDAUDIO/INTELAUDIO FUNC_01 VEN_10EC hardware id was reported.",
             )],
             Vec::new(),
+        ));
+    }
+}
+
+/// Blocking or removing the codec stops its outputs. When the active default playback device is one of them, the
+/// action would take away the sound the user is hearing now: High risk, so it is never part of the automatic plan
+/// and its confirmation is the red one.
+fn guard_default_output(
+    action: &mut ProposedAction,
+    evidence: &mut Vec<EvidenceItem>,
+    snapshot: &Snapshot,
+    codec: &DeviceSummary,
+) {
+    action.may_interrupt_audio = true;
+    let Some(name) = codec.name.as_deref() else { return };
+    let default = snapshot.audio_endpoints.iter().find(|e| {
+        e.flow == EndpointFlow::Render
+            && e.is_default_console
+            && e.state == EndpointState::ACTIVE
+            && e.adapter_name.as_deref().is_some_and(|a| a.eq_ignore_ascii_case(name))
+    });
+    if let Some(e) = default {
+        action.risk = action.risk.max(RiskLevel::High);
+        evidence.push(EvidenceItem::observation(
+            "CoreAudio:GetDefaultAudioEndpoint",
+            format!(
+                "The default playback device '{}' is active on this Realtek codec: blocking or removing the codec takes that sound output away.",
+                e.name.as_deref().unwrap_or(&e.id)
+            ),
         ));
     }
 }
@@ -237,7 +271,7 @@ fn add_realtek_blocked_finding(
             ),
             &[("hardwareId", listed), ("instanceId", &codec.instance_id)],
         );
-        action.may_interrupt_audio = true;
+        guard_default_output(&mut action, &mut evidence, snapshot, codec);
         findings.push(finding(
             "audioCase.realtek.blockedButInstalled",
             FindingSeverity::Warning,

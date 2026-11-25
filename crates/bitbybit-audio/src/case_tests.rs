@@ -952,3 +952,35 @@ fn text_report_lists_policy_changes_and_plain_problem_codes_in_portuguese() {
     assert!(!text.contains("someone"));
     assert!(!text.contains("não alterou nenhuma definição"));
 }
+
+#[test]
+fn blocking_the_realtek_codec_that_plays_the_default_output_is_high_risk_and_never_automatic() {
+    let codec = device(
+        r"HDAUDIO\FUNC_01&VEN_10EC&DEV_0221\4&1",
+        REALTEK_HWID,
+        "Realtek High Definition Audio",
+        true,
+        0,
+        Some("6.0.1.8186"),
+    );
+    let mut speakers = endpoint("{realtek-speakers}", "Altifalantes", EndpointState::ACTIVE, 1, true);
+    speakers.adapter_name = Some("Realtek High Definition Audio".into());
+
+    // The user hears sound through the Realtek speakers: taking them away is not a quiet automatic step.
+    let report = analyze(&snapshot(vec![codec.clone()], vec![speakers.clone()], None), None);
+    let block = &find(&report, "audioCase.realtek.codecStillEnumerated").actions[0];
+    assert_eq!(block.risk, RiskLevel::High);
+    assert!(block.may_interrupt_audio);
+    assert!(evidence_has(
+        find(&report, "audioCase.realtek.codecStillEnumerated"),
+        Some(EvidenceKind::Observation),
+        "default playback device"
+    ));
+    assert!(auto_plan(&report).iter().all(|s| s.action.action_id != "device.installPolicy.denyHardwareId"));
+
+    // Another device plays the default output: the block keeps its Medium risk and stays eligible.
+    speakers.is_default_console = false;
+    let report = analyze(&snapshot(vec![codec], vec![speakers], None), None);
+    assert_eq!(find(&report, "audioCase.realtek.codecStillEnumerated").actions[0].risk, RiskLevel::Medium);
+    assert!(auto_plan(&report).iter().any(|s| s.action.action_id == "device.installPolicy.denyHardwareId"));
+}
