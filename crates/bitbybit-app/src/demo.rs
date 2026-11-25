@@ -117,6 +117,7 @@ pub fn fill(ui: &AppWindow, mode: &str) {
         actions: "Recomendado: repor o controlador anterior.".into(),
         buttons: strings(&["Repor o controlador anterior"]),
     }]));
+    ui.set_fix_label("Resolver automaticamente (2) (demo)".into());
     ui.set_broker_state(1);
     let kpi = |title: &str, value: &str, note: &str, page: i32| Kpi {
         title: title.into(),

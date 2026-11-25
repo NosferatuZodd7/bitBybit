@@ -77,9 +77,24 @@ pub fn analyze(snapshot: &Snapshot, previous: Option<&Snapshot>) -> DiagnosticRe
     analyze_realtek_codec(&mut findings, snapshot, &codecs);
     analyze_realtek_components(&mut findings, &components);
     analyze_install_history(&mut findings, snapshot);
-    analyze_gpu_audio(&mut findings, snapshot, &gpu_audio, &display_endpoints);
-    analyze_monitors(&mut findings, &digital_monitors, &snapshot.monitors, &display_endpoints);
-    analyze_display_endpoints(&mut findings, &display_endpoints, &gpu_audio, &digital_monitors, &snapshot.monitors);
+    // The generic display-audio driver swap is only offered on a device where it was not already tried and reverted.
+    let swap_evidence: Vec<EvidenceItem> =
+        gpu_audio.iter().filter(|d| present(d)).flat_map(|d| swap_tried_evidence(snapshot, d)).collect();
+    let swap_candidates: Vec<&DeviceSummary> = gpu_audio
+        .iter()
+        .copied()
+        .filter(|d| present(d) && uses_manufacturer_driver(d) && generic_swaps_reverted(snapshot, d).is_empty())
+        .collect();
+    analyze_gpu_audio(&mut findings, snapshot, &gpu_audio, &display_endpoints, &swap_candidates);
+    analyze_monitors(&mut findings, &digital_monitors, &snapshot.monitors, &display_endpoints, &swap_evidence);
+    analyze_display_endpoints(
+        &mut findings,
+        &display_endpoints,
+        &gpu_audio,
+        &digital_monitors,
+        &snapshot.monitors,
+        &swap_candidates,
+    );
     analyze_default_device(&mut findings, snapshot, &display_endpoints);
     analyze_services(&mut findings, snapshot);
     if let Some(previous) = previous {
@@ -388,6 +403,7 @@ fn analyze_gpu_audio(
     snapshot: &Snapshot,
     gpu_audio: &[&DeviceSummary],
     display_endpoints: &[&AudioEndpointSummary],
+    swap_candidates: &[&DeviceSummary],
 ) {
     let present_devices: Vec<&DeviceSummary> = gpu_audio.iter().copied().filter(|d| present(d)).collect();
     let with_problem: Vec<&DeviceSummary> =
@@ -423,17 +439,13 @@ fn analyze_gpu_audio(
         let mut evidence: Vec<EvidenceItem> = present_devices.iter().map(|d| device_fact(d)).collect();
         for d in &present_devices {
             evidence.extend(gpu_audio_driver_history(snapshot, d));
+            evidence.extend(swap_tried_evidence(snapshot, d));
         }
         let sound_works = display_endpoints.iter().any(|e| e.state == EndpointState::ACTIVE);
         let actions = if sound_works {
             Vec::new()
         } else {
-            present_devices
-                .iter()
-                .filter(|d| uses_manufacturer_driver(d))
-                .take(1)
-                .map(|d| generic_driver_action(d))
-                .collect()
+            swap_candidates.iter().take(1).map(|d| generic_driver_action(d)).collect()
         };
         findings.push(finding(
             "audioCase.gpuAudio.present",
@@ -557,6 +569,7 @@ fn analyze_monitors(
     digital: &[&MonitorSummary],
     all: &[MonitorSummary],
     display_endpoints: &[&AudioEndpointSummary],
+    swap_evidence: &[EvidenceItem],
 ) {
     if all.is_empty() {
         findings.push(finding(
@@ -613,8 +626,18 @@ fn analyze_monitors(
         findings.push(finding(id, severity, title, detail, evidence, Vec::new()));
     }
     for m in all.iter().filter(|m| m.is_dvi()) {
-        add_dvi_link_finding(findings, m, display_endpoints);
+        add_dvi_link_finding(findings, m, display_endpoints, swap_evidence);
     }
+}
+
+/// Windows drives the monitor over DVI, the EDID it read has no CEA-861 extension (so no audio, no HDMI) and the
+/// native mode needs more than a passive link carries: the link itself explains the missing sound.
+fn link_limited(m: &MonitorSummary) -> bool {
+    m.is_dvi()
+        && m.edid_announces_audio == Some(false)
+        && m.edid_has_cea_extension == Some(false)
+        && m.is_below_native_mode()
+        && m.edid_native_pixel_clock_mhz.is_some_and(|c| c > PASSIVE_LINK_CLOCK_LIMIT_MHZ)
 }
 
 /// The active link runs as DVI: typical with passive DisplayPort→HDMI/DVI adapters, or when the sink is detected
@@ -623,6 +646,7 @@ fn add_dvi_link_finding(
     findings: &mut Vec<DiagnosticFinding>,
     m: &MonitorSummary,
     display_endpoints: &[&AudioEndpointSummary],
+    swap_evidence: &[EvidenceItem],
 ) {
     let name = m.friendly_name.clone().unwrap_or_else(|| "?".into());
     let mut evidence = vec![
@@ -679,16 +703,88 @@ fn add_dvi_link_finding(
         ));
         return;
     }
-    evidence.push(EvidenceItem::hypothesis(SRC, "Some graphics drivers still send sound over links Windows reports as DVI; the display-audio driver then decides whether a sound output appears (a manufacturer driver may expose none where Windows' generic driver does).", Confidence::Medium));
-    evidence.push(EvidenceItem::hypothesis(SRC, "A passive DisplayPort→HDMI/DVI adapter or cable sits between the computer and the monitor, and the graphics driver detects the monitor as DVI — at least in some sessions (for example when the monitor is off or still waking up at start-up), which would also explain sound that disappears after a restart.", Confidence::Medium));
+    let passive = EvidenceItem::hypothesis(
+        SRC,
+        "A passive DisplayPort→HDMI/DVI adapter or cable sits between the computer and the monitor, and the graphics driver detects the monitor as DVI — at least in some sessions (for example when the monitor is off or still waking up at start-up), which would also explain sound that disappears after a restart.",
+        Confidence::Medium,
+    );
+    let tried = !swap_evidence.is_empty();
+    if link_limited(m) {
+        // The data show the link limit itself: that is the conclusion, ahead of any driver change.
+        evidence.push(EvidenceItem::inference(SRC, "The EDID Windows read on this link declares no audio, so no display-audio driver has a sound output to create for this monitor: changing the display-audio driver is not expected to bring the sound back while the link stays like this.", Confidence::Medium));
+        evidence.extend(swap_evidence.iter().cloned());
+        evidence.push(passive);
+        let size = |w: Option<u32>, h: Option<u32>| {
+            format!("{}×{}", w.map(|v| v.to_string()).unwrap_or_default(), h.map(|v| v.to_string()).unwrap_or_default())
+        };
+        let (native, current) = (size(m.edid_native_width, m.edid_native_height), size(m.width, m.height));
+        let clock = m.edid_native_pixel_clock_mhz.map(|c| format_decimal(c, 2)).unwrap_or_default();
+        let detail = if tried {
+            text!(
+                "quickdiag.monitor.linkLimited.detailDriverTried",
+                "Windows drives '{0}' over a DVI link. On this link the monitor's EDID has no CEA-861 extension, so it announces no audio and no HDMI, and its native mode {1} (needs {2} MHz) does not fit: the link runs {3}, consistent with a limit of about 165 MHz (single-link DVI or a passive DisplayPort adapter). That is why there is no HDMI/DisplayPort sound output. The likely fix is a DisplayPort–DisplayPort cable (if the monitor has a DisplayPort input) or an ACTIVE DisplayPort→HDMI adapter. Windows' generic display-audio driver was already tried on this computer and reverted: changing drivers does not fix the link.",
+                name.clone(),
+                native,
+                clock,
+                current
+            )
+        } else {
+            text!(
+                "quickdiag.monitor.linkLimited.detail",
+                "Windows drives '{0}' over a DVI link. On this link the monitor's EDID has no CEA-861 extension, so it announces no audio and no HDMI, and its native mode {1} (needs {2} MHz) does not fit: the link runs {3}, consistent with a limit of about 165 MHz (single-link DVI or a passive DisplayPort adapter). That is why there is no HDMI/DisplayPort sound output. The likely fix is a DisplayPort–DisplayPort cable (if the monitor has a DisplayPort input) or an ACTIVE DisplayPort→HDMI adapter.",
+                name.clone(),
+                native,
+                clock,
+                current
+            )
+        };
+        findings.push(finding(
+            "audioCase.monitor.dviLinkLimited",
+            FindingSeverity::Problem,
+            text!(
+                "quickdiag.monitor.linkLimited.title",
+                "The connection to '{0}' limits the monitor: DVI link, no sound and a mode below native",
+                name
+            ),
+            detail,
+            evidence,
+            vec![display_cable_action()],
+        ));
+        return;
+    }
+    evidence.extend(swap_evidence.iter().cloned());
+    if !tried {
+        evidence.push(EvidenceItem::hypothesis(SRC, "Some graphics drivers still send sound over links Windows reports as DVI; the display-audio driver then decides whether a sound output appears (a manufacturer driver may expose none where Windows' generic driver does).", Confidence::Medium));
+    }
+    evidence.push(passive);
     findings.push(finding(
         "audioCase.monitor.dviMode",
         FindingSeverity::Warning,
         text!("quickdiag.monitor.dvi.title", "Monitor '{0}' is reported as a DVI link and has no sound output", name),
-        text!("quickdiag.monitor.dvi.detail", "Windows reports that the link to this monitor works as DVI, which normally carries no audio. This is typical of passive DisplayPort→HDMI/DVI adapters. Try first the display-audio driver change proposed for the graphics card's audio device (reversible); if there is still no sound, the cable or adapter is the next step."),
+        if tried {
+            text!("quickdiag.monitor.dvi.detailDriverTried", "Windows reports that the link to this monitor works as DVI, which normally carries no audio. This is typical of passive DisplayPort→HDMI/DVI adapters. Windows' generic display-audio driver was already tried on this computer and reverted, so the cable or adapter is the next step.")
+        } else {
+            text!("quickdiag.monitor.dvi.detail", "Windows reports that the link to this monitor works as DVI, which normally carries no audio. This is typical of passive DisplayPort→HDMI/DVI adapters. Try first the display-audio driver change proposed for the graphics card's audio device (reversible); if there is still no sound, the cable or adapter is the next step.")
+        },
         evidence,
         vec![display_link_action()],
     ));
+}
+
+/// Guidance only: the fix for a link limited to DVI / ~165 MHz is a cable or an active adapter.
+fn display_cable_action() -> ProposedAction {
+    ProposedAction::new(
+        "guidance.displayCable",
+        text!(
+            "quickdiag.action.displayCable.title",
+            "Connect the monitor with a DisplayPort cable or an active adapter"
+        ),
+        text!(
+            "quickdiag.action.displayCable.impact",
+            "Use a DisplayPort–DisplayPort cable to the monitor's DisplayPort input (if it has one), or an ACTIVE DisplayPort→HDMI adapter. A passive adapter or a DVI cable keeps the same limit (no sound, no native mode). Then switch the monitor off and on again and run the analysis again. No setting is changed."
+        ),
+        RiskLevel::None,
+    )
 }
 
 /// Guidance only (nothing to execute): the fix for a DVI link is a cable or adapter.
@@ -755,6 +851,7 @@ fn analyze_display_endpoints(
     gpu_audio: &[&DeviceSummary],
     digital_monitors: &[&MonitorSummary],
     all_monitors: &[MonitorSummary],
+    swap_candidates: &[&DeviceSummary],
 ) {
     if endpoints.is_empty() {
         findings.push(finding(
@@ -816,19 +913,47 @@ fn analyze_display_endpoints(
             "PnP/WMI",
             format!("Display audio device present without a problem code: {}", healthy.name.as_deref().unwrap_or("")),
         ));
-        evidence.push(EvidenceItem::hypothesis(SRC, format!("Either the DVI link to '{}' carries no audio, or the display-audio driver exposes no output for this link (a manufacturer driver may expose none where Windows' generic driver does).", dvi.friendly_name.as_deref().unwrap_or("")), Confidence::Medium));
-        let mut actions: Vec<ProposedAction> = gpu_audio
-            .iter()
-            .filter(|d| present(d) && uses_manufacturer_driver(d))
-            .take(1)
-            .map(|d| generic_driver_action(d))
-            .collect();
-        actions.push(display_link_action());
+        let names = names.join(", ");
+        let monitor = dvi.friendly_name.as_deref().unwrap_or("");
+        let (detail, actions) = if link_limited(dvi) {
+            // The monitor finding holds the conclusion and the fix; this one only accounts for the missing outputs.
+            evidence.push(EvidenceItem::inference(SRC, format!("The EDID of '{monitor}' on this link declares no audio, which explains why no sound output is present."), Confidence::Medium));
+            (
+                text!(
+                    "quickdiag.endpoint.noneOverDvi.detailLink",
+                    "The graphics card's audio device is installed, but its sound output(s) ({0}) are not present: the link to the monitor carries no audio (see the conclusion about the monitor connection).",
+                    names
+                ),
+                Vec::new(),
+            )
+        } else {
+            evidence.push(EvidenceItem::hypothesis(SRC, format!("Either the DVI link to '{monitor}' carries no audio, or the display-audio driver exposes no output for this link (a manufacturer driver may expose none where Windows' generic driver does)."), Confidence::Medium));
+            let mut actions: Vec<ProposedAction> =
+                swap_candidates.iter().take(1).map(|d| generic_driver_action(d)).collect();
+            let detail = if actions.is_empty() && gpu_audio.iter().any(|d| present(d) && uses_manufacturer_driver(d)) {
+                text!(
+                    "quickdiag.endpoint.noneOverDvi.detailDriverTried",
+                    "The graphics card's audio device is installed, but its sound output(s) ({0}) are not present while the monitor link is reported as DVI. Windows' generic display-audio driver was already tried on this device and reverted: change the cable or adapter.",
+                    names
+                )
+            } else {
+                text!(
+                    "quickdiag.endpoint.noneOverDvi.detail",
+                    "The graphics card's audio device is installed, but its sound output(s) ({0}) are not present while the monitor link is reported as DVI. Try Windows' generic display-audio driver first (reversible); if there is still no output, change the cable or adapter.",
+                    names
+                )
+            };
+            actions.push(display_link_action());
+            (detail, actions)
+        };
         findings.push(finding(
             "audioCase.endpoint.noneOverDvi",
             FindingSeverity::Warning,
-            text!("quickdiag.endpoint.noneOverDvi.title", "No HDMI/DisplayPort sound output while the monitor link is DVI"),
-            text!("quickdiag.endpoint.noneOverDvi.detail", "The graphics card's audio device is installed, but its sound output(s) ({0}) are not present while the monitor link is reported as DVI. Try Windows' generic display-audio driver first (reversible); if there is still no output, change the cable or adapter.", names.join(", ")),
+            text!(
+                "quickdiag.endpoint.noneOverDvi.title",
+                "No HDMI/DisplayPort sound output while the monitor link is DVI"
+            ),
+            detail,
             evidence,
             actions,
         ));
@@ -1274,6 +1399,50 @@ fn drivers_seen(snapshot: &Snapshot, device: &DeviceSummary) -> Vec<(OffsetDateT
         }
     }
     drivers
+}
+
+/// Each time Windows' generic driver (`hdaudio.inf`) was put on a device that is back on its manufacturer's driver
+/// now: "hdaudio.inf (date) → oemNN.inf (date)", from the Kernel-PnP events.
+fn generic_swaps_reverted(snapshot: &Snapshot, device: &DeviceSummary) -> Vec<String> {
+    if !uses_manufacturer_driver(device) {
+        return Vec::new();
+    }
+    let drivers = drivers_seen(snapshot, device);
+    drivers
+        .iter()
+        .enumerate()
+        .filter(|(_, (_, inf))| eq_ci(inf, "hdaudio.inf"))
+        .filter_map(|(i, (at, inf))| {
+            let (back_at, back) = drivers[i + 1..].iter().find(|(_, x)| is_published_inf_name(x))?;
+            Some(format!("{inf} ({}) → {back} ({})", format_date(Some(*at)), format_date(Some(*back_at))))
+        })
+        .collect()
+}
+
+/// The generic display-audio driver swap was already tried on this device and undone: the record and its meaning.
+fn swap_tried_evidence(snapshot: &Snapshot, device: &DeviceSummary) -> Vec<EvidenceItem> {
+    let swaps = generic_swaps_reverted(snapshot, device);
+    if swaps.is_empty() {
+        return Vec::new();
+    }
+    let current = device.driver.as_ref().and_then(|d| d.inf_name.clone()).unwrap_or_default();
+    vec![
+        EvidenceItem::fact(
+            "Kernel-PnP",
+            format!(
+                "Windows' generic driver hdaudio.inf was installed on '{}' {} time(s) and the manufacturer's driver came back afterwards: {}",
+                name_of(device),
+                swaps.len(),
+                swaps.join("; ")
+            ),
+        ),
+        EvidenceItem::observation(
+            SRC,
+            format!(
+                "The generic display-audio driver swap was already tried on this device and reverted; the manufacturer's driver ({current}) is in use again."
+            ),
+        ),
+    ]
 }
 
 fn origin_label(origin: InstallOrigin) -> &'static str {

@@ -17,6 +17,7 @@ mod demo;
 mod devices_actions;
 mod drivers_page;
 mod export_logs;
+mod fix_plan;
 mod ops;
 mod settings_page;
 mod sharing_page;
@@ -83,6 +84,10 @@ fn main() -> Result<(), slint::PlatformError> {
     ui.on_run_finding_action({
         let weak = ui.as_weak();
         move |f, a| run_finding_action(weak.clone(), f as usize, a as usize)
+    });
+    ui.on_run_fix({
+        let weak = ui.as_weak();
+        move || fix_plan::start(weak.clone())
     });
     ui.on_export_logs({
         let weak = ui.as_weak();
@@ -321,44 +326,52 @@ fn diagnose(weak: slint::Weak<AppWindow>) {
             let Some(ui) = weak.upgrade() else { return };
             ui.set_diagnosis_running(false);
             match result {
-                Ok((report, issues)) => {
-                    let (rows, mut summary) = view::finding_rows(&report, catalog);
-                    if !issues.is_empty() {
-                        summary = catalog.resolve(&text!(
-                            "app.diagnosis.issues",
-                            "{0} · {1} areas could not be read: {2}",
-                            summary,
-                            issues.len().to_string(),
-                            issues.join(", ")
-                        ));
-                    }
-                    FINDING_ROUTES.with(|f| {
-                        *f.borrow_mut() = rows.iter().map(|r| r.buttons.iter().map(|b| b.1.clone()).collect()).collect()
-                    });
-                    let rows: Vec<FindingRow> = rows
-                        .into_iter()
-                        .map(|f| FindingRow {
-                            level: f.level,
-                            severity: f.severity.into(),
-                            title: f.title.into(),
-                            detail: f.detail.into(),
-                            evidence: f.evidence.into(),
-                            actions: f.actions.into(),
-                            buttons: ModelRc::from(Rc::new(VecModel::from(
-                                f.buttons
-                                    .into_iter()
-                                    .map(|(label, _)| slint::SharedString::from(label))
-                                    .collect::<Vec<_>>(),
-                            ))),
-                        })
-                        .collect();
-                    ui.set_findings(ModelRc::from(Rc::new(VecModel::from(rows))));
-                    ui.set_diagnosis_summary(summary.into());
+                Ok((report, issues)) => show_diagnosis(&ui, &report, &issues, catalog),
+                Err(problem) => {
+                    ui.set_diagnosis_summary(catalog.resolve(&problem).into());
+                    fix_plan::remember(&ui, &[], catalog);
                 }
-                Err(problem) => ui.set_diagnosis_summary(catalog.resolve(&problem).into()),
             }
         });
     });
+}
+
+/// Shows a diagnosis on the Caso page (findings, their buttons and the guided-fix button).
+fn show_diagnosis(
+    ui: &AppWindow,
+    report: &bitbybit_domain::diagnostics::DiagnosticReport,
+    issues: &[String],
+    catalog: &TextCatalog,
+) {
+    let (rows, mut summary) = view::finding_rows(report, catalog);
+    if !issues.is_empty() {
+        summary = catalog.resolve(&text!(
+            "app.diagnosis.issues",
+            "{0} · {1} areas could not be read: {2}",
+            summary,
+            issues.len().to_string(),
+            issues.join(", ")
+        ));
+    }
+    FINDING_ROUTES
+        .with(|f| *f.borrow_mut() = rows.iter().map(|r| r.buttons.iter().map(|b| b.1.clone()).collect()).collect());
+    let rows: Vec<FindingRow> = rows
+        .into_iter()
+        .map(|f| FindingRow {
+            level: f.level,
+            severity: f.severity.into(),
+            title: f.title.into(),
+            detail: f.detail.into(),
+            evidence: f.evidence.into(),
+            actions: f.actions.into(),
+            buttons: ModelRc::from(Rc::new(VecModel::from(
+                f.buttons.into_iter().map(|(label, _)| slint::SharedString::from(label)).collect::<Vec<_>>(),
+            ))),
+        })
+        .collect();
+    ui.set_findings(ModelRc::from(Rc::new(VecModel::from(rows))));
+    ui.set_diagnosis_summary(summary.into());
+    fix_plan::remember(ui, &report.findings, catalog);
 }
 
 fn apply_displays(ui: &AppWindow, displays: Result<Vec<MonitorSummary>, LocalizedText>, catalog: &TextCatalog) {
