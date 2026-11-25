@@ -410,14 +410,13 @@ fn apply_displays(ui: &AppWindow, displays: Result<Vec<MonitorSummary>, Localize
             let rows: Vec<DisplayRow> = rows
                 .into_iter()
                 .zip(&monitors)
-                .map(|(r, m)| {
-                    let (id, modes, mode_index) = displays_page::picker(m.source_name.as_deref(), &r.name, catalog);
-                    (r, id, modes, mode_index)
-                })
-                .map(|(r, id, modes, mode_index)| DisplayRow {
-                    id: id.into(),
-                    modes,
-                    mode_index,
+                .map(|(r, m)| (displays_page::details(m.source_name.as_deref(), &r.name, catalog), r))
+                .map(|(d, r)| DisplayRow {
+                    id: d.id.into(),
+                    caps: d.caps.into(),
+                    groups: d.groups,
+                    limits: d.limits,
+                    guidance: d.guidance,
                     name: r.name.into(),
                     connection: r.connection.into(),
                     mode: r.mode.into(),

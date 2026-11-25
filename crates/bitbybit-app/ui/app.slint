@@ -6,7 +6,7 @@
 import { Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Icon, Spinner, Button, IconButton, Toggle, Check, TextField, Select, SegItem, Segmented, Slider, MenuEntry, MenuButton } from "controls.slint";
-import { ChoiceApply, DisplayKeepDialog } from "displays.slint";
+import { ChoiceApply, DisplayKeepDialog, DisplayDetails, ModeGroup, LimitLine } from "displays.slint";
 import { FixButton } from "fix.slint";
 import { Scroller, Secondary, Body, Divider, Panel, PanelTitle, KpiCard, AreaChart, ActivityItem, ColumnLabel, TableHeader, TableRow, Badge, StatusDot, StatusBanner, EmptyState, Field, SettingRow, NavItem, NavGroup } from "components.slint";
 import { DriverTestBanner } from "drivertest.slint";
@@ -70,10 +70,13 @@ export struct AudioRow {
 }
 
 export struct DisplayRow {
-    // GDI source (\\.\DISPLAY1) and the modes it reports (DSP-03); mode-index is the one in use.
+    // GDI source (\\.\DISPLAY1), the monitor's capabilities, the modes by resolution and, when the native mode
+    // is missing, the typed explanation and advice (DSP-03).
     id: string,
-    modes: [string],
-    mode-index: int,
+    caps: string,
+    groups: [ModeGroup],
+    limits: [LimitLine],
+    guidance: [string],
     name: string,
     connection: string,
     mode: string,
@@ -1523,15 +1526,21 @@ export component AppWindow inherits Window {
                         PanelTitle {
                             title: Tr.t("app.displays.panel");
                             caption: root.displays-summary;
-                            if root.display-can-topology: ChoiceApply {
-                                width: 330px;
+                            Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); size: 1; clicked => { root.refresh(); } }
+                        }
+                        // Topology in its own row so the title row stays narrow at the minimum window size.
+                        if root.display-can-topology: HorizontalLayout {
+                            spacing: 10px;
+                            alignment: start;
+                            Text { text: Tr.t("app.displays.topology"); font-size: Theme.font-small; color: Theme.text-secondary; vertical-alignment: center; }
+                            ChoiceApply {
+                                max-width: 360px;
                                 model: root.display-topologies;
                                 current: root.display-topology;
                                 action: Tr.t("app.displays.apply");
                                 label: Tr.t("app.displays.topology");
                                 apply(i) => { root.change-topology(i); }
                             }
-                            Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); size: 1; clicked => { root.refresh(); } }
                         }
                         if root.display-message != "": StatusBanner { kind: 0; message: root.display-message; }
                         TableHeader {
@@ -1539,43 +1548,64 @@ export component AppWindow inherits Window {
                                 padding-left: 14px;
                                 padding-right: 14px;
                                 spacing: 12px;
-                                ColumnLabel { text: Tr.t("app.col.display"); horizontal-stretch: 1; }
-                                ColumnLabel { text: Tr.t("app.col.connection"); width: 240px; }
-                                ColumnLabel { text: Tr.t("app.col.mode"); width: 300px; }
-                                ColumnLabel { text: Tr.t("app.col.edid"); width: 200px; }
+                                // Proportional columns (same stretch and minimum as the rows), no fixed widths.
+                                ColumnLabel { text: Tr.t("app.col.display"); preferred-width: 0px; min-width: 120px; horizontal-stretch: 3; }
+                                ColumnLabel { text: Tr.t("app.col.connection"); preferred-width: 0px; min-width: 90px; horizontal-stretch: 2; }
+                                ColumnLabel { text: Tr.t("app.col.mode"); preferred-width: 0px; min-width: 150px; horizontal-stretch: 2; }
+                                ColumnLabel { text: Tr.t("app.col.edid"); preferred-width: 0px; min-width: 90px; horizontal-stretch: 2; }
                             }
                         }
                         if root.displays.length == 0: EmptyState { vertical-stretch: 1; icon: @image-url("assets/icons/monitor.svg"); text: root.displays-failed ? root.displays-summary : Tr.t("app.displays.empty"); }
                         if root.displays.length > 0: Scroller {
                             vertical-stretch: 1;
                             VerticalLayout {
-                                for display[i] in root.displays: TableRow {
-                                    height: d-row.preferred-height;
+                                for display[i] in root.displays: d-item := TableRow {
+                                    property <bool> open: display.limits.length > 0;
+                                    height: d-col.preferred-height;
                                     last: i == root.displays.length - 1;
-                                    d-row := HorizontalLayout {
+                                    d-col := VerticalLayout {
+                                    HorizontalLayout {
                                         padding: 14px;
                                         spacing: 12px;
                                         VerticalLayout {
-                                            horizontal-stretch: 1;
+                                            preferred-width: 0px;
+                                            min-width: 120px;
+                                            horizontal-stretch: 3;
                                             alignment: center;
                                             spacing: 2px;
                                             Text { text: display.name; font-size: Theme.font-body; font-weight: 500; color: Theme.text; overflow: elide; }
                                             if display.warning != "": Text { text: display.warning; font-size: Theme.font-caption; color: Theme.red; wrap: word-wrap; }
                                         }
-                                        Text { text: display.connection; width: 240px; font-size: Theme.font-small; color: Theme.text-secondary; vertical-alignment: center; wrap: word-wrap; }
+                                        Text { text: display.connection; preferred-width: 0px; min-width: 90px; horizontal-stretch: 2; font-size: Theme.font-small; color: Theme.text-secondary; vertical-alignment: center; wrap: word-wrap; }
                                         VerticalLayout {
-                                            width: 300px;
+                                            preferred-width: 0px;
+                                            min-width: 150px;
+                                            horizontal-stretch: 2;
+                                            spacing: 6px;
                                             alignment: center;
-                                            if display.modes.length <= 1: HorizontalLayout { alignment: start; Badge { text: display.mode; tone: 3; } }
-                                            if display.modes.length > 1: ChoiceApply {
-                                                model: display.modes;
-                                                current: display.mode-index;
-                                                action: Tr.t("app.displays.apply");
-                                                label: Tr.t("app.col.mode") + " " + display.name;
-                                                apply(i) => { root.change-display-mode(display.id, i); }
+                                            HorizontalLayout { alignment: start; Badge { text: display.mode; tone: 3; } }
+                                            if display.groups.length > 0 || display.limits.length > 0: HorizontalLayout {
+                                                alignment: start;
+                                                Button {
+                                                    text: d-item.open ? Tr.t("app.displays.modes.hide") : Tr.t("app.displays.modes.show");
+                                                    size: 1;
+                                                    clicked => { d-item.open = !d-item.open; }
+                                                }
                                             }
                                         }
-                                        Text { text: display.edid; width: 200px; font-size: Theme.font-small; color: Theme.text-secondary; vertical-alignment: center; wrap: word-wrap; }
+                                        Text { text: display.edid; preferred-width: 0px; min-width: 90px; horizontal-stretch: 2; font-size: Theme.font-small; color: Theme.text-secondary; vertical-alignment: center; wrap: word-wrap; }
+                                    }
+                                    if d-item.open: DisplayDetails {
+                                        caps: display.caps;
+                                        groups: display.groups;
+                                        limits: display.limits;
+                                        guidance: display.guidance;
+                                        modes-title: Tr.t("app.displays.modes.title");
+                                        legend: Tr.t("app.displays.modes.legend");
+                                        limit-title: Tr.t("app.displays.limit.title");
+                                        guidance-title: Tr.t("app.displays.limit.guidance");
+                                        pick(index) => { root.change-display-mode(display.id, index); }
+                                    }
                                     }
                                 }
                             }

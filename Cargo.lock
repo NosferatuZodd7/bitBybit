@@ -610,7 +610,9 @@ name = "bitbybit-display"
 version = "0.7.0"
 dependencies = [
  "bitbybit-core",
+ "bitbybit-evidence",
  "bitbybit-journal",
+ "bitbybit-localization",
  "bitbybit-recovery",
  "serde",
  "serde_json",

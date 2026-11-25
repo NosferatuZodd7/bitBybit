@@ -2,7 +2,7 @@
 
 import { Theme } from "theme.slint";
 import { Icon, Button, Select } from "controls.slint";
-import { Panel } from "components.slint";
+import { Panel, Badge } from "components.slint";
 
 // A choice list with an apply button: the list holds only what the device reports, the one in use is preselected,
 // and the button is enabled only for a different choice (the change itself is confirmed in a dialog first).
@@ -79,4 +79,73 @@ export component DisplayKeepDialog inherits Rectangle {
             }
         }
     }
+}
+
+// One refresh rate of a resolution: the button applies (or tests) it after the usual confirmation.
+export struct ModeRate { label: string, tag: string, tone: int, index: int, can-apply: bool }
+// The modes of one resolution, from the driver's list and the monitor's EDID.
+export struct ModeGroup { resolution: string, native: bool, rates: [ModeRate] }
+// One typed line of the limitation explanation (kind: "Facto confirmado", "Hipótese", …; level 0–3).
+export struct LimitLine { kind: string, text: string, level: int }
+
+// Per display: what the monitor announces, the modes grouped by resolution with their tags, and — when the
+// native mode is missing — why, from the data only (typed evidence) and what would have to change (advice).
+export component DisplayDetails inherits VerticalLayout {
+    in property <string> caps;
+    in property <[ModeGroup]> groups;
+    in property <[LimitLine]> limits;
+    in property <[string]> guidance;
+    in property <string> modes-title;
+    in property <string> legend;
+    in property <string> limit-title;
+    in property <string> guidance-title;
+    callback pick(int);
+    spacing: 10px;
+    padding-left: 14px;
+    padding-right: 14px;
+    padding-bottom: 14px;
+    if root.caps != "": Text { text: root.caps; font-size: Theme.font-small; color: Theme.text-secondary; wrap: word-wrap; }
+    if root.limits.length > 0: Rectangle {
+        border-radius: Theme.radius-control;
+        background: Theme.amber.with-alpha(0.10);
+        height: lim.preferred-height;
+        Rectangle { x: 0; width: 3px; border-radius: 1.5px; background: Theme.amber; }
+        lim := VerticalLayout {
+            padding: 12px;
+            padding-left: 16px;
+            spacing: 6px;
+            Text { text: root.limit-title; font-size: Theme.font-body; font-weight: 700; color: Theme.text; wrap: word-wrap; }
+            // One wrapped Text per line (wrapped text inside a horizontal row under-reports its height).
+            for line in root.limits: Text {
+                text: line.kind + " — " + line.text;
+                font-size: Theme.font-small;
+                color: line.level >= 3 ? Theme.amber : line.level == 2 ? Theme.cyan : Theme.text;
+                wrap: word-wrap;
+            }
+            if root.guidance.length > 0: Text { text: root.guidance-title; font-size: Theme.font-small; font-weight: 700; color: Theme.text; }
+            for g in root.guidance: Text { text: "•  " + g; font-size: Theme.font-small; color: Theme.text-secondary; wrap: word-wrap; }
+        }
+    }
+    if root.groups.length > 0: Text { text: root.modes-title; font-size: Theme.font-small; font-weight: 700; color: Theme.text; }
+    for group in root.groups: HorizontalLayout {
+        spacing: 10px;
+        Text {
+            width: 120px;
+            text: group.resolution;
+            font-size: Theme.font-small;
+            font-weight: group.native ? 700 : 500;
+            color: Theme.text;
+            vertical-alignment: center;
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            for rate in group.rates: HorizontalLayout {
+                spacing: 4px;
+                Button { text: rate.label; size: 1; enabled: rate.can-apply; clicked => { root.pick(rate.index); } }
+                if rate.tag != "": VerticalLayout { alignment: center; Badge { text: rate.tag; tone: rate.tone; } }
+            }
+        }
+    }
+    if root.groups.length > 0: Text { text: root.legend; font-size: Theme.font-caption; color: Theme.text-muted; wrap: word-wrap; }
 }

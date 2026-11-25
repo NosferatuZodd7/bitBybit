@@ -33,7 +33,7 @@ impl Topology {
 }
 
 /// One active display.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct DisplayState {
     /// GDI source name (`\\.\DISPLAY1`), the key of a change within a session.
@@ -41,6 +41,15 @@ pub struct DisplayState {
     pub current: DisplayMode,
     /// What the driver enumerates for the attached monitor (deduplicated).
     pub supported: Vec<DisplayMode>,
+    /// The monitor's EDID as Windows read it (empty when not readable).
+    #[serde(default)]
+    pub edid: Vec<u8>,
+    /// CCD `DISPLAYCONFIG_VIDEO_OUTPUT_TECHNOLOGY` of the path.
+    #[serde(default)]
+    pub output_technology: Option<i32>,
+    /// Modes the driver knows without filtering for the monitor (EDS_RAWMODE): evidence only, never offered.
+    #[serde(default)]
+    pub raw: Vec<DisplayMode>,
 }
 
 /// The whole configuration as the platform saved it (raw CCD path and mode arrays), to restore it exactly.
@@ -120,7 +129,13 @@ impl<'a> JournaledDisplayChanges<'a> {
     /// Validated, journaled trial of `requested` on display `id`; returns the pending journal id.
     pub fn change_mode(&self, id: &str, name: &str, requested: DisplayMode, now: OffsetDateTime) -> Result<Uuid> {
         let display = find(self.control, id)?;
-        validate(requested, &display.supported)?;
+        let announced =
+            crate::edid::capabilities(&display.edid).map(|c| crate::capability::announced(&c)).unwrap_or_default();
+        // A mode the monitor announces but the driver does not list may be tried only if the driver's own
+        // validation (the Test call below) accepts it; anything else must be one of the driver's modes.
+        if display.supported.contains(&requested) || !announced.contains(&requested) {
+            validate(requested, &display.supported)?;
+        }
         if display.current == requested {
             return Err(Error::invalid("The display already uses this mode."));
         }
@@ -391,7 +406,13 @@ mod tests {
     impl DisplayControl for FakeDisplays {
         fn displays(&self) -> Result<Vec<DisplayState>> {
             Ok(self.state().mode.map_or_else(Vec::new, |current| {
-                vec![DisplayState { id: D1.into(), current, supported: vec![M1440_144, M1440, M1080] }]
+                vec![DisplayState {
+                    id: D1.into(),
+                    current,
+                    supported: vec![M1440_144, M1440, M1080],
+                    edid: crate::edid::tests::with_detailed(false, 18_125, 2560, 160, 1080, 31),
+                    ..DisplayState::default()
+                }]
             }))
         }
         fn topology(&self) -> Result<(Option<Topology>, usize)> {
@@ -493,6 +514,19 @@ mod tests {
         assert_eq!(f.changes().change_mode(D1, "DELL", M1080, NOW).unwrap_err().code, ErrorCode::NotSupported);
         assert!(f.journal.all().unwrap().is_empty());
         assert_eq!(f.displays.state().applies, 0);
+    }
+
+    #[test]
+    fn a_mode_only_the_monitor_announces_is_tried_only_if_the_driver_validates_it() {
+        let ultrawide = DisplayMode { width: 2560, height: 1080, refresh_mhz: 60_000 };
+        let f = fixture();
+        f.displays.state().refuse_test = true;
+        assert_eq!(f.changes().change_mode(D1, "LG", ultrawide, NOW).unwrap_err().code, ErrorCode::NotSupported);
+        assert!(f.journal.all().unwrap().is_empty(), "refused by the driver: nothing journaled, nothing applied");
+        f.displays.state().refuse_test = false;
+        let id = f.changes().change_mode(D1, "LG", ultrawide, NOW).unwrap();
+        assert!(is_pending(&f.record(id)));
+        assert_eq!(f.displays.state().mode, Some(ultrawide));
     }
 
     #[test]

@@ -15,6 +15,7 @@ const PT_PT: &[(&str, &str)] = &[
     ("cleanup", include_str!("../catalogs/pt-PT/cleanup.json")),
     ("common", include_str!("../catalogs/pt-PT/common.json")),
     ("devices", include_str!("../catalogs/pt-PT/devices.json")),
+    ("display", include_str!("../catalogs/pt-PT/display.json")),
     ("drivers", include_str!("../catalogs/pt-PT/drivers.json")),
     ("ipc", include_str!("../catalogs/pt-PT/ipc.json")),
     ("network", include_str!("../catalogs/pt-PT/network.json")),
