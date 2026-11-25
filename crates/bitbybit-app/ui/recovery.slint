@@ -1,0 +1,53 @@
+// Interrupted operations / recovery: what start-up recovery did and what was left unfinished, at the top of the
+// Alterações page (recovery_panel.rs). The labels come from app.slint (the Tr catalog global lives there).
+
+import { Theme } from "theme.slint";
+import { Icon, Button } from "controls.slint";
+import { Badge } from "components.slint";
+
+// tone: as Badge (0 neutral, 1 amber, 2 red, 4 green).
+export struct RecoveryItem { id: string, title: string, when: string, state: string, detail: string, tone: int, can-revert: bool }
+
+export component RecoveryPanel inherits Rectangle {
+    in property <[RecoveryItem]> items;
+    in property <string> title;
+    in property <string> caption;
+    in property <string> revert-label;
+    callback revert(string);
+    border-radius: Theme.radius-control;
+    background: Theme.amber.with-alpha(0.08);
+    border-width: 1px;
+    border-color: Theme.amber.with-alpha(0.35);
+    accessible-role: groupbox;
+    accessible-label: root.title;
+    VerticalLayout {
+        padding: 14px;
+        spacing: 10px;
+        HorizontalLayout {
+            spacing: 10px;
+            Icon { source: @image-url("assets/icons/triangle-alert.svg"); tint: Theme.amber; y: 2px; }
+            VerticalLayout {
+                spacing: 2px;
+                Text { text: root.title; font-size: Theme.font-body; font-weight: 700; color: Theme.text; wrap: word-wrap; }
+                Text { text: root.caption; font-size: Theme.font-caption; color: Theme.text-muted; wrap: word-wrap; }
+            }
+        }
+        // At most a few items (recovery_panel.rs caps them): no scrolling inside the page's own list.
+        VerticalLayout {
+            spacing: 8px;
+            for item in root.items: HorizontalLayout {
+                spacing: 12px;
+                Text { text: item.when; width: 130px; font-size: Theme.font-small; color: Theme.text-secondary; vertical-alignment: center; wrap: word-wrap; }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 4px;
+                    Text { text: item.title; font-size: Theme.font-body; color: Theme.text; wrap: word-wrap; }
+                    HorizontalLayout { alignment: start; Badge { text: item.state; tone: item.tone; } }
+                    if item.detail != "": Text { text: item.detail; font-size: Theme.font-caption; color: Theme.text-muted; wrap: word-wrap; }
+                }
+                if item.can-revert: VerticalLayout { horizontal-stretch: 0; alignment: center; Button { icon: @image-url("assets/icons/undo-2.svg"); text: root.revert-label; size: 1; clicked => { root.revert(item.id); } } }
+            }
+        }
+    }
+}

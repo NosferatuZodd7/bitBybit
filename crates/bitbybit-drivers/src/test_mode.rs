@@ -4,6 +4,7 @@
 
 use bitbybit_journal::{ChangeRecord, ChangeStatus};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -29,6 +30,36 @@ impl DriverTestSession {
     pub fn is_valid(&self) -> bool {
         !self.change_id.is_nil() && !self.instance_id.trim().is_empty() && !self.inf_name.trim().is_empty()
     }
+
+    /// `record` is this test's driver change: same id, a driver selection, on the same device. The session file is
+    /// user-writable, so its change id alone never selects what is reverted.
+    pub fn is_for(&self, record: &ChangeRecord) -> bool {
+        record.id == self.change_id
+            && record.target_kind == crate::changes::DRIVER_SELECTED_KIND
+            && record.target_id.eq_ignore_ascii_case(&self.instance_id)
+    }
+
+    /// The saved session, if any and valid.
+    pub fn load(path: &Path) -> Option<Self> {
+        bitbybit_core::fsio::read_json::<Self>(path).filter(Self::is_valid)
+    }
+
+    pub fn save(&self, path: &Path) -> bitbybit_core::Result<()> {
+        bitbybit_core::fsio::write_json(path, self)
+    }
+
+    /// Ends the session: removes the file and the backup `fsio` keeps (otherwise `load` would bring it back).
+    pub fn clear(path: &Path) -> bitbybit_core::Result<()> {
+        let mut backup = path.as_os_str().to_owned();
+        backup.push(".bak");
+        for p in [path.to_path_buf(), PathBuf::from(backup)] {
+            match std::fs::remove_file(&p) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+                _ => {}
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,7 +75,7 @@ pub enum DriverTestNext {
 pub fn next(session: &DriverTestSession, journal: Option<&[ChangeRecord]>) -> DriverTestNext {
     let Some(journal) = journal else { return DriverTestNext::Unknown };
     match journal.iter().rev().find(|r| r.id == session.change_id) {
-        Some(r) if r.status == ChangeStatus::Applied => DriverTestNext::Revert,
+        Some(r) if r.status == ChangeStatus::Applied && session.is_for(r) => DriverTestNext::Revert,
         _ => DriverTestNext::Forget,
     }
 }
@@ -72,7 +103,7 @@ mod tests {
         let mut r = ChangeRecord::new(
             ChangeCategory::Driver,
             "device.driverSelected",
-            "x",
+            r"hdaudio\func_01&ven_8086&dev_2806\4&1&0&0001",
             "Install driver",
             datetime!(2026-10-22 21:00 UTC),
         );
@@ -106,6 +137,35 @@ mod tests {
             assert_eq!(next(&session(id), Some(&[record(id, status)])), DriverTestNext::Forget, "{status:?}");
         }
         assert_eq!(next(&session(id), Some(&[record(Uuid::new_v4(), ChangeStatus::Applied)])), DriverTestNext::Forget);
+    }
+
+    #[test]
+    fn never_reverts_a_change_of_another_kind_or_device_named_by_an_edited_session_file() {
+        let id = Uuid::new_v4();
+        let mut other_kind = record(id, ChangeStatus::Applied);
+        other_kind.target_kind = "sharing.nat".into();
+        let mut other_device = record(id, ChangeStatus::Applied);
+        other_device.target_id = r"PCI\VEN_10DE&DEV_1C82\4&1".into();
+        for r in [other_kind, other_device] {
+            assert!(!session(id).is_for(&r));
+            assert_eq!(next(&session(id), Some(&[r])), DriverTestNext::Forget);
+        }
+    }
+
+    #[test]
+    fn the_session_file_round_trips_and_clearing_also_removes_the_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("driver-test.json");
+        assert_eq!(DriverTestSession::load(&path), None);
+        let s = session(Uuid::new_v4());
+        s.save(&path).unwrap();
+        s.save(&path).unwrap(); // the second write leaves a .bak behind
+        assert_eq!(DriverTestSession::load(&path), Some(s));
+        DriverTestSession::clear(&path).unwrap();
+        assert_eq!(DriverTestSession::load(&path), None);
+        DriverTestSession::clear(&path).unwrap(); // nothing to clear is fine
+        session(Uuid::nil()).save(&path).unwrap();
+        assert_eq!(DriverTestSession::load(&path), None, "an invalid session is ignored");
     }
 
     #[test]

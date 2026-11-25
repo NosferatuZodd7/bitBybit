@@ -39,14 +39,30 @@ pub struct RevertOutcome {
 /// A change whose revert failed this many times is left for the user (who can force it) instead of being retried.
 pub const MAX_REVERT_ATTEMPTS: u32 = 3;
 
+/// Starts the journaled status detail of every outcome of a start-up recovery, so the app can tell "reverted at
+/// start" (or failed, gone, drifted at start) apart from a revert the user asked for.
+pub const AT_START_DETAIL_PREFIX: &str = "[start-up recovery] ";
+
 pub struct RecoveryCoordinator<'a> {
     journal: &'a dyn Journal,
     handlers: HashMap<String, &'a dyn RevertHandler>,
+    detail_prefix: &'static str,
 }
 
 impl<'a> RecoveryCoordinator<'a> {
     pub fn new(journal: &'a dyn Journal, handlers: &[&'a dyn RevertHandler]) -> Self {
-        Self { journal, handlers: handlers.iter().map(|h| (h.target_kind().to_owned(), *h)).collect() }
+        Self {
+            journal,
+            handlers: handlers.iter().map(|h| (h.target_kind().to_owned(), *h)).collect(),
+            detail_prefix: "",
+        }
+    }
+
+    /// Marks the journaled outcomes with [`AT_START_DETAIL_PREFIX`] (start-up recovery).
+    #[must_use]
+    pub fn at_start(mut self) -> Self {
+        self.detail_prefix = AT_START_DETAIL_PREFIX;
+        self
     }
 
     /// Reverts the active changes selected by `filter`, newest first (reverse application order). `force` reverts
@@ -77,6 +93,7 @@ impl<'a> RecoveryCoordinator<'a> {
 
     fn revert_one(&self, record: ChangeRecord, force: bool) -> Result<RevertOutcome> {
         let finish = |status: ChangeStatus, detail: String| -> Result<RevertOutcome> {
+            let detail = format!("{}{detail}", self.detail_prefix);
             self.journal.update_status(record.id, status, Some(detail.clone()))?;
             Ok(RevertOutcome { record: record.clone(), new_status: status, detail })
         };

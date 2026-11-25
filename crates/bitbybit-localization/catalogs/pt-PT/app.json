@@ -671,5 +671,18 @@
   "app.month.9": "set",
   "app.month.10": "out",
   "app.month.11": "nov",
-  "app.month.12": "dez"
+  "app.month.12": "dez",
+  "app.driverTest.leftOverBanner": "O bitBybit fechou sem terminar o teste de \"{0}\" em \"{1}\". Reverta para o controlador anterior ({2}) ou mantenha este.",
+  "app.driverTest.ended": "O teste do controlador \"{0}\" em \"{1}\" terminou: {2}.",
+  "app.driverTest.notInJournal": "a alteração já não está no registo do bitBybit",
+  "app.driverTest.saveFailed": "O controlador foi instalado, mas o teste não pôde ser guardado ({0}). Fica como uma alteração normal, que pode reverter em \"Alterações do bitBybit\".",
+  "app.driverTest.readFailed": "Não foi possível ler os controladores compatíveis: {0}",
+  "app.recovery.title": "Operações interrompidas / recuperação",
+  "app.recovery.caption": "O que ficou por terminar (por exemplo depois de um encerramento inesperado) e o que a recuperação fez no arranque do serviço. \"Reverter\" só repõe o estado anterior se o objeto continuar como o bitBybit o deixou.",
+  "app.recovery.steps": "{0} (+{1} passos da mesma operação)",
+  "app.recovery.state.revertedAtStart": "Revertida no arranque",
+  "app.recovery.state.goneAtStart": "No arranque: o objeto já não existia",
+  "app.recovery.state.driftAtStart": "Não revertida no arranque: alterada por outro programa",
+  "app.recovery.state.pending": "Por reverter (operação interrompida)",
+  "app.recovery.state.failed": "A reversão falhou (requer atenção)"
 }

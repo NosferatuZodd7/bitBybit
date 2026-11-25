@@ -7,12 +7,15 @@ import { Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Icon, Spinner, Button, IconButton, Toggle, Check, TextField, Select, SegItem, Segmented, Slider, MenuEntry, MenuButton } from "controls.slint";
 import { Scroller, Secondary, Body, Divider, Panel, PanelTitle, KpiCard, AreaChart, ActivityItem, ColumnLabel, TableHeader, TableRow, Badge, StatusDot, StatusBanner, EmptyState, Field, SettingRow, NavItem, NavGroup } from "components.slint";
+import { DriverTestBanner } from "drivertest.slint";
+import { RecoveryItem, RecoveryPanel } from "recovery.slint";
 import "assets/fonts/Poppins-Regular.ttf";
 import "assets/fonts/Poppins-Medium.ttf";
 import "assets/fonts/Poppins-SemiBold.ttf";
 import "assets/fonts/Poppins-Bold.ttf";
 
 export { Theme }
+export { RecoveryItem }
 
 export global Tr {
     pure callback t(string) -> string;
@@ -442,6 +445,12 @@ export component AppWindow inherits Window {
     callback install-driver(string, string);
     callback rollback-driver(string);
     callback close-drivers();
+    // Driver test mode (driver_test.rs) and interrupted operations / recovery (recovery_panel.rs).
+    in property <string> driver-test-text;
+    callback test-driver(string, string);
+    callback keep-driver-test();
+    callback revert-driver-test();
+    in property <[RecoveryItem]> recovery-items;
     in property <string> devices-summary;
     in property <[AudioRow]> audio;
     in property <string> audio-subtitle;
@@ -738,6 +747,15 @@ export component AppWindow inherits Window {
                             }
                         }
                     }
+                }
+
+                // Driver test mode: on every page while a driver is being tested.
+                if root.driver-test-text != "": DriverTestBanner {
+                    message: root.driver-test-text;
+                    keep-label: Tr.t("app.driverTest.keep");
+                    revert-label: Tr.t("app.driverTest.revert");
+                    keep => { root.keep-driver-test(); }
+                    revert => { root.revert-driver-test(); }
                 }
 
                 // 8 · Resumo
@@ -1466,6 +1484,13 @@ export component AppWindow inherits Window {
                             Button { icon: @image-url("assets/icons/refresh-cw.svg"); text: Tr.t("app.button.refresh"); size: 1; clicked => { root.refresh(); } }
                         }
                         if root.changes-message != "": StatusBanner { kind: 0; message: root.changes-message; }
+                        if root.recovery-items.length > 0: RecoveryPanel {
+                            items: root.recovery-items;
+                            title: Tr.t("app.recovery.title");
+                            caption: Tr.t("app.recovery.caption");
+                            revert-label: Tr.t("app.changes.revert");
+                            revert(id) => { root.revert(id); }
+                        }
                         TableHeader {
                             HorizontalLayout {
                                 padding-left: 14px;
@@ -1707,6 +1732,7 @@ export component AppWindow inherits Window {
                                     Text { text: choice.detail; font-size: Theme.font-caption; color: Theme.text-muted; wrap: word-wrap; }
                                 }
                                 if choice.current: VerticalLayout { alignment: center; Badge { text: Tr.t("app.drivers.current"); tone: 4; } }
+                                if !choice.current: VerticalLayout { alignment: center; Button { text: Tr.t("app.driverTest.try"); size: 1; clicked => { root.test-driver(root.driver-device-id, choice.inf); } } }
                                 if !choice.current: VerticalLayout { alignment: center; Button { text: Tr.t("app.drivers.install"); kind: 1; size: 1; clicked => { root.install-driver(root.driver-device-id, choice.inf); } } }
                             }
                         }

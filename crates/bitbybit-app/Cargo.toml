@@ -23,6 +23,7 @@ bitbybit-security.workspace = true
 bitbybit-network.workspace = true
 bitbybit-updates.workspace = true
 bitbybit-ipc.workspace = true
+bitbybit-recovery.workspace = true
 log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -31,7 +32,6 @@ time.workspace = true
 uuid.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-bitbybit-recovery.workspace = true
 bitbybit-platform-windows.workspace = true
 bitbybit-service.workspace = true
 
