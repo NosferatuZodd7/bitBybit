@@ -528,6 +528,7 @@ dependencies = [
  "bitbybit-service",
  "bitbybit-updates",
  "embed-resource",
+ "i-slint-backend-testing",
  "log",
  "serde",
  "serde_json",

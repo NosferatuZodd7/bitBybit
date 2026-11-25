@@ -7,12 +7,13 @@ import { Palette } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { Icon, Spinner, Button, IconButton, Toggle, Check, TextField, Select, SegItem, Segmented, Slider, MenuEntry, MenuButton } from "controls.slint";
 import { Scroller, Secondary, Body, Divider, Panel, PanelTitle, KpiCard, AreaChart, ActivityItem, ColumnLabel, TableHeader, TableRow, Badge, StatusDot, StatusBanner, EmptyState, Field, SettingRow, NavItem, NavGroup } from "components.slint";
+import { QueueRow, QueueButton, QueueItem } from "queue.slint";
 import "assets/fonts/Poppins-Regular.ttf";
 import "assets/fonts/Poppins-Medium.ttf";
 import "assets/fonts/Poppins-SemiBold.ttf";
 import "assets/fonts/Poppins-Bold.ttf";
 
-export { Theme }
+export { Theme, QueueRow }
 
 export global Tr {
     pure callback t(string) -> string;
@@ -541,6 +542,10 @@ export component AppWindow inherits Window {
     in property <string> dialog-risk;
     in property <int> dialog-level;
     callback dialog-answer(bool);
+    // Operation queue (UI-13, src/ops.rs): this session's operations, newest first, and how many are not finished.
+    in property <[QueueRow]> queue-rows;
+    in property <int> queue-pending;
+    public function show-queue() { queue-popup.show(); }
 
     // Settings page (9): update channel.
     in-out property <int> update-channel;
@@ -549,8 +554,8 @@ export component AppWindow inherits Window {
 
 
     title: "bitBybit " + root.version;
-    preferred-width: 1440px;
-    preferred-height: 860px;
+    preferred-width: 1280px;
+    preferred-height: 720px;
     min-width: 1100px;
     min-height: 660px;
     background: Theme.workspace;
@@ -564,7 +569,7 @@ export component AppWindow inherits Window {
     property <bool> searchable: root.page == 1 || root.page == 3 || root.page == 7;
     property <int> chart-index;
     property <int> notifications: (root.broker-state == 2 ? 1 : 0) + (root.app-update-available ? 1 : 0) + (root.new-card-text != "" ? 1 : 0) + (root.op-state == 3 ? 1 : 0);
-    property <string> page-title: root.page == 8 ? Tr.t("app.page.dashboard.title")
+    out property <string> page-title: root.page == 8 ? Tr.t("app.page.dashboard.title")
         : root.page == 6 ? Tr.t("app.page.case.title")
         : root.page == 0 ? Tr.t("app.page.network.title")
         : root.page == 1 ? Tr.t("app.page.devices.title")
@@ -596,19 +601,20 @@ export component AppWindow inherits Window {
         height: root.height;
         background: Theme.sidebar;
         VerticalLayout {
-            padding-top: 26px;
-            padding-bottom: 14px;
+            // Shorter than 720px (the minimum is 660px): tighter identity block so the last entries stay visible.
+            padding-top: root.height < 720px ? 12px : 26px;
+            padding-bottom: root.height < 720px ? 8px : 14px;
             spacing: 0px;
             // Identity: the logo, the name and the service link.
             VerticalLayout {
                 spacing: 6px;
-                padding-bottom: 20px;
+                padding-bottom: root.height < 720px ? 10px : 20px;
                 HorizontalLayout {
                     alignment: center;
                     Image {
                         source: @image-url("assets/logo-mark.png");
-                        width: 54px;
-                        height: 54px;
+                        width: root.height < 720px ? 36px : 54px;
+                        height: self.width;
                         image-fit: contain;
                         accessible-role: image;
                         accessible-label: "bitBybit";
@@ -688,6 +694,10 @@ export component AppWindow inherits Window {
                         }
                         VerticalLayout {
                             alignment: center;
+                            QueueButton { tooltip: Tr.t("app.queue.title"); count: root.queue-pending; clicked => { queue-popup.show(); } }
+                        }
+                        VerticalLayout {
+                            alignment: center;
                             bell := IconButton {
                                 icon: @image-url("assets/icons/bell.svg");
                                 tooltip: Tr.t("app.notifications");
@@ -698,6 +708,39 @@ export component AppWindow inherits Window {
                         VerticalLayout {
                             alignment: center;
                             IconButton { icon: @image-url("assets/icons/settings.svg"); tooltip: Tr.t("app.settings.title"); clicked => { root.go(9); } }
+                        }
+                    }
+                    queue-popup := PopupWindow {
+                        x: parent.width - self.width - 16px;
+                        y: parent.height + 6px;
+                        width: 420px;
+                        height: min(root.height - Theme.header-height - 3 * Theme.pad, queue-box.preferred-height);
+                        Rectangle {
+                            border-radius: Theme.radius-card;
+                            background: Theme.panel;
+                            border-width: 1px;
+                            border-color: Theme.divider;
+                            drop-shadow-color: #00000080;
+                            drop-shadow-blur: 20px;
+                            drop-shadow-offset-y: 8px;
+                        }
+                        queue-box := VerticalLayout {
+                            padding: 16px;
+                            spacing: 12px;
+                            VerticalLayout {
+                                spacing: 2px;
+                                Text { text: Tr.t("app.queue.title"); font-size: Theme.font-title; font-weight: 700; color: Theme.text; }
+                                Secondary { text: Tr.t("app.queue.caption"); }
+                            }
+                            if root.queue-rows.length == 0: Secondary { text: Tr.t("app.queue.empty"); }
+                            if root.queue-rows.length > 0: Scroller {
+                                min-height: min(queue-list.preferred-height, 120px);
+                                preferred-height: queue-list.preferred-height;
+                                queue-list := VerticalLayout {
+                                    spacing: 12px;
+                                    for row[i] in root.queue-rows: QueueItem { info: row; last: i == root.queue-rows.length - 1; }
+                                }
+                            }
                         }
                     }
                     inbox := PopupWindow {
@@ -923,6 +966,8 @@ export component AppWindow inherits Window {
 
                                     // ── Definições
                                     if root.share-tab == 0: VerticalLayout {
+                                        // Measured inside the instance, at its real width: an `if` in a layout is otherwise measured unwrapped.
+                                        height: self.preferred-height;
                                         spacing: 16px;
                                         if root.share-suggestion != "" && root.share-session == "": StatusBanner {
                                             kind: 0;
@@ -1035,6 +1080,7 @@ export component AppWindow inherits Window {
 
                                     // ── Clientes
                                     if root.share-tab == 1: VerticalLayout {
+                                        height: self.preferred-height;
                                         spacing: 12px;
                                         if root.share-session == "": EmptyState { icon: @image-url("assets/icons/smartphone.svg"); text: Tr.t("app.share.clientsOff"); }
                                         if root.share-session != "" && root.topo-nodes.length > 0: ShareDiagram {
@@ -1619,7 +1665,7 @@ export component AppWindow inherits Window {
                             Panel {
                                 horizontal-stretch: 35;
                                 preferred-width: 0px;
-                                min-width: 300px;
+                                min-width: 260px;
                                 height: max(cr-box.preferred-height, about-box.preferred-height);
                                 cr-box := VerticalLayout {
                                     padding: 22px;

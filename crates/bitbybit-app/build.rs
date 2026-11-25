@@ -1,6 +1,9 @@
 fn main() {
     // Fluent std widgets (native to Windows 10/11; cyan accent in dark mode); colours come from ui/theme.slint.
-    let config = slint_build::CompilerConfiguration::new().with_style("fluent".into());
+    let config = slint_build::CompilerConfiguration::new()
+        .with_style("fluent".into())
+        // Debug builds keep the element info the headless UI tests (src/ui_tests.rs) search by; release builds do not.
+        .with_debug_info(std::env::var("PROFILE").as_deref() == Ok("debug"));
     slint_build::compile_with_config("ui/app.slint", config)
         .unwrap_or_else(|e| panic!("Slint UI failed to compile: {e}"));
 
